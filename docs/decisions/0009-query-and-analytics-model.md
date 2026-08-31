@@ -18,23 +18,23 @@ Every surface builds the same struct. It is the only way to express "which trans
 
 ```go
 type TransactionFilter struct {
-    DateFrom, DateTo   string   // raw; normalised by app ("2026-08", "last-90-days", ISO)
-    AccountRefs        []string
-    AccountKinds       []string
-    CategoryRefs       []string
-    IncludeSubcategories bool   // default true
-    Kinds              []string // outflow | inflow | transfer
-    Currencies         []string
-    AmountMin, AmountMax string
-    Description        string   // substring, case-insensitive
-    Tags               []string
-    TagMode            string   // any | all
-    ImportBatchRefs    []string
-    IncludeDeleted     bool     // default false
+    DateFrom, DateTo     string        // raw; needs the clock+timezone. See ADR-0005
+    AccountRefs          []string      // raw; needs a repository lookup. See ADR-0005
+    AccountKinds         []AccountKind // typed: closed enum, no I/O
+    CategoryRefs         []string      // raw; needs a repository lookup. See ADR-0005
+    IncludeSubcategories bool          // default true
+    Kinds                []TxnKind     // typed: closed enum, no I/O
+    Currencies           []string      // raw; validity is instance data. See ADR-0005
+    AmountMin, AmountMax string        // raw; needs resolved currency. See ADR-0005
+    Description          string        // substring, case-insensitive
+    Tags                 []Tag         // typed: pure normalisation. See ADR-0005
+    TagMode              TagMode       // typed: closed enum (Any | All)
+    ImportBatchRefs      []string      // raw; needs a repository lookup. See ADR-0005
+    IncludeDeleted       bool          // default false
 }
 ```
 
-Raw strings, normalised by the app layer, for exactly the reasons in [ADR-0005](0005-shared-application-layer.md). `"last-90-days"` and `"2026-08"` resolve against the injected clock in the user's timezone — so all four surfaces agree on what "this month" means, including at 00:30 on the first.
+Same rule as [ADR-0005](0005-shared-application-layer.md#which-command-fields-are-raw-strings-and-why--precisely-not-as-a-blanket-policy): a field is typed exactly when a pure function exists from raw input to that field. `AccountKind`, `TxnKind`, and `TagMode` are closed enums with no ambiguity and no lookup, so they're typed the same way `Tags` is — validated and constructed once, reused everywhere a filter is built. `DateFrom`/`DateTo` need the clock and the user's timezone to resolve `"last-90-days"` or `"2026-08"`; `*Refs` and `Currencies` need a repository or instance-config lookup; `AmountMin`/`AmountMax` need a resolved currency before they mean anything. None of those four can be given a surface-callable constructor without handing the surface I/O or clock access it structurally shouldn't have — the same argument, not a new one.
 
 **Semantics are fixed once, in the filter, not per surface:**
 
