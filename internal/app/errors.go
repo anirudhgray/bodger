@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 
+	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 )
 
@@ -45,4 +46,40 @@ func wrapLedgerError(err error) error {
 		return e
 	}
 	return errs.New(errs.InvalidInput).Explain("That transaction isn't valid. Check the accounts, amounts, and dates you entered.").Wrap(err)
+}
+
+// wrapTransferError is wrapLedgerError's transfer-specific counterpart: it
+// recognises the ledger sentinel errors ledger.NewTransfer can return and
+// gives each one a specific, user-safe message and field, falling back to
+// wrapLedgerError's generic message for anything else. By the time this
+// package calls ledger.NewTransfer, the accounts are already known
+// distinct-or-not and same-currency-or-not from data it fetched itself, so
+// in practice only ErrTransferSameAccount and
+// ErrCrossCurrencyTransferUnsupported are reachable here — but every
+// sentinel is handled so this stays correct if that ever changes.
+func wrapTransferError(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, ledger.ErrTransferSameAccount):
+		return errs.New(errs.InvalidInput).
+			Explain("A transfer's two accounts must be different.").
+			Field("to_account_ref")
+	case errors.Is(err, ledger.ErrCrossCurrencyTransferUnsupported):
+		return errs.New(errs.InvalidInput).
+			Explain("Transfers between accounts with different currencies aren't supported yet.").
+			Field("to_account_ref").
+			Wrap(err)
+	case errors.Is(err, ledger.ErrTransferNotBalanced), errors.Is(err, ledger.ErrTransferPostingsMustOppose),
+		errors.Is(err, ledger.ErrTransferPostingHasCategory), errors.Is(err, ledger.ErrTransferPostingCount):
+		// These can't actually happen given how this package builds a
+		// transfer's two postings (opposite signs, no category, exactly
+		// two) — Internal, not InvalidInput, because reaching this branch
+		// would mean this package's own invariant broke, not that the
+		// user did anything wrong.
+		return errs.New(errs.Internal).Explain("That transfer couldn't be recorded.").Wrap(err)
+	default:
+		return wrapLedgerError(err)
+	}
 }

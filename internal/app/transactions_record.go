@@ -171,6 +171,110 @@ func (s *Service) RecordOutflow(ctx context.Context, cmd RecordOutflowCommand) (
 	return TransactionResult{Transaction: txn, Tags: fields.Tags}, nil
 }
 
+// buildTransferPostings resolves fromRef and toRef against the actor's own
+// accounts and builds the two opposite-signed, uncategorised postings a
+// transfer needs (data-model.md §5: "exactly two postings; exactly two
+// distinct accounts; opposite signs; both categories null"). The amount's
+// currency is always the *from* account's currency — there is no
+// Currency command field for a transfer, unlike RecordOutflow/RecordInflow,
+// because a transfer's amount isn't an independent fact the way an entry's
+// amount is; it's a movement between two accounts that already have
+// currencies. Building the *to* posting in the *to* account's own currency
+// (rather than reusing the *from* currency) is what lets
+// ledger.NewTransfer's own cross-currency check fire when they differ,
+// rather than this function silently deciding what to do about it.
+//
+// Shared by RecordTransfer and EditTransaction (when editing a transfer).
+func (s *Service) buildTransferPostings(ctx context.Context, actorID, fromRef, toRef, amount string) (ledger.Posting, ledger.Posting, error) {
+	fromAccount, err := s.resolveOwnedAccount(ctx, actorID, fromRef)
+	if err != nil {
+		return ledger.Posting{}, ledger.Posting{}, attachField(err, "from_account_ref")
+	}
+	toAccount, err := s.resolveOwnedAccount(ctx, actorID, toRef)
+	if err != nil {
+		return ledger.Posting{}, ledger.Posting{}, attachField(err, "to_account_ref")
+	}
+
+	amountMinor, err := normalize.Amount(amount, fromAccount.Currency())
+	if err != nil {
+		return ledger.Posting{}, ledger.Posting{}, err
+	}
+	if amountMinor < 0 {
+		amountMinor = -amountMinor
+	}
+	if amountMinor == 0 {
+		return ledger.Posting{}, ledger.Posting{}, errs.New(errs.InvalidInput).Explain("Amount must not be zero.").Field("amount")
+	}
+
+	fromMoney, err := money.NewMoney(-amountMinor, fromAccount.Currency())
+	if err != nil {
+		return ledger.Posting{}, ledger.Posting{}, errs.New(errs.Internal).Wrap(err)
+	}
+	toMoney, err := money.NewMoney(amountMinor, toAccount.Currency())
+	if err != nil {
+		return ledger.Posting{}, ledger.Posting{}, errs.New(errs.Internal).Wrap(err)
+	}
+
+	outPosting, err := ledger.NewPosting(s.IDs.NewID(), fromAccount.ID(), fromMoney, nil, 0)
+	if err != nil {
+		return ledger.Posting{}, ledger.Posting{}, errs.New(errs.Internal).Wrap(err)
+	}
+	inPosting, err := ledger.NewPosting(s.IDs.NewID(), toAccount.ID(), toMoney, nil, 1)
+	if err != nil {
+		return ledger.Posting{}, ledger.Posting{}, errs.New(errs.Internal).Wrap(err)
+	}
+	return outPosting, inPosting, nil
+}
+
+// RecordTransferCommand records a transfer of exactly Amount from
+// FromAccountRef to ToAccountRef. A cross-currency transfer is rejected
+// with ledger.ErrCrossCurrencyTransferUnsupported (via wrapTransferError) —
+// M1 behaviour per issue #2 and data-model.md §5; M3 lifts this.
+type RecordTransferCommand struct {
+	ActorID        string
+	FromAccountRef string
+	ToAccountRef   string
+	Amount         string
+	Date           string
+	Description    string
+	Notes          string
+	Tags           []string
+}
+
+// RecordTransfer implements issue #6's RecordTransfer use case: exactly
+// two postings, never split (data-model.md §13: "a transfer with more than
+// two postings is rejected").
+func (s *Service) RecordTransfer(ctx context.Context, cmd RecordTransferCommand) (TransactionResult, error) {
+	if err := requireActorID(cmd.ActorID); err != nil {
+		return TransactionResult{}, err
+	}
+
+	outPosting, inPosting, err := s.buildTransferPostings(ctx, cmd.ActorID, cmd.FromAccountRef, cmd.ToAccountRef, cmd.Amount)
+	if err != nil {
+		return TransactionResult{}, err
+	}
+
+	fields, err := s.resolveCommonFields(cmd.Date, cmd.Description, cmd.Notes, cmd.Tags)
+	if err != nil {
+		return TransactionResult{}, err
+	}
+
+	var opts []ledger.TransactionOption
+	if fields.Notes != "" {
+		opts = append(opts, ledger.WithNotes(fields.Notes))
+	}
+
+	txn, err := ledger.NewTransfer(s.IDs.NewID(), cmd.ActorID, fields.Date, fields.Description, []ledger.Posting{outPosting, inPosting}, opts...)
+	if err != nil {
+		return TransactionResult{}, wrapTransferError(err)
+	}
+
+	if err := s.Transactions.Create(ctx, cmd.ActorID, txn, fields.Tags); err != nil {
+		return TransactionResult{}, err
+	}
+	return TransactionResult{Transaction: txn, Tags: fields.Tags}, nil
+}
+
 // RecordInflowCommand records a single-posting inflow: money arriving in
 // AccountRef, optionally attributed to CategoryRef. A refund is recorded
 // this way too, with CategoryRef set to the original outflow's category
