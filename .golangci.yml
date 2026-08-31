@@ -1,0 +1,30 @@
+# golangci-lint configuration (v2 schema).
+#
+# Deliberately close to the defaults. The project's real invariants are
+# enforced by tests in `make check` (import-graph, banned symbols, the
+# surface conformance suite - see ADR-0005), not by linter rules; this
+# file exists to keep the default set stable and pinned rather than to
+# encode style opinions.
+version: "2"
+
+linters:
+  default: standard   # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    # This is financial software and errors carry the code that decides
+    # a surface's HTTP status and exit code (ADR-0011) - a dropped or
+    # reassigned error is a real defect here, not a style nit.
+    - errorlint
+  exclusions:
+    rules:
+      # Table-driven domain tests are long by nature and assert a lot.
+      - path: _test\.go
+        linters: [errcheck]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/anirudhgray/bodger

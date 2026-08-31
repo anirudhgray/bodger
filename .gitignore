@@ -1,4 +1,18 @@
+# Ephemeral session notes (see CLAUDE.md)
 agents/design-docs
+
+# Build artefacts
 bin/
 dist/
+coverage.out
+web/dist/
+web/node_modules/
+
+# Local runtime data
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+
 .DS_Store

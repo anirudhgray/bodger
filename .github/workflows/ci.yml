@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Reports are defined by calendar boundaries in the user's timezone, resolved
+# in the application layer (ADR-0005). Pinning the runner to UTC means a test
+# that accidentally depends on the host timezone fails here rather than in
+# someone's evening. The Makefile exports this too; it is set again so the
+# intent is visible in the workflow.
+env:
+  TZ: UTC
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read toolchain versions
+        id: tools
+        run: |
+          echo "go=$(awk '/^golang /{print $2}' .tool-versions)"   >> "$GITHUB_OUTPUT"
+          echo "node=$(awk '/^nodejs /{print $2}' .tool-versions)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ steps.tools.outputs.go }}
+          cache: true
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ steps.tools.outputs.node }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+        if: hashFiles('web/package-lock.json') != ''
+
+      - name: Install web dependencies
+        if: hashFiles('web/package-lock.json') != ''
+        run: cd web && npm ci
+
+      # Pinned, not `latest`: a linter release that adds a check would
+      # otherwise fail an unrelated PR. Bump deliberately.
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.2
+          install-mode: binary
+        if: hashFiles('**/*.go') != ''
+
+      # The single source of truth for what "passing" means. Anything checked
+      # here must be runnable locally with the identical command.
+      - name: make check
+        run: make check
+
+      - name: make build
+        run: make build
