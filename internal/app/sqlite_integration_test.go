@@ -191,6 +191,105 @@ func TestDeleteTransaction_GoneFromGetButPresentInDB(t *testing.T) {
 	}
 }
 
+// TestDeleteTransaction_GoneFromListingsAndBalances is
+// TestDeleteTransaction_GoneFromGetButPresentInDB's ListTransactions/
+// AccountBalances-dependent half, run against the real SQLite adapter to
+// prove the exclusion holds end to end (not just against the in-memory
+// fake's own List implementation, which TestListTransactions_ExcludesSoftDeleted
+// and TestAccountBalances_ExcludesSoftDeletedTransactions already cover).
+func TestDeleteTransaction_GoneFromListingsAndBalances(t *testing.T) {
+	svc, _, _ := newSQLiteTestService(t, time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	acc := mustAccountFixtureAs(t, svc, sqliteActorID, "Cash", "cash", "USD")
+	created, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: sqliteActorID, AccountRef: acc.Account.ID(), Amount: "50", Description: "Coffee", Date: "2026-08-14",
+	})
+	if err != nil {
+		t.Fatalf("RecordOutflow: %v", err)
+	}
+
+	before, err := svc.AccountBalances(ctx, app.AccountBalancesQuery{ActorID: sqliteActorID, AsOf: "2026-08-14"})
+	if err != nil {
+		t.Fatalf("AccountBalances (before delete): %v", err)
+	}
+	if bal := balanceFor(t, before, acc.Account.ID()); bal != -5000 {
+		t.Fatalf("balance before delete = %d, want -5000", bal)
+	}
+
+	if _, err := svc.DeleteTransaction(ctx, app.DeleteTransactionCommand{ActorID: sqliteActorID, TransactionRef: created.Transaction.ID()}); err != nil {
+		t.Fatalf("DeleteTransaction: %v", err)
+	}
+
+	listResult, err := svc.ListTransactions(ctx, app.ListTransactionsQuery{ActorID: sqliteActorID})
+	if err != nil {
+		t.Fatalf("ListTransactions: %v", err)
+	}
+	for _, txn := range listResult.Transactions {
+		if txn.ID() == created.Transaction.ID() {
+			t.Error("deleted transaction still appears in ListTransactions")
+		}
+	}
+
+	after, err := svc.AccountBalances(ctx, app.AccountBalancesQuery{ActorID: sqliteActorID, AsOf: "2026-08-14"})
+	if err != nil {
+		t.Fatalf("AccountBalances (after delete): %v", err)
+	}
+	if bal := balanceFor(t, after, acc.Account.ID()); bal != 0 {
+		t.Errorf("balance after delete = %d, want 0 (deleted transaction excluded)", bal)
+	}
+}
+
+// TestListTransactions_SortIsDeterministicAgainstRealSQLite runs the same
+// tie-heavy query twice against the real adapter (not the in-memory fake)
+// and checks both runs return the same order — the SQL-level counterpart
+// to TestListTransactions_DeterministicSortWithTiebreaks.
+func TestListTransactions_SortIsDeterministicAgainstRealSQLite(t *testing.T) {
+	svc, clk, _ := newSQLiteTestService(t, time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixtureAs(t, svc, sqliteActorID, "Cash", "cash", "USD")
+
+	// Advance the clock between creates so each row gets a distinct
+	// created_at — otherwise every row ties on both booked_date and
+	// created_at and the sort falls all the way to id DESC, which (being
+	// a random UUID) has no relation to creation order and would make
+	// this test's "reverse creation order" assertion meaningless.
+	var ids []string
+	for i := range 5 {
+		result, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+			ActorID: sqliteActorID, AccountRef: acc.Account.ID(), Amount: "10", Date: "2026-08-14", Description: "tx",
+		})
+		if err != nil {
+			t.Fatalf("RecordOutflow #%d: %v", i, err)
+		}
+		ids = append(ids, result.Transaction.ID())
+		clk.Advance(time.Second)
+	}
+
+	first, err := svc.ListTransactions(ctx, app.ListTransactionsQuery{ActorID: sqliteActorID})
+	if err != nil {
+		t.Fatalf("ListTransactions (first): %v", err)
+	}
+	second, err := svc.ListTransactions(ctx, app.ListTransactionsQuery{ActorID: sqliteActorID})
+	if err != nil {
+		t.Fatalf("ListTransactions (second): %v", err)
+	}
+	if len(first.Transactions) != 5 || len(second.Transactions) != 5 {
+		t.Fatalf("got %d and %d transactions, want 5 and 5", len(first.Transactions), len(second.Transactions))
+	}
+	for i := range first.Transactions {
+		if first.Transactions[i].ID() != second.Transactions[i].ID() {
+			t.Fatalf("result[%d] differs between runs: %q vs %q", i, first.Transactions[i].ID(), second.Transactions[i].ID())
+		}
+	}
+	for i, txn := range first.Transactions {
+		want := ids[len(ids)-1-i]
+		if txn.ID() != want {
+			t.Errorf("result[%d].ID() = %q, want %q (reverse creation order under a tied booked_date)", i, txn.ID(), want)
+		}
+	}
+}
+
 func mustAccountFixtureAs(t *testing.T, svc *app.Service, actorID, name, kind, currency string) app.AccountResult {
 	t.Helper()
 	result, err := svc.CreateAccount(context.Background(), app.CreateAccountCommand{
