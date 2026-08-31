@@ -18,7 +18,7 @@ make setup-hooks      # activate .githooks - once per clone
 
 `make setup-hooks` is not optional. Git does not read hooks from a tracked directory on its own, and [`.githooks/pre-push`](../.githooks/pre-push) is what stops an accidental direct push to `main`.
 
-Optional but recommended: [`golangci-lint`](https://golangci-lint.run/) (`brew install golangci-lint`). `make lint` skips with a notice if it isn't installed; CI always runs it, so a clean local `make check` without it is not a guarantee. Config is [`.golangci.yml`](../.golangci.yml) — close to the defaults on purpose, since the project's real invariants are enforced by tests, not linter rules. **CI pins the linter version**; bump it deliberately rather than tracking `latest`, so a linter release can't fail an unrelated PR.
+[`golangci-lint`](https://golangci-lint.run/) is pinned in `.tool-versions` too, at the same version CI uses, so `asdf install` (or `mise install`) gets you a linter that actually matches CI instead of whatever a global install happens to be. `make lint` skips with a notice only if the binary is entirely absent — if one is present but can't parse this repo's `go.mod` (for example, a stale global install built against an older Go than `go.mod` targets), `make lint` fails loudly rather than silently skipping, since that failure is exactly the signal that the wrong version is on `PATH`. Config is [`.golangci.yml`](../.golangci.yml) — close to the defaults on purpose, since the project's real invariants are enforced by tests, not linter rules. **CI pins the linter version**; bump it deliberately in both `.github/workflows/ci.yml` and `.tool-versions` rather than tracking `latest`, so a linter release can't fail an unrelated PR.
 
 ---
 

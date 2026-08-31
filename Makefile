@@ -83,9 +83,11 @@ endif
 .PHONY: lint
 lint:
 ifneq ($(HAS_GO),)
-	@command -v golangci-lint >/dev/null 2>&1 \
-	  && golangci-lint run \
-	  || echo "golangci-lint not installed - skipping (see docs/contributing.md)"
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+	  golangci-lint run; \
+	else \
+	  echo "golangci-lint not installed - skipping (see docs/contributing.md)"; \
+	fi
 endif
 ifneq ($(HAS_WEB),)
 	cd $(WEB_DIR) && npm run lint
