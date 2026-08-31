@@ -220,12 +220,12 @@ Rules, scheduled occurrences, materialisation, forecasting. Occurrences never to
 
 ## 9. Status
 
-**Current milestone: M1 · Arda — Ledger core, CLI, and REST API.** Not started; issues seeded.
+**Current milestone: M1 · Arda — Ledger core, CLI, and REST API.** In progress.
 
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
-| M1 · Arda — Ledger core, CLI, REST API | 🔜 Planned, issues seeded |
+| M1 · Arda — Ledger core, CLI, REST API | 🔧 In progress |
 | M2 — Web UI and authentication | ⬜ Not started |
 | M3 — Multi-currency and FX | ⬜ Not started |
 | M4 — Analytics and charts | ⬜ Not started |
@@ -238,7 +238,9 @@ Delivered in M0: this document, [`data-model.md`](data-model.md), [`ux-principle
 
 The bootstrap product brief has been fully absorbed into these documents and can be deleted; nothing in `docs/` cites it. See [`decisions/README.md`](decisions/README.md#on-the-brief).
 
-Not yet built: every layer in §2. The repository contains no application code.
+Delivered so far in M1: `internal/domain/money` (`Money` value object, currency reference data, arithmetic, formatting/parsing, JSON marshalling — issue #1) and `internal/domain` (`Date` value object — issue #1).
+
+Not yet built: everything else in §2.
 
 This section is updated **in the same PR** as the work it describes, per CLAUDE.md — not in a later docs pass.
 
