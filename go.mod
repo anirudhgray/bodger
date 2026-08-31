@@ -5,6 +5,7 @@ go 1.27
 require (
 	github.com/google/uuid v1.6.0
 	github.com/pressly/goose/v3 v3.27.3
+	golang.org/x/text v0.41.0
 	modernc.org/sqlite v1.57.0
 )
 
