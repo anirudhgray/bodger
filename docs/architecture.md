@@ -238,11 +238,24 @@ Delivered in M0: this document, [`data-model.md`](data-model.md), [`ux-principle
 
 The bootstrap product brief has been fully absorbed into these documents and can be deleted; nothing in `docs/` cites it. See [`decisions/README.md`](decisions/README.md#on-the-brief).
 
-Delivered so far in M1: `internal/domain/money` (`Money` value object, currency reference data, arithmetic, formatting/parsing, JSON marshalling — issue #1) and `internal/domain` (`Date` value object — issue #1); `internal/platform/clock`, `internal/platform/config`, `internal/platform/idgen`, `internal/platform/logging`, and `internal/platform/errs` (injected clock, layered config, ID generation, structured logging, and the shared error registry — issue #4).
+Delivered so far in M1, one entry per shipped issue so parallel PRs each
+add their own line here rather than rewriting a shared sentence:
+
+- `internal/domain/money` and `internal/domain` — `Money` and `Date` value
+  objects, currency reference data, arithmetic, formatting/parsing, JSON
+  marshalling (issue #1).
+- `internal/platform/clock`, `internal/platform/config`,
+  `internal/platform/idgen`, `internal/platform/logging`,
+  `internal/platform/errs` — injected clock, layered config, ID
+  generation, structured logging, shared error registry (issue #4).
 
 Not yet built: everything else in §2.
 
-This section is updated **in the same PR** as the work it describes, per CLAUDE.md — not in a later docs pass.
+This section is updated **in the same PR** as the work it describes, per
+CLAUDE.md — not in a later docs pass. Add your own bullet to the list
+above; don't rewrite another issue's bullet or fold it into a shared
+sentence, even if you know it's about to merge — see the orchestrate
+skill's hotspot-collision guidance for why.
 
 ---
 

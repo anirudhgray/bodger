@@ -93,19 +93,32 @@ branch and resolve the conflict by hand once. Items that don't touch these
 files (e.g. a self-contained package, or docs-only work) are safe to fully
 parallelize.
 
-**For a purely-additive hotspot - a bootstrap file both branches need for
-the same mechanical reason, or a status/doc section both need to record
-progress in - pre-reconcile instead of deferring.** Draft the combined
-edit once (the version that's true once both land) and apply it
-byte-identical to every parallel branch before any of them merges. Merge
-order then produces a no-op diff on whichever branch merges second - no
-conflict, and no follow-up PR. This is different from a semantic
-collision (two branches genuinely changing the same logic), which does
-need the rebase-and-resolve treatment above; it applies specifically when
-the two edits would converge on the same content anyway. Deferring
-`docs/architecture.md` §9 to a follow-up PR after the fact violates
-CLAUDE.md's "same PR, not a later docs pass" rule and leaves the doc
-briefly wrong after the first branch merges - pre-reconciling doesn't.
+**Two different kinds of hotspot collision need two different fixes - do
+not blur them.**
+
+A **mechanical-necessity** collision is when two branches have each
+*genuinely, independently* done the same small piece of work for their
+own reasons - e.g. both need a placeholder `cmd/bodger/main.go` because
+each branch's own `make build` requires one. There, reconciling to
+byte-identical content across both branches before either merges is
+correct: neither branch is claiming the other's work, they coincidentally
+produced the same real thing.
+
+A **shared-narrative** collision is different: a status/doc section (like
+`docs/architecture.md` §9) that both branches want to add a line to,
+describing *their own* work. Never pre-write the other branch's
+not-yet-merged contribution into your branch's diff to make it "already
+correct" post-merge - that branch's PR would then claim work it never
+did, which is a false statement in its own diff and git history even
+though the eventual merged file reads right. Each branch adds only the
+line(s) describing what it actually shipped. Structure the section so
+that's line-level-additive (one clause or bullet per shipped issue,
+appended - not a single hand-wrapped sentence someone has to rewrite) so
+two independent additions there merge with, at worst, a trivial
+"both inserted a line here" conflict, resolved by hand once at whichever
+merge lands second, per the general rule above. That satisfies CLAUDE.md's
+"same PR, not a later docs pass" rule without a follow-up PR and without
+either branch misattributing the other's work to itself.
 
 The conformance table and the service container together mean **most M1
 slices are not cleanly parallel**. Work that genuinely is: a new import
