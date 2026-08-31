@@ -258,6 +258,14 @@ Delivered so far in M1:
   `-- +goose Down` and pre-migration `VACUUM INTO` backup, and the single
   M1 user seeded with a fixed UUID (ADR-0006) by the first migration
   (issue #3).
+- `internal/app/normalize` — `Amount`, `Currency`, `DateOf`, `Ref`,
+  `Text`, and `Tag`: the only place raw surface input becomes a domain
+  value, per the normalise-once contract (ADR-0005). `internal/app`'s
+  `Service` container wires the clock, config, ID generator, and
+  repository ports together once for every future surface to share, and
+  the `cmd/bodger` root command bootstraps config, the database,
+  migrations, and the container, with no subcommands registered yet
+  (issue #5).
 
 Not yet built: everything else in §2.
 
