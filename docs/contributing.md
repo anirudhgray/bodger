@@ -18,7 +18,7 @@ make setup-hooks      # activate .githooks - once per clone
 
 `make setup-hooks` is not optional. Git does not read hooks from a tracked directory on its own, and [`.githooks/pre-push`](../.githooks/pre-push) is what stops an accidental direct push to `main`.
 
-Optional but recommended: [`golangci-lint`](https://golangci-lint.run/) (`brew install golangci-lint`). `make lint` skips with a notice if it isn't installed; CI always runs it, so a clean local `make check` without it is not a guarantee.
+Optional but recommended: [`golangci-lint`](https://golangci-lint.run/) (`brew install golangci-lint`). `make lint` skips with a notice if it isn't installed; CI always runs it, so a clean local `make check` without it is not a guarantee. Config is [`.golangci.yml`](../.golangci.yml) — close to the defaults on purpose, since the project's real invariants are enforced by tests, not linter rules. **CI pins the linter version**; bump it deliberately rather than tracking `latest`, so a linter release can't fail an unrelated PR.
 
 ---
 

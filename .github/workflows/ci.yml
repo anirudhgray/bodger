@@ -47,9 +47,11 @@ jobs:
         if: hashFiles('web/package-lock.json') != ''
         run: cd web && npm ci
 
+      # Pinned, not `latest`: a linter release that adds a check would
+      # otherwise fail an unrelated PR. Bump deliberately.
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.13.2
           install-mode: binary
         if: hashFiles('**/*.go') != ''
 
