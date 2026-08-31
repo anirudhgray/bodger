@@ -89,6 +89,8 @@ Weighted toward the layer where correctness is decided:
 
 A red test means the code is wrong. Do not adjust an expectation to match current behaviour — if the expectation itself is genuinely wrong, say so and get confirmation first (CLAUDE.md).
 
+**Proving a validating constructor is the only way in.** A domain value object (`Money`, `Date`, `Tag`, `Account`, …) has unexported fields precisely so nothing outside its package can construct one without going through validation. Prove it with a `//go:build ignore` file in a `nocompile` subpackage attempting a keyed struct literal from outside — run it without the tag to confirm the real compiler error, then restore the tag so it's excluded from normal builds and tests. See `internal/domain/money/nocompile`, `internal/domain/nocompile`, or `internal/domain/ledger/nocompile` for the pattern.
+
 ---
 
 ## Docs describe intent until the code exists
