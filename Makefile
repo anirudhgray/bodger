@@ -16,7 +16,10 @@ COVERPROFILE:= coverage.out
 # green from the first commit rather than being switched on later.
 HAS_WEB     := $(wildcard $(WEB_DIR)/package.json)
 # Go targets no-op until there is at least one package to act on (milestone 1).
-HAS_GO      := $(shell find . -name '*.go' -not -path './$(WEB_DIR)/*' -print -quit 2>/dev/null)
+# Excludes .claude/worktrees: agent-managed parallel worktrees live on disk
+# under the main worktree but are separate git worktrees / Go modules, and
+# must not make this worktree's own targets fire on their behalf.
+HAS_GO      := $(shell find . -name '*.go' -not -path './$(WEB_DIR)/*' -not -path './.claude/worktrees/*' -print -quit 2>/dev/null)
 
 export TZ := UTC
 
