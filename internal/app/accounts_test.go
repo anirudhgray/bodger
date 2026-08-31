@@ -32,7 +32,8 @@ func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
 	clk := clock.NewFrozen(frozenAt)
 	cfg := config.Defaults
 	cfg.UserTimezone = tz
-	svc, err := app.NewService(clk, cfg, idgen.New(), newMemAccounts(), newMemCategories(), newMemTransactions(), newMemTags())
+	categories := newMemCategories()
+	svc, err := app.NewService(clk, cfg, idgen.New(), newMemAccounts(), categories, newMemTransactions(categories), newMemTags())
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}

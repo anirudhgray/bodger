@@ -151,10 +151,42 @@ type memTransactionRecord struct {
 type memTransactions struct {
 	byID map[string]memTransactionRecord
 	next int
+	// categories backs CategoryID subtree expansion in List, mirroring
+	// the real adapter's recursive CTE (ADR-0009: "CategoryRefs includes
+	// the subtree by default"). It may be nil, in which case CategoryID
+	// filtering degrades to an exact match only - fine for tests that
+	// don't exercise category filtering at all.
+	categories *memCategories
 }
 
-func newMemTransactions() *memTransactions {
-	return &memTransactions{byID: map[string]memTransactionRecord{}}
+func newMemTransactions(categories *memCategories) *memTransactions {
+	return &memTransactions{byID: map[string]memTransactionRecord{}, categories: categories}
+}
+
+// categorySubtreeIDs returns rootID plus every descendant's ID, computed
+// by repeatedly sweeping every category looking for a parent already in
+// the set - simple and quadratic, which is fine for a test fixture's
+// category counts.
+func (m *memTransactions) categorySubtreeIDs(rootID string) map[string]bool {
+	ids := map[string]bool{rootID: true}
+	if m.categories == nil {
+		return ids
+	}
+	for {
+		grew := false
+		for _, c := range m.categories.byID {
+			if ids[c.ID()] {
+				continue
+			}
+			if parentID, ok := c.ParentID(); ok && ids[parentID] {
+				ids[c.ID()] = true
+				grew = true
+			}
+		}
+		if !grew {
+			return ids
+		}
+	}
 }
 
 func (m *memTransactions) Create(_ context.Context, actorID string, txn ledger.Transaction, tags []ledger.Tag) error {
@@ -192,7 +224,7 @@ func (m *memTransactions) List(_ context.Context, actorID string, filter ports.T
 		if filter.AccountID != "" && !hasPostingOnAccount(rec.txn, filter.AccountID) {
 			continue
 		}
-		if filter.CategoryID != "" && !hasPostingInCategory(rec.txn, filter.CategoryID) {
+		if filter.CategoryID != "" && !hasPostingInCategorySet(rec.txn, m.categorySubtreeIDs(filter.CategoryID)) {
 			continue
 		}
 		matches = append(matches, rec)
@@ -258,9 +290,9 @@ func hasPostingOnAccount(txn ledger.Transaction, accountID string) bool {
 	return false
 }
 
-func hasPostingInCategory(txn ledger.Transaction, categoryID string) bool {
+func hasPostingInCategorySet(txn ledger.Transaction, categoryIDs map[string]bool) bool {
 	for _, p := range txn.Postings() {
-		if id, ok := p.CategoryID(); ok && id == categoryID {
+		if id, ok := p.CategoryID(); ok && categoryIDs[id] {
 			return true
 		}
 	}
