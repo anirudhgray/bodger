@@ -4,7 +4,7 @@
 
 ## Context
 
-The brief (§24) asks for the *minimum sensible* architecture covering single-user deployments, multiple users, authentication, authorisation, and per-user data isolation — and explicitly warns against building elaborate authentication infrastructure before the core product model is understood.
+What is wanted is the *minimum sensible* architecture covering single-user deployments, multiple users, authentication, authorisation, and per-user data isolation — without building elaborate authentication infrastructure before the core product model is understood.
 
 The tension is a familiar one. Building multi-user auth now is exactly the premature infrastructure the brief warns about. Building single-user with no notion of ownership means a painful retrofit later: every table needs a column, every query needs a predicate, and the migration has to invent an owner for existing rows.
 

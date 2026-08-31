@@ -2,7 +2,7 @@
 
 How `bodger` is put together: the layers, the boundary each surface is allowed to touch, the milestone sequence, and where the project currently stands.
 
-For *what* the system stores, read [`data-model.md`](data-model.md) — it is the source of truth for financial semantics and was written first, deliberately. This document describes the machinery around it.
+For *what* the system stores, read [`data-model.md`](data-model.md) — it is the source of truth for financial semantics and was written first, deliberately. For *who it's for and how it should feel*, read [`ux-principles.md`](ux-principles.md), which every surface is held to. This document describes the machinery around it.
 
 ---
 
@@ -60,6 +60,8 @@ Dependencies point inward. `domain` imports nothing from the project. `app` impo
 
 **`surface`** — HTTP handlers, CLI commands, MCP tools. Each one does exactly three things: decode transport input into a command struct, call one app method, encode the result. Any `if` statement in a surface that isn't about presentation is a design smell.
 
+Surfaces are also where [`ux-principles.md`](ux-principles.md) applies: they own every string a person reads, and they are the only place the product's vocabulary and defaults can go wrong.
+
 **`platform`** — Cross-cutting infrastructure: the clock, config loading, ID generation, structured logging.
 
 ### The rule that matters most
@@ -81,7 +83,7 @@ If the CLI parses `"2026-08-14"` into a date and the API parses it too, they wil
 
 Three of the four surfaces link the application layer directly. Only the web UI must cross a network boundary, because it runs in a browser.
 
-This is what the brief's own diagram (§33) describes, and it is the arrangement that makes the normalise-once rule easiest to keep: the CLI and MCP call the *same Go function* the HTTP handler calls, so there is no second implementation to drift. Routing the CLI and MCP through HTTP instead would also satisfy normalise-once, but it would force a server to be running to record a transaction, and would make the MCP server a network client of a service it usually shares a machine with. See [ADR-0001](decisions/0001-technology-stack.md).
+This is the arrangement that makes the normalise-once rule easiest to keep: the CLI and MCP call the *same Go function* the HTTP handler calls, so there is no second implementation to drift. Routing the CLI and MCP through HTTP instead would also satisfy normalise-once, but it would force a server to be running to record a transaction, and would make the MCP server a network client of a service it usually shares a machine with. See [ADR-0001](decisions/0001-technology-stack.md).
 
 **Consequence to know about:** more than one process can open the same SQLite database — `bodger serve` in Docker and `bodger tx add` in a terminal. WAL mode plus a busy timeout makes this safe for personal-scale concurrency, and this is a documented constraint rather than an accident. [ADR-0007](decisions/0007-persistence-and-migrations.md) covers it, including the Postgres path that removes it.
 
@@ -163,7 +165,7 @@ Conventions that live only in a document decay. These are checked by `make check
 
 ## 7. Testing strategy
 
-Weighted toward the layer where correctness is decided (brief §29):
+Weighted toward the layer where correctness is decided:
 
 - **Domain** — exhaustive, deterministic, table-driven. Every invariant in [`data-model.md` §14](data-model.md#14-invariants-that-must-have-tests).
 - **App** — use-case tests against an in-memory repository, with a frozen clock and a fixed timezone. Currency precedence, period boundaries, authorisation.
@@ -228,7 +230,9 @@ Rules, scheduled occurrences, materialisation, forecasting. Occurrences never to
 | M7 — MCP server | ⬜ Not started |
 | M8 — Recurring transactions | ⬜ Not started |
 
-Delivered in M0: this document, [`data-model.md`](data-model.md), ADRs 0001–0009, [`contributing.md`](contributing.md), a placeholder [`user-guide.md`](user-guide.md), `.tool-versions`, `Makefile`, and the GitHub Actions workflow.
+Delivered in M0: this document, [`data-model.md`](data-model.md), [`ux-principles.md`](ux-principles.md), ADRs 0001–0010, [`contributing.md`](contributing.md), a placeholder [`user-guide.md`](user-guide.md), `.tool-versions`, `Makefile`, and the GitHub Actions workflow.
+
+The bootstrap product brief has been fully absorbed into these documents and can be deleted; nothing in `docs/` cites it. See [`decisions/README.md`](decisions/README.md#on-the-brief).
 
 Not yet built: every layer in §2. The repository contains no application code.
 
@@ -249,3 +253,4 @@ This section is updated **in the same PR** as the work it describes, per CLAUDE.
 | [0007](decisions/0007-persistence-and-migrations.md) | SQLite, repository boundary, goose migrations |
 | [0008](decisions/0008-import-export-architecture.md) | Staged import pipeline; canonical versioned export |
 | [0009](decisions/0009-query-and-analytics-model.md) | One filter and analytics model shared by every surface |
+| [0010](decisions/0010-personal-finance-not-accounting-software.md) | Personal finance, not accounting software; the product philosophy constrains technical design |

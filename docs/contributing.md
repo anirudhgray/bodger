@@ -98,6 +98,7 @@ The conventions in [`CLAUDE.md`](../CLAUDE.md) apply to humans too. The ones tha
 - **Docs change in the same PR as the code.** The [Status](architecture.md#9-status) section for anything that moves a milestone; the user guide for anything user-visible; this file or an ADR for anything dev-visible. Not a later docs pass.
 - **Track deferred work as GitHub issues**, not as a paragraph in a doc. Reference issue numbers in commits and PRs.
 - **No ADR numbers or internal paths in user-facing strings** — CLI help, UI labels, prompts. Errors should be specific and detailed about *what* failed, but they don't cite internal documents either.
+- **Anything a user reads is held to [`ux-principles.md`](ux-principles.md)** — vocabulary, defaults, error phrasing. §2's banned-term table has no automated check yet, so it's a review responsibility.
 
 Session notes live in `agents/design-docs/` (gitignored, ephemeral). Anything durable graduates into `docs/`.
 

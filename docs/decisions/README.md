@@ -17,3 +17,10 @@ Format: **Status · Context · Decision · Alternatives considered · Consequenc
 | [0007](0007-persistence-and-migrations.md) | SQLite, repository boundary, goose migrations | Accepted |
 | [0008](0008-import-export-architecture.md) | Staged import pipeline; canonical versioned export | Accepted |
 | [0009](0009-query-and-analytics-model.md) | One filter and analytics model shared by every surface | Accepted |
+| [0010](0010-personal-finance-not-accounting-software.md) | Personal finance, not accounting software; the product philosophy constrains technical design | Accepted |
+
+## On "the brief"
+
+Several ADRs refer to *the brief* — `agents/design-docs/initial.md`, the bootstrap product document this project started from. It was a scoping artefact, not durable documentation, and it is gitignored and expected to be deleted once absorbed.
+
+Nothing in `docs/` depends on it. Where an ADR mentions it, the requirement it describes is stated inline, so these documents read correctly after it is gone. **Don't add a section-number citation into it** — that's a pointer nobody will be able to follow. If something in the brief still matters, promote the substance into the relevant doc or ADR instead.

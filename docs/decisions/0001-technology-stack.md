@@ -4,13 +4,13 @@
 
 ## Context
 
-`bodger` is a self-hosted personal finance application with four interfaces over one financial core: a CLI, a REST API, a web UI, and eventually an MCP server. The brief's constraints, in the order they actually constrain the choice:
+`bodger` is a self-hosted personal finance application with four interfaces over one financial core: a CLI, a REST API, a web UI, and eventually an MCP server. The product requirements, in the order they actually constrain the choice:
 
-- **Self-hosting is first-class** (§19). Home server, VPS, or NAS. Docker Compose is a first-class target; Kubernetes is explicitly out. Easy to back up, easy to upgrade, sensible for one user.
-- **Four surfaces must share one implementation** (§20, §33), with business logic in none of them.
-- **Correctness over convenience** (§26). This is financial software.
-- **Decades of transactions, not millions of users** (§30). Straightforward designs with good indexes; no premature distributed anything.
-- **The MCP server runs locally** alongside the platform (§23).
+- **Self-hosting is first-class.** Home server, VPS, or NAS. Docker Compose is a first-class target; Kubernetes is explicitly out. Easy to back up, easy to upgrade, sensible for one user.
+- **Four surfaces must share one implementation**, with business logic in none of them.
+- **Correctness over convenience.** This is financial software.
+- **Decades of transactions, not millions of users.** Straightforward designs with good indexes; no premature distributed anything.
+- **The MCP server runs locally** alongside the platform.
 
 The interesting pressure is that "four surfaces, one core" and "trivial to self-host" pull in opposite directions in most stacks. A typical answer — an API service, a separate CLI package, a separate MCP service, a Node frontend, a Postgres container — is four deployables and two runtimes to satisfy a single user running a NAS.
 
@@ -42,11 +42,11 @@ The web UI is inside the binary. There is no separate frontend container, no rev
 
 ### Surface composition
 
-The CLI, REST API, and MCP server are all subcommands of the same binary and all link the application layer **in-process**. Only the web UI crosses a network boundary, because browsers do that. This is exactly the brief's own §33 diagram.
+The CLI, REST API, and MCP server are all subcommands of the same binary and all link the application layer **in-process**. Only the web UI crosses a network boundary, because browsers do that. See [ADR-0005](0005-shared-application-layer.md).
 
 ## Alternatives considered
 
-**TypeScript end-to-end (Node + Prisma + Next.js).** One language across the whole stack, and the strongest UI ecosystem. Rejected on the self-hosting constraint: shipping a Node application to someone's NAS means shipping `node_modules`, a runtime version, and a build step, where Go ships a file. The CLI also matters here — a Node CLI has visible startup latency, and the brief wants entry to feel fast (§32). Go's weaker frontend story is irrelevant because the frontend is React either way.
+**TypeScript end-to-end (Node + Prisma + Next.js).** One language across the whole stack, and the strongest UI ecosystem. Rejected on the self-hosting constraint: shipping a Node application to someone's NAS means shipping `node_modules`, a runtime version, and a build step, where Go ships a file. The CLI also matters here — a Node CLI has visible startup latency, and fast entry is a product requirement ([ADR-0010](0010-personal-finance-not-accounting-software.md)). Go's weaker frontend story is irrelevant because the frontend is React either way.
 
 **Python (FastAPI + SQLAlchemy).** Excellent for the analytics work in M4. Rejected for the same packaging reason, more acutely — Python deployment on a home server is the least reproducible of the three — plus `Decimal`-vs-`float` money bugs are easy to write and hard to see, where Go's type system makes a `Money` value object that simply cannot be added to another currency.
 

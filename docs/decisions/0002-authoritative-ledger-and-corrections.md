@@ -4,11 +4,11 @@
 
 ## Context
 
-The brief is unusually direct on two points (§3, §26): derived aggregates must not become the authoritative source of financial history, and the effect of editing a historical entry on reporting and auditability must be understood before an edit operation is offered.
+Two product requirements bear directly on this. Derived aggregates must not become the authoritative source of financial history, and the effect of editing a historical entry on reporting and auditability must be understood before an edit operation is offered.
 
 Both are easy to violate accidentally. A `balance` column on `accounts` is the natural thing to write and the thing that silently goes wrong — a failed update, a concurrent write, or a bug in one code path and the stored number no longer matches the transactions, with no way to tell which one lied. Likewise, a plain `UPDATE` on a transaction is the natural edit and destroys the answer to "what did this report say last month?"
 
-The countervailing pressure is the product itself (§2a): this is personal finance for a normal person. Someone who typed 800 instead of 8000 wants to fix it, not to record a compensating reversal entry. Accounting-grade immutability is correct and would make the product worse.
+The countervailing pressure is the product itself ([ADR-0010](0010-personal-finance-not-accounting-software.md)): this is personal finance for a normal person. Someone who typed 800 instead of 8000 wants to fix it, not to record a compensating reversal entry. Accounting-grade immutability is correct and would make the product worse.
 
 ## Decision
 
@@ -50,7 +50,7 @@ A refund is an inflow whose posting carries the *same category* as the original 
 
 ## Alternatives considered
 
-**Full immutability; corrections are reversal entries.** What real accounting systems do, and the most auditable option. Rejected on §2a: it forces journal-entry thinking onto someone fixing a typo, and it makes the transaction list confusing — three rows where the user remembers one purchase.
+**Full immutability; corrections are reversal entries.** What real accounting systems do, and the most auditable option. Rejected on [ADR-0010](0010-personal-finance-not-accounting-software.md): it forces journal-entry thinking onto someone fixing a typo, and it makes the transaction list confusing — three rows where the user remembers one purchase.
 
 **Event sourcing over the ledger.** Complete history, time-travel queries for free. Rejected as disproportionate. It buys reproducibility this model already has (postings are themselves the durable facts) and costs projection machinery, replay performance, and schema-evolution pain, for a single-user application.
 

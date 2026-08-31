@@ -4,9 +4,9 @@
 
 ## Context
 
-Import is a major product requirement (§17): CSV exports, bank statements, credit-card exports, other personal finance applications, with duplicate detection, idempotency, external IDs, provenance, mapping, preview-before-commit, and rollback. The brief is explicit that import must be a pipeline rather than source-specific logic embedded in the financial core, and that it must be extensible to new formats without modifying that core.
+Import is a major product requirement: CSV exports, bank statements, credit-card exports, other personal finance applications, with duplicate detection, idempotency, external IDs, provenance, mapping, preview-before-commit, and rollback. Import must be a pipeline rather than source-specific logic embedded in the financial core, and must be extensible to new formats without modifying that core.
 
-Export is first-class (§18), and the brief asks a sharp question: should export → import round-trip, and what does "equivalent" mean? A round-trip guarantee is worth little unless "equivalent" is defined precisely enough to test.
+Export is first-class, and raises a sharp question: should export → import round-trip, and what does "equivalent" mean? A round-trip guarantee is worth little unless "equivalent" is defined precisely enough to test.
 
 Import is also the highest-risk write path in the application. It is the one operation that creates thousands of rows from data the user did not type, and a bad import that silently duplicates six months of transactions is the worst realistic failure this product has.
 

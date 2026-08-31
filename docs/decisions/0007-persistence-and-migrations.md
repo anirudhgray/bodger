@@ -4,7 +4,7 @@
 
 ## Context
 
-The brief requires self-hosting to be genuinely easy (§19) — Docker Compose, easy to back up, easy to upgrade, sensible for a single user, capable of more — while handling decades of transactions and substantial analytical queries (§30) with correctness as the priority (§26).
+Self-hosting must be genuinely easy — Docker Compose, easy to back up, easy to upgrade, sensible for a single user, capable of more — while handling decades of transactions and substantial analytical queries, with correctness as the priority.
 
 [ADR-0001](0001-technology-stack.md) chose SQLite. This ADR covers what that means in practice: the boundary that keeps the choice reversible, how migrations work, and the honest downsides.
 
@@ -20,7 +20,7 @@ Connections open with:
 | --- | --- | --- |
 | `journal_mode` | `WAL` | Concurrent readers alongside a writer |
 | `busy_timeout` | `5000` | Wait rather than fail when the writer is busy |
-| `foreign_keys` | `ON` | Off by default in SQLite; referential integrity is not optional here (§26) |
+| `foreign_keys` | `ON` | Off by default in SQLite; referential integrity is not optional in financial software |
 | `synchronous` | `NORMAL` | Safe under WAL; `FULL` costs more than it buys at this scale |
 
 Writes use a single connection (`SetMaxOpenConns(1)` on the write pool) because SQLite permits one writer; reads use a separate pooled read-only connection. This is a well-worn Go/SQLite pattern and it removes the `SQLITE_BUSY` class of bug rather than papering over it with retries.

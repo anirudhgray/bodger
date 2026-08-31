@@ -4,7 +4,7 @@
 
 ## Context
 
-`bodger` has four surfaces over one financial core: a CLI, a REST API, a web UI, and an MCP server. The brief's central architectural principle (§33) is that business semantics must not be duplicated across them. CLAUDE.md states the sharper version:
+`bodger` has four surfaces over one financial core: a CLI, a REST API, a web UI, and an MCP server. The central architectural principle is that business semantics must not be duplicated across them. CLAUDE.md states the sharper version:
 
 > Normalize input and resolve time-/environment-dependent values ("now", locale, etc.) once, in the service/application layer — never independently in each UI or API surface. […] every surface must inherit the same normalization instead of reimplementing its own version, which is what lets two surfaces silently diverge on the same underlying data.
 
@@ -150,7 +150,7 @@ This is also why the REST API ships in milestone 1 alongside the CLI rather than
 
 ## Alternatives considered
 
-**Route the CLI and MCP through HTTP to the API.** Guarantees normalise-once by construction — one process, one normaliser, no possibility of drift. Genuinely tempting, and rejected on product grounds: it means a server must be running before `bodger tx add` works, it makes a local MCP server a network client of a service on the same machine, and it puts serialisation latency in the path of the fast-entry workflow the brief cares about (§32). In-process composition achieves the same guarantee — all three call the same function — and the conformance suite supplies the proof that HTTP would have supplied structurally.
+**Route the CLI and MCP through HTTP to the API.** Guarantees normalise-once by construction — one process, one normaliser, no possibility of drift. Genuinely tempting, and rejected on product grounds: it means a server must be running before `bodger tx add` works, it makes a local MCP server a network client of a service on the same machine, and it puts serialisation latency in the path of the fast-entry workflow ([ADR-0010](0010-personal-finance-not-accounting-software.md), [`ux-principles.md` §3](../ux-principles.md#3-fast-entry)). In-process composition achieves the same guarantee — all three call the same function — and the conformance suite supplies the proof that HTTP would have supplied structurally.
 
 **Share a normalisation library, but let each surface call it.** The usual compromise. Rejected because it enforces nothing: a surface can still call `time.Now()`, still default a field before calling the library, still skip a step. The bug isn't that surfaces normalise *differently* — it's that they normalise *at all*. Raw-input command structs remove the opportunity rather than documenting against it.
 

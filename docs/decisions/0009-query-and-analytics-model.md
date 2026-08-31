@@ -4,9 +4,9 @@
 
 ## Context
 
-Filtering is described as a fundamental capability shared by every surface (§15), across roughly a dozen dimensions — date range, account, account kind, category and its subtree, direction, transfer, currency, amount range, payee, tags, import source. The brief says directly that the architecture must avoid separate filtering logic per surface.
+Filtering is a fundamental capability shared by every surface, across roughly a dozen dimensions — date range, account, account kind, category and its subtree, direction, transfer, currency, amount range, payee, tags, import source. The architecture must avoid separate filtering logic per surface.
 
-Analytics (§14) is a long list of metrics, and charting (§16) requires multiple interfaces to request the same analytical data with the same semantics.
+Analytics is a long list of metrics, and charting requires multiple interfaces to request the same analytical data with the same semantics.
 
 The failure mode is specific and common: the web UI grows a rich filter panel that builds query parameters the CLI cannot express, then the CLI grows its own flags with subtly different semantics (does `--category Food` include subcategories?), and eventually the same question asked two ways gives two answers. This is the [ADR-0005](0005-shared-application-layer.md) problem again, in the read path.
 

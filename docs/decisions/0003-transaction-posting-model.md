@@ -4,11 +4,11 @@
 
 ## Context
 
-The brief asks directly (§5, §8, §34) how transfers and splits should be represented, and warns that transfers must never appear as income or expenses. It also asks (§6) whether categories should be one hierarchy, two typed hierarchies, or tag-like.
+How transfers and splits are represented is an open question, and transfers must never appear as income or expenses. So is whether categories should be one hierarchy, two typed hierarchies, or tag-like.
 
 These questions have one answer between them, because the shape chosen for transfers decides whether splits need a second mechanism, and whether category assignment lives on the event or on the line.
 
-The constraint that makes this hard is §2a: the model may borrow accounting ideas internally, but the user must never meet debits, credits, journals, or a chart of accounts.
+The constraint that makes this hard is [ADR-0010](0010-personal-finance-not-accounting-software.md): the model may borrow accounting ideas internally, but the user must never meet debits, credits, journals, or a chart of accounts.
 
 ## Decision
 
@@ -61,7 +61,7 @@ Double-counting is structurally impossible: transfer postings carry no category,
 
 **Two linked single-account transactions.** Model a transfer as two ordinary transactions joined by `transfer_group_id`. Close to the chosen design, but the link is advisory — nothing stops one half being edited or deleted alone, leaving a phantom expense. Postings inside one transaction make the pair atomic by construction.
 
-**Full double-entry with categories as accounts.** Every transaction balances to zero against an expense account. Elegant, and what Ledger and Beancount do. Rejected on §2a: it means a chart of accounts, it means "Groceries" is an account in every account picker, and it means explaining to a normal user why buying groceries is a transfer.
+**Full double-entry with categories as accounts.** Every transaction balances to zero against an expense account. Elegant, and what Ledger and Beancount do. Rejected on [ADR-0010](0010-personal-finance-not-accounting-software.md): it means a chart of accounts, it means "Groceries" is an account in every account picker, and it means explaining to a normal user why buying groceries is a transfer.
 
 **Category on the transaction, with a separate `splits` table.** Works, but creates two ways to express the same thing (a one-line split versus a categorised transaction) and forces every report to `COALESCE` between them. Category-on-posting collapses both into one.
 

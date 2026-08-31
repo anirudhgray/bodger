@@ -98,7 +98,7 @@ This resolution happens **exactly once**, in the application layer, and never in
 
 An **Account** is a place the user's money actually sits or is owed. "HDFC Savings", "ICICI Credit Card", "Cash in wallet", "PayPal".
 
-An account is *not* a category, and categories are *not* accounts. This system deliberately does **not** use a chart of accounts where expenses are modelled as accounts you transfer into. That design makes reports elegant and makes the everyday user experience worse, which is the wrong trade for this product (brief §2a).
+An account is *not* a category, and categories are *not* accounts. This system deliberately does **not** use a chart of accounts where expenses are modelled as accounts you transfer into. That design makes reports elegant and makes the everyday user experience worse, which is the wrong trade for this product. See [ADR-0010](decisions/0010-personal-finance-not-accounting-software.md).
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -380,7 +380,7 @@ Modelled or left room for, but not built. Each becomes a GitHub issue rather tha
 
 ## 14. Invariants that must have tests
 
-The domain layer is the one place in this system that gets exhaustive, deterministic test coverage (brief §29). These are the assertions that must exist, and the list is a checklist for review, not a suggestion:
+The domain layer is the one place in this system that gets exhaustive, deterministic test coverage. These are the assertions that must exist, and the list is a checklist for review, not a suggestion:
 
 - Money arithmetic across differing currencies fails loudly; it never coerces.
 - Minor-unit exponent is read from currency data — `¥1500` round-trips as `¥1500`, not `¥15`.

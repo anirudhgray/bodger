@@ -10,7 +10,7 @@ A personal finance application you actually host yourself. Record what you spend
 
 ## What it's for
 
-Personal finance for a normal person — not accounting software. You should never need to know what a debit, a journal entry, or a chart of accounts is to use it.
+Personal finance for a normal person — not accounting software. You should never need to know what a debit, a journal entry, or a chart of accounts is to use it. That's a deliberate constraint on the engineering, not a marketing line — see [ADR-0010](docs/decisions/0010-personal-finance-not-accounting-software.md).
 
 - **Record money moving.** Spend, earn, transfer between your own accounts. Fast entry, sensible defaults, few required fields.
 - **Multi-currency, properly.** Every amount carries its currency. Accounts have their own. Reports convert explicitly, and every converted number tells you which rate it used and when.
@@ -36,6 +36,7 @@ None of these is the "real" one. They are peers over the same application layer,
 | --- | --- |
 | [Architecture](docs/architecture.md) | Layers, surface boundaries, milestones, current status |
 | [Data model](docs/data-model.md) | The financial domain — accounts, transactions, postings, budgets, currency |
+| [UX principles](docs/ux-principles.md) | Who this is for, and the expectations every surface is held to |
 | [Decision records](docs/decisions/) | Why the load-bearing calls were made the way they were |
 | [Contributing](docs/contributing.md) | Toolchain setup, build commands, conventions |
 | [User guide](docs/user-guide.md) | Deferred until there is something to use — see the file for why |

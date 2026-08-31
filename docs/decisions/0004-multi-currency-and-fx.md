@@ -4,11 +4,11 @@
 
 ## Context
 
-Multi-currency is a first-class requirement (§11), not a later feature. Accounts have currencies, entries may override them, the user has a reporting currency, and reports must be presentable in a selected currency. FX rates come from an external provider that must not become a hard dependency (§12).
+Multi-currency is a first-class requirement, not a later feature. Accounts have currencies, entries may override them, the user has a reporting currency, and reports must be presentable in a selected currency. FX rates come from an external provider that must not become a hard dependency.
 
-The brief also asks the question that actually decides correctness: when viewing a historical report, should conversion use the transaction-date rate, today's rate, or an explicitly chosen one — and it warns not to silently mix them (§12).
+The question that actually decides correctness: when viewing a historical report, should conversion use the transaction-date rate, today's rate, or an explicitly chosen one — and whichever the answer, these must never be silently mixed.
 
-That warning is the crux. "How much did I spend in August?" and "what is my portfolio worth right now?" want *different* rates over the same data, and a system with one implicit answer will be wrong for one of the questions without ever saying so.
+That last part is the crux. "How much did I spend in August?" and "what is my portfolio worth right now?" want *different* rates over the same data, and a system with one implicit answer will be wrong for one of the questions without ever saying so.
 
 ## Decision
 
@@ -79,7 +79,7 @@ Both posting amounts are authoritative (the user knows both), the implied rate i
 
 **Decimal type instead of integer minor units.** Correct, and what a database with a real `NUMERIC` type would encourage. Rejected because SQLite has no decimal type, so it would mean text-encoded decimals with parsing on every read, and because integer minor units make every arithmetic operation exact and trivially fast. Fixed-point decimal *is* used for FX rates, where sub-minor-unit precision is required.
 
-**Float64 with careful rounding.** Rejected without discussion. Financial software (§26).
+**Float64 with careful rounding.** Rejected without discussion. This is financial software.
 
 **One implicit conversion policy — always transaction-date.** Simpler API. Rejected because "what are my balances worth today?" is a real and common question that transaction-date conversion answers wrongly, and users would not be able to tell.
 
