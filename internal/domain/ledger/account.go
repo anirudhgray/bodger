@@ -61,19 +61,24 @@ type Account struct {
 	kind               AccountKind
 	openingBalance     money.Money
 	openingBalanceDate *domain.Date
-	archived           bool
+	institution        *string
+	sortOrder          int
+	archivedAt         *domain.Date
 }
 
 // NewAccount constructs an Account. openingBalanceDate may be nil: an
 // account with no declared opening-balance date simply starts its history
-// at its first transaction.
+// at its first transaction. institution may be nil (not recorded) but,
+// if non-nil, must not point at an empty string — pass nil rather than a
+// pointer to "" to mean "no institution". archivedAt is nil for an active
+// account; see the ArchivedAt doc comment for the archival invariant.
 //
 // The account's currency is openingBalance.Currency() — there is no
 // separate currency field to keep in sync with it. money.Money already
 // bundles amount and currency, and money.NewMoney has already validated
 // the currency by the time it reaches here; a second field could only ever
 // disagree with the first, never add information.
-func NewAccount(id, userID, name string, kind AccountKind, openingBalance money.Money, openingBalanceDate *domain.Date, archived bool) (Account, error) {
+func NewAccount(id, userID, name string, kind AccountKind, openingBalance money.Money, openingBalanceDate *domain.Date, institution *string, sortOrder int, archivedAt *domain.Date) (Account, error) {
 	if id == "" {
 		return Account{}, ErrAccountEmptyID
 	}
@@ -86,11 +91,26 @@ func NewAccount(id, userID, name string, kind AccountKind, openingBalance money.
 	if !validAccountKinds[kind] {
 		return Account{}, fmt.Errorf("%w: %q", ErrAccountInvalidKind, kind)
 	}
+	if institution != nil && *institution == "" {
+		return Account{}, ErrAccountEmptyInstitution
+	}
 
 	var obDate *domain.Date
 	if openingBalanceDate != nil {
 		d := *openingBalanceDate
 		obDate = &d
+	}
+
+	var inst *string
+	if institution != nil {
+		v := *institution
+		inst = &v
+	}
+
+	var archived *domain.Date
+	if archivedAt != nil {
+		d := *archivedAt
+		archived = &d
 	}
 
 	return Account{
@@ -100,7 +120,9 @@ func NewAccount(id, userID, name string, kind AccountKind, openingBalance money.
 		kind:               kind,
 		openingBalance:     openingBalance,
 		openingBalanceDate: obDate,
-		archived:           archived,
+		institution:        inst,
+		sortOrder:          sortOrder,
+		archivedAt:         archived,
 	}, nil
 }
 
@@ -132,6 +154,37 @@ func (a Account) OpeningBalanceDate() (domain.Date, bool) {
 	return *a.openingBalanceDate, true
 }
 
-// Archived reports whether the account is hidden from pickers. An
-// archived account's history remains present — see data-model.md §4.
-func (a Account) Archived() bool { return a.archived }
+// Institution returns the account's free-text institution name, and false
+// if none was recorded. This is a plain text field, not a modelled
+// entity — see data-model.md §13.
+func (a Account) Institution() (string, bool) {
+	if a.institution == nil {
+		return "", false
+	}
+	return *a.institution, true
+}
+
+// SortOrder returns the account's display-only sort position. It has no
+// meaning beyond picker/list ordering — it never affects balance
+// computation or any other invariant.
+func (a Account) SortOrder() int { return a.sortOrder }
+
+// ArchivedAt returns the instant the account was archived, and false if it
+// is active. An archived account is hidden from pickers; its history
+// remains present — see data-model.md §4.
+//
+// A future ArchivedAt is accepted here: this package is pure and has no
+// clock (ADR-0005), so it cannot compare against "now" to reject one.
+// Whether a future archive date should be allowed, or normalised to today,
+// is an application-layer decision once one exists.
+func (a Account) ArchivedAt() (domain.Date, bool) {
+	if a.archivedAt == nil {
+		return domain.Date{}, false
+	}
+	return *a.archivedAt, true
+}
+
+// Archived reports whether the account is currently archived — a
+// convenience over ArchivedAt for callers that only care about the
+// boolean state.
+func (a Account) Archived() bool { return a.archivedAt != nil }

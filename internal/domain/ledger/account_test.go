@@ -46,7 +46,7 @@ func TestNewAccount(t *testing.T) {
 			k := k
 			t.Run(string(k), func(t *testing.T) {
 				t.Parallel()
-				a, err := ledger.NewAccount("acc-1", "user-1", "Test Account", k, mustMoney(t, 0, "USD"), nil, false)
+				a, err := ledger.NewAccount("acc-1", "user-1", "Test Account", k, mustMoney(t, 0, "USD"), nil, nil, 0, nil)
 				if err != nil {
 					t.Fatalf("NewAccount(kind=%s) = %v, want success", k, err)
 				}
@@ -59,7 +59,7 @@ func TestNewAccount(t *testing.T) {
 
 	t.Run("rejects an unknown kind", func(t *testing.T) {
 		t.Parallel()
-		_, err := ledger.NewAccount("acc-1", "user-1", "Test", ledger.AccountKind("crypto"), mustMoney(t, 0, "USD"), nil, false)
+		_, err := ledger.NewAccount("acc-1", "user-1", "Test", ledger.AccountKind("crypto"), mustMoney(t, 0, "USD"), nil, nil, 0, nil)
 		if !errors.Is(err, ledger.ErrAccountInvalidKind) {
 			t.Fatalf("NewAccount(bad kind) error = %v, want ErrAccountInvalidKind", err)
 		}
@@ -67,7 +67,7 @@ func TestNewAccount(t *testing.T) {
 
 	t.Run("rejects an empty id", func(t *testing.T) {
 		t.Parallel()
-		_, err := ledger.NewAccount("", "user-1", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, false)
+		_, err := ledger.NewAccount("", "user-1", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, nil, 0, nil)
 		if !errors.Is(err, ledger.ErrAccountEmptyID) {
 			t.Fatalf("NewAccount(empty id) error = %v, want ErrAccountEmptyID", err)
 		}
@@ -75,7 +75,7 @@ func TestNewAccount(t *testing.T) {
 
 	t.Run("rejects an empty user id", func(t *testing.T) {
 		t.Parallel()
-		_, err := ledger.NewAccount("acc-1", "", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, false)
+		_, err := ledger.NewAccount("acc-1", "", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, nil, 0, nil)
 		if !errors.Is(err, ledger.ErrAccountEmptyUserID) {
 			t.Fatalf("NewAccount(empty user id) error = %v, want ErrAccountEmptyUserID", err)
 		}
@@ -83,7 +83,7 @@ func TestNewAccount(t *testing.T) {
 
 	t.Run("rejects an empty name", func(t *testing.T) {
 		t.Parallel()
-		_, err := ledger.NewAccount("acc-1", "user-1", "", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, false)
+		_, err := ledger.NewAccount("acc-1", "user-1", "", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, nil, 0, nil)
 		if !errors.Is(err, ledger.ErrAccountEmptyName) {
 			t.Fatalf("NewAccount(empty name) error = %v, want ErrAccountEmptyName", err)
 		}
@@ -91,7 +91,7 @@ func TestNewAccount(t *testing.T) {
 
 	t.Run("currency comes from the opening balance", func(t *testing.T) {
 		t.Parallel()
-		a, err := ledger.NewAccount("acc-1", "user-1", "HDFC Savings", ledger.AccountKindBank, mustMoney(t, 500000, "INR"), nil, false)
+		a, err := ledger.NewAccount("acc-1", "user-1", "HDFC Savings", ledger.AccountKindBank, mustMoney(t, 500000, "INR"), nil, nil, 0, nil)
 		if err != nil {
 			t.Fatalf("NewAccount() = %v, want success", err)
 		}
@@ -109,7 +109,7 @@ func TestNewAccount(t *testing.T) {
 	t.Run("opening balance date is optional", func(t *testing.T) {
 		t.Parallel()
 
-		a, err := ledger.NewAccount("acc-1", "user-1", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, false)
+		a, err := ledger.NewAccount("acc-1", "user-1", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, nil, 0, nil)
 		if err != nil {
 			t.Fatalf("NewAccount() = %v, want success", err)
 		}
@@ -118,7 +118,7 @@ func TestNewAccount(t *testing.T) {
 		}
 
 		d := mustDate(t, 2026, 1, 1)
-		a, err = ledger.NewAccount("acc-1", "user-1", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), &d, false)
+		a, err = ledger.NewAccount("acc-1", "user-1", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), &d, nil, 0, nil)
 		if err != nil {
 			t.Fatalf("NewAccount() = %v, want success", err)
 		}
@@ -128,14 +128,88 @@ func TestNewAccount(t *testing.T) {
 		}
 	})
 
-	t.Run("archived flag round-trips", func(t *testing.T) {
+	t.Run("archived_at is optional and drives Archived", func(t *testing.T) {
 		t.Parallel()
-		a, err := ledger.NewAccount("acc-1", "user-1", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, true)
+
+		a, err := ledger.NewAccount("acc-1", "user-1", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, nil, 0, nil)
+		if err != nil {
+			t.Fatalf("NewAccount() = %v, want success", err)
+		}
+		if a.Archived() {
+			t.Errorf("Archived() = true, want false when archivedAt is nil")
+		}
+		if _, ok := a.ArchivedAt(); ok {
+			t.Errorf("ArchivedAt() ok = true, want false when nil was passed")
+		}
+
+		d := mustDate(t, 2026, 1, 1)
+		a, err = ledger.NewAccount("acc-1", "user-1", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, nil, 0, &d)
 		if err != nil {
 			t.Fatalf("NewAccount() = %v, want success", err)
 		}
 		if !a.Archived() {
+			t.Errorf("Archived() = false, want true when archivedAt is set")
+		}
+		got, ok := a.ArchivedAt()
+		if !ok || !got.Equal(d) {
+			t.Errorf("ArchivedAt() = (%s, %v), want (%s, true)", got, ok, d)
+		}
+	})
+
+	t.Run("a future archived_at is accepted", func(t *testing.T) {
+		// This package has no clock (ADR-0005) and so cannot compare
+		// against "now" to reject a future archive date. Whether that
+		// should be disallowed is left to the application layer.
+		t.Parallel()
+		future := mustDate(t, 2999, 1, 1)
+		a, err := ledger.NewAccount("acc-1", "user-1", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, nil, 0, &future)
+		if err != nil {
+			t.Fatalf("NewAccount(future archivedAt) = %v, want success", err)
+		}
+		if !a.Archived() {
 			t.Errorf("Archived() = false, want true")
+		}
+	})
+
+	t.Run("sort_order round-trips, including negative values", func(t *testing.T) {
+		t.Parallel()
+		a, err := ledger.NewAccount("acc-1", "user-1", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, nil, -3, nil)
+		if err != nil {
+			t.Fatalf("NewAccount() = %v, want success", err)
+		}
+		if a.SortOrder() != -3 {
+			t.Errorf("SortOrder() = %d, want -3", a.SortOrder())
+		}
+	})
+
+	t.Run("institution is optional", func(t *testing.T) {
+		t.Parallel()
+
+		a, err := ledger.NewAccount("acc-1", "user-1", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, nil, 0, nil)
+		if err != nil {
+			t.Fatalf("NewAccount() = %v, want success", err)
+		}
+		if _, ok := a.Institution(); ok {
+			t.Errorf("Institution() ok = true, want false when nil was passed")
+		}
+
+		inst := "HDFC Bank"
+		a, err = ledger.NewAccount("acc-1", "user-1", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, &inst, 0, nil)
+		if err != nil {
+			t.Fatalf("NewAccount() = %v, want success", err)
+		}
+		got, ok := a.Institution()
+		if !ok || got != inst {
+			t.Errorf("Institution() = (%q, %v), want (%q, true)", got, ok, inst)
+		}
+	})
+
+	t.Run("rejects a non-nil empty institution", func(t *testing.T) {
+		t.Parallel()
+		empty := ""
+		_, err := ledger.NewAccount("acc-1", "user-1", "Test", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, &empty, 0, nil)
+		if !errors.Is(err, ledger.ErrAccountEmptyInstitution) {
+			t.Fatalf("NewAccount(empty institution) error = %v, want ErrAccountEmptyInstitution", err)
 		}
 	})
 }

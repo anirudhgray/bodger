@@ -395,7 +395,7 @@ func TestCreditCardPurchaseAndPaymentDoNotDoubleCount(t *testing.T) {
 
 	// And the card account's balance nets back to zero: -5000 from the
 	// purchase, +5000 from paying it off.
-	card, err := ledger.NewAccount("acc-card", "user-1", "Card", ledger.AccountKindCreditCard, mustMoney(t, 0, "INR"), nil, false)
+	card, err := ledger.NewAccount("acc-card", "user-1", "Card", ledger.AccountKindCreditCard, mustMoney(t, 0, "INR"), nil, nil, 0, nil)
 	if err != nil {
 		t.Fatalf("NewAccount() = %v, want success", err)
 	}

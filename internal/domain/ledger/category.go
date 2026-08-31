@@ -1,6 +1,10 @@
 package ledger
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/anirudhgray/bodger/internal/domain"
+)
 
 // CategoryKind discriminates the one category hierarchy by which picker it
 // belongs in — data-model.md §6: one tree, typed, rather than two trees or
@@ -21,20 +25,22 @@ var validCategoryKinds = map[CategoryKind]bool{
 // Category is one node in the user's self-referential category tree. Its
 // fields are unexported: the only way to produce one is NewCategory.
 type Category struct {
-	id       string
-	userID   string
-	parentID *string
-	name     string
-	kind     CategoryKind
-	archived bool
+	id         string
+	userID     string
+	parentID   *string
+	name       string
+	kind       CategoryKind
+	sortOrder  int
+	archivedAt *domain.Date
 }
 
 // NewCategory constructs a Category. parentID may be nil for a top-level
 // category; if set, it must not equal id — a category cannot be its own
 // parent. Deeper cycles (A's parent is B, B's parent is A) need the full
 // tree to detect and are a repository/application-layer concern, not this
-// constructor's.
-func NewCategory(id, userID string, parentID *string, name string, kind CategoryKind, archived bool) (Category, error) {
+// constructor's. archivedAt is nil for an active category; see the
+// ArchivedAt doc comment for the archival invariant.
+func NewCategory(id, userID string, parentID *string, name string, kind CategoryKind, sortOrder int, archivedAt *domain.Date) (Category, error) {
 	if id == "" {
 		return Category{}, ErrCategoryEmptyID
 	}
@@ -57,13 +63,20 @@ func NewCategory(id, userID string, parentID *string, name string, kind Category
 		pid = &p
 	}
 
+	var archived *domain.Date
+	if archivedAt != nil {
+		d := *archivedAt
+		archived = &d
+	}
+
 	return Category{
-		id:       id,
-		userID:   userID,
-		parentID: pid,
-		name:     name,
-		kind:     kind,
-		archived: archived,
+		id:         id,
+		userID:     userID,
+		parentID:   pid,
+		name:       name,
+		kind:       kind,
+		sortOrder:  sortOrder,
+		archivedAt: archived,
 	}, nil
 }
 
@@ -88,5 +101,25 @@ func (c Category) Name() string { return c.name }
 // Kind returns the category's kind.
 func (c Category) Kind() CategoryKind { return c.kind }
 
-// Archived reports whether the category is hidden from pickers.
-func (c Category) Archived() bool { return c.archived }
+// SortOrder returns the category's display-only sort position. It has no
+// meaning beyond picker/list ordering.
+func (c Category) SortOrder() int { return c.sortOrder }
+
+// ArchivedAt returns the instant the category was archived, and false if
+// it is active. An archived category is hidden from pickers; existing
+// transactions that reference it remain valid.
+//
+// As with Account.ArchivedAt, a future value is accepted here: this
+// package is pure and has no clock (ADR-0005), so it cannot compare
+// against "now" to reject one.
+func (c Category) ArchivedAt() (domain.Date, bool) {
+	if c.archivedAt == nil {
+		return domain.Date{}, false
+	}
+	return *c.archivedAt, true
+}
+
+// Archived reports whether the category is currently archived — a
+// convenience over ArchivedAt for callers that only care about the
+// boolean state.
+func (c Category) Archived() bool { return c.archivedAt != nil }

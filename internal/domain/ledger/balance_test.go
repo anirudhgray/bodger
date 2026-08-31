@@ -9,7 +9,7 @@ import (
 
 func mustAccount(t *testing.T, id string, openingMinor int64, currency string) ledger.Account {
 	t.Helper()
-	a, err := ledger.NewAccount(id, "user-1", id, ledger.AccountKindBank, mustMoney(t, openingMinor, currency), nil, false)
+	a, err := ledger.NewAccount(id, "user-1", id, ledger.AccountKindBank, mustMoney(t, openingMinor, currency), nil, nil, 0, nil)
 	if err != nil {
 		t.Fatalf("NewAccount() = %v, want success", err)
 	}
