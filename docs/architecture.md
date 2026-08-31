@@ -238,7 +238,7 @@ Delivered in M0: this document, [`data-model.md`](data-model.md), [`ux-principle
 
 The bootstrap product brief has been fully absorbed into these documents and can be deleted; nothing in `docs/` cites it. See [`decisions/README.md`](decisions/README.md#on-the-brief).
 
-Delivered so far in M1: `internal/domain/money` (`Money` value object, currency reference data, arithmetic, formatting/parsing, JSON marshalling — issue #1) and `internal/domain` (`Date` value object — issue #1).
+Delivered so far in M1: `internal/domain/money` (`Money` value object, currency reference data, arithmetic, formatting/parsing, JSON marshalling — issue #1) and `internal/domain` (`Date` value object — issue #1); `internal/platform/clock`, `internal/platform/config`, `internal/platform/idgen`, `internal/platform/logging`, and `internal/platform/errs` (injected clock, layered config, ID generation, structured logging, and the shared error registry — issue #4).
 
 Not yet built: everything else in §2.
 
