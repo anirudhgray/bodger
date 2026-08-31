@@ -44,7 +44,7 @@ Internal code uses the precise term — `Posting` is a `Posting` in `internal/do
 
 **Prefer verbs the user would use.** This is the target register: *"I spent ₹800 on groceries." "My salary came in." "I moved ₹20,000 from savings to checking."*
 
-That makes `spend` / `receive` / `move` the natural primary CLI verbs, with `transaction`-shaped aliases retained for scripting. See §7.
+That makes `spend` / `receive` / `move` the CLI verbs. See §7.
 
 **"Ledger core" and similar are fine internally** — milestone names, package names, this repo's docs. They are not user-facing.
 
@@ -97,19 +97,20 @@ This is how "simple" and "powerful" coexist, and it's the part most likely to be
 
 Errors are the place UX and correctness meet, and the place jargon leaks most. [ADR-0011](decisions/0011-error-model.md) is the machinery; this is what the user should experience.
 
-The split that makes both possible: **domain detail** (which account, which value, which field) always reaches the user, because that's what makes an error actionable. **Infrastructure detail** (the wrapped cause chain, SQL, paths) never does — it goes to the log, joined to the user's error by a correlation ID.
+The split that makes both possible: **domain detail** (which account, which value, which field) always reaches the user, because that's what makes an error actionable. **Infrastructure detail** (the wrapped cause chain, SQL, paths) never does — it goes to the log.
 
 - **Name what failed, which value, and what to do.** "Couldn't find an account called 'hdcf'. Did you mean 'HDFC Savings'?" — not "invalid account reference."
 - **No internal references.** No ADR numbers, doc paths, package names, or SQL. This is CLAUDE.md's rule and it applies to errors specifically, which are otherwise allowed to be detailed and specific.
 - **Every error is actionable or honestly refers you onward.** If the user can fix it, say how. If they can't, it's a bug — say so plainly and give them the reference that finds it in the log, rather than blaming their input.
 - **Never silently wrong.** A missing FX rate fails loudly with a named error rather than falling back to 1.0 or dropping the row ([ADR-0004](decisions/0004-multi-currency-and-fx.md)). A number the user cannot trust is worse than an error they can act on.
 - **Every converted amount shows its rate, date, and source** ([ADR-0004](decisions/0004-multi-currency-and-fx.md)). Transparency *is* a UX property here: this is the user's money, and a figure they can't check is a figure they won't believe.
+- **A single-currency user must never meet the currency system at all.** No currency field on entry, no conversion policy, no rate, no "converted from" annotation — those appear only once a second currency actually exists in their data. Multi-currency is a first-class capability, not a first-class *presence*: the machinery in [ADR-0004](decisions/0004-multi-currency-and-fx.md) describes the converted case, and nothing in it should surface on the path most users are on.
 
 ---
 
 ## 7. Applying this to the CLI
 
-Worked through because it's M1's user-facing surface, and because it already went wrong once — issue #7 was specified with `bodger tx out`, which fails §2. The layperson-facing verbs are primary; the noun-shaped forms remain as aliases for scripting:
+Worked through because it's M1's user-facing surface, and because it already went wrong once — issue #7 was specified with `bodger tx out`, which fails §2.
 
 ```
 bodger spend 800 groceries                    # account defaults, date defaults
@@ -121,7 +122,7 @@ bodger balance                                # the "what do I have?" question
 bodger accounts | categories
 ```
 
-- `bodger tx out|in|transfer` stays as an alias — scripts and agents benefit from the regular noun-verb shape, and it costs nothing.
+- **One vocabulary, not two.** No `bodger tx out` alias alongside `bodger spend`. A second set of verbs doubles the CLI surface, the help text, and the conformance rows, and gives users two ways to do one thing — which §4 argues against. Add an alias if a scripting user actually asks for one.
 - Positional amount and category, because that's the order the sentence goes in.
 - `--on` rather than `--date`: it reads as English, and `--date today` still works.
 - No `--today` flag. `--on today` is handled centrally, and a surface implementing its own would fail CI ([ADR-0005](decisions/0005-shared-application-layer.md)).

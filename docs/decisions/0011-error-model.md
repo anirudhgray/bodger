@@ -1,4 +1,4 @@
-# ADR-0011 — Error model: coarse codes, granular promotion, and the safe/internal split
+# ADR-0011 — Error model: eight coarse codes and the safe/internal split
 
 **Status:** Accepted · 2026-08-31
 
@@ -22,7 +22,7 @@ They only conflict if "detail" is treated as one thing. It isn't:
 | **Infrastructure detail** — the wrapped cause chain, SQL, driver text, file paths, stack | No | **Yes, in full** |
 | **Financial PII** — amounts, payee, description, notes | Only values the user just typed, shown back to them | **Never** |
 
-Nothing is lost for debugging: the cause chain still exists in full, and a correlation ID on the user-facing error is what joins the two halves. This is a self-hosted application where the operator is usually the user, so being specific about *their own domain* is correct; being specific about *the database* is not.
+Nothing is lost for debugging: the cause chain still exists in full, in the log. This is a single-user self-hosted application where the operator *is* the user, reading both the error and the log on the same machine — so being specific about *their own domain* is correct, and being specific about *the database* is neither useful to them nor safe.
 
 ## Decision
 
@@ -54,34 +54,23 @@ err := errs.New(errs.NotFound).
 
 | Field | Reaches the user | Purpose |
 | --- | --- | --- |
-| `Code` | Yes | `invalid_input`, or `invalid_input.ambiguous_account` |
+| `Code` | Yes | One of the eight coarse codes |
 | `Message` | Yes | The caller's `Explain` text, else the registry's default for the code |
 | `Field` | Yes | Field path, for form and flag attribution |
 | `Details` | Yes | Structured, deliberately safe — candidate names, valid options |
-| `Ref` | Yes | Correlation ID, generated when the error is created |
-| `cause` | **Never** | The wrapped chain. Logged in full against `Ref` |
+| `cause` | **Never** | The wrapped chain. Logged in full |
 
-**`cause` is unexported and has no serialiser.** Leaking it requires writing new code to do so, rather than forgetting to prevent it. Every `internal` error is logged with its full chain against its `Ref`; the user sees the registry's default text plus *"(ref: a1b2c3)"*, which is what makes the log findable.
+**`cause` is unexported and has no serialiser.** Leaking it requires writing new code to do so, rather than forgetting to prevent it. Every `internal` error is logged with its full chain.
+
+There is no correlation ID. This is a single-user, single-process, self-hosted application: the person reading the error is the person who can read the log, usually in the same terminal on the same machine. A `Ref` would need plumbing through context into the logger on all four surfaces to save that person a `grep`. Revisit when the web UI means the user isn't looking at the log.
 
 Messages are held to [`ux-principles.md` §6](../ux-principles.md#6-errors-and-telling-the-truth): name what failed, which value, and what to do. *"No account called 'hdcf'. Did you mean 'HDFC Savings'?"* — not *"invalid account reference"*.
 
-### Granular codes are promoted, not designed up front
+### Eight codes, flat
 
-Start coarse. When a particular `(coarse code + explanation)` pair recurs, promote it to a granular code **nested under its coarse code**, dotted:
+There is no code hierarchy, no dotted nesting, and no promotion mechanism. Eight coarse codes, each with a default message, plus a caller-supplied explanation where the default isn't specific enough. That is the whole model.
 
-```
-not_found                     →  not_found.account
-invalid_input                 →  invalid_input.ambiguous_account
-unavailable                   →  unavailable.fx_rate
-```
-
-A granular code carries its own default message and inherits its parent's surface mapping.
-
-**Dotted nesting is what makes promotion non-breaking.** A client matching on `not_found` still matches `not_found.account`, so promoting a code never breaks a consumer that hasn't been updated. Matching is prefix-wise on segment boundaries, and this is a documented guarantee, not an implementation accident.
-
-**Promote when** the same pair appears at three or more call sites, **or** when a surface genuinely needs to branch on it (the web UI offering a "create it?" action on `not_found.account`), **or** when it needs different phrasing per surface. Otherwise leave it coarse — a granular code per call site is a registry nobody reads, and it makes the coarse layer useless.
-
-Promotion is additive: the coarse code stays valid, and existing call sites migrate when touched rather than in a sweep.
+A finer-grained code becomes worth adding the moment a real client needs to branch on one — a web UI offering "create it?" on a missing account, say. When that happens, add the code and decide its compatibility story against the actual consumer that would break. Designing a nesting scheme and a prefix-matching guarantee now would be protecting a client that does not exist from a change that has not happened.
 
 ### Codes are a public contract
 
@@ -93,26 +82,26 @@ Once shipped, a code is API surface: scripts branch on CLI exit codes, agents br
 
 **Per-surface error handling.** What happens without this ADR. Rejected under [ADR-0005](0005-shared-application-layer.md): four mappings that drift, on the path users hit when something has already gone wrong.
 
-**A flat, exhaustive code list — no hierarchy.** Simpler to look up. Rejected because it forces the choice this ADR avoids: coarse enough to stay small and too vague to act on, or specific enough to act on and unbounded. Nesting lets specificity grow where it's earned while clients keep matching on the stable prefix. This is the shape the requirement actually described.
+**A nested code hierarchy with promotion** — `not_found.account` under `not_found`, with prefix matching so promoting a code never breaks a client. Considered, and cut as speculative: there are no clients, so there is nothing to keep compatible, and the machinery (nesting rules, a promotion threshold, a documented segment-boundary matching guarantee) is real complexity bought against a hypothetical. Eight flat codes plus a free-text explanation covers every case M1 has. Add specificity when something concrete needs it.
 
-**Design the granular codes up front.** Rejected: it guesses which distinctions matter before any surface has needed one, and the guesses become a registry of codes nobody raises. The promotion rule makes real usage decide.
+**Design a fine-grained code per failure up front.** Rejected: it guesses which distinctions matter before any surface has needed one, and the guesses become a registry of codes nobody reads. Real usage should decide, and until it does, eight codes plus an explanation is enough.
 
 **HTTP status codes as the canonical code.** Rejected: couples the domain to HTTP, and the CLI and MCP have no statuses. Status is a *rendering* of a code, which is why it lives in the mapping table.
 
-**Return the full cause chain to the user, per a literal reading of CLAUDE.md.** Rejected as a misreading, resolved in Context: the cause chain is preserved in full, in the log, reachable by `Ref`. The user gets the domain detail, which is the part they can act on.
+**Return the full cause chain to the user, per a literal reading of CLAUDE.md.** Rejected as a misreading, resolved in Context: the cause chain is preserved in full, in the log. The user gets the domain detail, which is the part they can act on.
 
 **A translated message catalogue from day one.** Rejected as premature — but the registry is precisely the structure that makes i18n a later change rather than a rewrite, since messages already live in one place keyed by code.
 
 ## Consequences
 
-**Good.** A surface renders an error without deciding anything. Status codes and exit codes are defined once. Internal detail cannot leak without new code being written to leak it. Debuggability survives via `Ref`. Specificity grows where usage proves it's needed, and never breaks a client.
+**Good.** A surface renders an error without deciding anything. Status codes and exit codes are defined once. Internal detail cannot leak without new code being written to leak it. Eight codes is small enough to hold in your head.
 
 **Bad, and worth stating plainly:**
 
 - **The registry is a shared-file hotspot.** Nearly every feature slice adds a code, so parallel branches will collide there — added to the `orchestrate` hotspot table.
 - **It takes discipline that nothing yet enforces.** `fmt.Errorf` is right there, and it will get used. The intended guard is a check that exported app-layer methods return only `*errs.Error`; that isn't built, and until it is this is a review responsibility. Filed as [#12](https://github.com/anirudhgray/bodger/issues/12), alongside the vocabulary lint ([#11](https://github.com/anirudhgray/bodger/issues/11)) — same shape of gap.
-- **Promotion needs judgement, and the rule can be gamed.** "Three call sites" is a heuristic, not a proof. Under-promoting leaves users with vague errors; over-promoting produces a registry nobody reads.
+- **Eight codes is coarse, and some errors will feel vague.** The explanation text carries the specificity instead, which means it can't be branched on programmatically. That's the accepted trade until a real client needs otherwise.
 - **Codes being permanent means a badly-named one is permanent.** Superseding is the only exit, and it leaves both in the registry.
-- **`Ref` needs plumbing** through the request context and into the logger on every surface, including the CLI, where correlation is less obviously useful.
+- **No correlation ID** means matching a user-reported error to a log line is a `grep` by time and message rather than an exact lookup. Fine for one user on one machine; the first thing to revisit if that stops being true.
 - **Two places to look** when writing an error: the registry for the code, the call site for the explanation. That's the cost of the message not being at the call site.
 - **The registry's default messages are user-facing strings** and are therefore subject to [`ux-principles.md` §2](../ux-principles.md#2-vocabulary) — with no automated check until [#11](https://github.com/anirudhgray/bodger/issues/11) lands.

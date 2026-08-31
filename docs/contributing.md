@@ -69,7 +69,9 @@ Read [`architecture.md`](architecture.md) for what each layer is for, and [`data
 
 **3 · Surfaces normalise nothing.** A handler, CLI command, or MCP tool decodes transport input into a command struct, calls one app method, and encodes the result. It does not parse a date, resolve a default, or pick a currency.
 
-That last one is why five specific fields on write commands hold **raw strings** — `AccountRef`, `CategoryRef`, `Amount`, `Currency`, `Date` — rather than parsed types. Each is raw for a distinct reason: resolving it needs either a repository lookup (refs, currency precedence) or the injected clock (date), neither of which a surface has. This is not a blanket "commands are stringly-typed" policy — `Tags`, for instance, **is** typed (`[]app.Tag`), because normalising a tag is a pure function with no such dependency. [ADR-0005](decisions/0005-shared-application-layer.md) is the long answer, including exactly which fields get which treatment and why. The short version: if the CLI parses a date and the API parses a date, they will eventually disagree about what "today" means at a month boundary — so neither of them parses dates, or anything else that needs context only the app layer has.
+That last one is why command struct fields hold **raw strings** rather than parsed types. Resolving any of them needs either a repository lookup (`AccountRef`, `CategoryRef`, `Currency` precedence, and `Amount`, which needs the resolved currency's exponent) or the injected clock (`Date`) — none of which a surface has. [ADR-0005](decisions/0005-shared-application-layer.md) is the long answer. The short version: if the CLI parses a date and the API parses a date, they will eventually disagree about what "today" means at a month boundary — so neither of them parses dates, or anything else that needs context only the app layer has.
+
+Domain types (`Money`, `Date`, `Tag`) still have unexported fields and validating constructors, so an invalid one can't exist anywhere in the codebase. That's separate from the command boundary and applies everywhere.
 
 The **conformance suite** (`internal/surface/conformance`) drives the same raw input through the CLI, REST API, and MCP and asserts all three produce identical commands, under a frozen clock at an instant deliberately chosen to expose timezone bugs. **Adding a user-facing operation means adding a row to that table.**
 
@@ -88,6 +90,12 @@ Weighted toward the layer where correctness is decided:
 A red test means the code is wrong. Do not adjust an expectation to match current behaviour — if the expectation itself is genuinely wrong, say so and get confirmation first (CLAUDE.md).
 
 ---
+
+## Docs describe intent until the code exists
+
+Most of `docs/` was written before any implementation. Where a doc and working code disagree, **the code wins and the doc gets fixed in the same PR** — don't reshape working code to match a paragraph that was speculative when it was written. Say so in the PR description when that happens, so the change is visible rather than silent.
+
+This does not apply to the invariants in [`data-model.md` §14](data-model.md#14-invariants-that-must-have-tests) or to anything an ADR records as a decision: those are requirements, and changing one means updating the ADR deliberately, not incidentally.
 
 ## Working on this repo
 

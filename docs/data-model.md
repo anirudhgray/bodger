@@ -72,7 +72,7 @@ Arithmetic on two `Money` values of different currencies is a **compile-or-runti
 
 ### `Currency`
 
-Instance-wide reference data, seeded from ISO 4217 and extensible by the user.
+Instance-wide reference data, extensible by the user.
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -80,7 +80,8 @@ Instance-wide reference data, seeded from ISO 4217 and extensible by the user.
 | `name` | `text` | "Indian Rupee" |
 | `symbol` | `text` | "₹" — display only |
 | `minor_unit_exponent` | `int` | 0, 2, or 3 in practice |
-| `enabled` | `bool` | Hides the long tail from pickers |
+
+**Seed the ~20 commonly used currencies, not all ~180 of ISO 4217.** A user with one to three currencies gains nothing from the long tail, and there is no `enabled` flag: a currency nobody holds an account in simply doesn't appear, because nothing references it. Adding a missing currency is a row insert, available to the user when they need it.
 
 ### Currency precedence
 
@@ -394,5 +395,5 @@ The domain layer is the one place in this system that gets exhaustive, determini
 - `balance(account, as_of)` equals `opening_balance` plus every posting on or before `as_of`, and ignores soft-deleted transactions.
 - Reporting-period boundaries are computed in the user's timezone; the same query returns identical results under `TZ=UTC` and `TZ=Asia/Kolkata`.
 - Currency precedence resolves entry → account → user → instance, in that order.
-- The same logical input, submitted through the CLI, the REST API, and MCP, produces byte-identical normalised commands (the conformance suite of [ADR-0005](decisions/0005-shared-application-layer.md)).
+- The same logical input, submitted through the CLI, the REST API, and MCP, produces an identical stored transaction and identical errors (the conformance suite of [ADR-0005](decisions/0005-shared-application-layer.md)).
 - Export → import → export is byte-identical modulo surrogate IDs and timestamps ([ADR-0008](decisions/0008-import-export-architecture.md)).

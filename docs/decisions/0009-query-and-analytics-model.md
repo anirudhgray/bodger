@@ -18,23 +18,23 @@ Every surface builds the same struct. It is the only way to express "which trans
 
 ```go
 type TransactionFilter struct {
-    DateFrom, DateTo     string        // raw; needs the clock+timezone. See ADR-0005
-    AccountRefs          []string      // raw; needs a repository lookup. See ADR-0005
-    AccountKinds         []AccountKind // typed: closed enum, no I/O
-    CategoryRefs         []string      // raw; needs a repository lookup. See ADR-0005
-    IncludeSubcategories bool          // default true
-    Kinds                []TxnKind     // typed: closed enum, no I/O
-    Currencies           []string      // raw; validity is instance data. See ADR-0005
-    AmountMin, AmountMax string        // raw; needs resolved currency. See ADR-0005
-    Description          string        // substring, case-insensitive
-    Tags                 []Tag         // typed: pure normalisation. See ADR-0005
-    TagMode              TagMode       // typed: closed enum (Any | All)
-    ImportBatchRefs      []string      // raw; needs a repository lookup. See ADR-0005
-    IncludeDeleted       bool          // default false
+    DateFrom, DateTo     string   // "2026-08", "last-90-days", ISO
+    AccountRefs          []string
+    AccountKinds         []string
+    CategoryRefs         []string
+    IncludeSubcategories bool     // default true
+    Kinds                []string // outflow | inflow | transfer
+    Currencies           []string
+    AmountMin, AmountMax string
+    Description          string   // substring, case-insensitive
+    Tags                 []string
+    TagMode              string   // any | all
+    ImportBatchRefs      []string
+    IncludeDeleted       bool     // default false
 }
 ```
 
-Same rule as [ADR-0005](0005-shared-application-layer.md#which-command-fields-are-raw-strings-and-why--precisely-not-as-a-blanket-policy): a field is typed exactly when a pure function exists from raw input to that field. `AccountKind`, `TxnKind`, and `TagMode` are closed enums with no ambiguity and no lookup, so they're typed the same way `Tags` is — validated and constructed once, reused everywhere a filter is built. `DateFrom`/`DateTo` need the clock and the user's timezone to resolve `"last-90-days"` or `"2026-08"`; `*Refs` and `Currencies` need a repository or instance-config lookup; `AmountMin`/`AmountMax` need a resolved currency before they mean anything. None of those four can be given a surface-callable constructor without handing the surface I/O or clock access it structurally shouldn't have — the same argument, not a new one.
+Raw strings, validated and resolved by the app layer, for the same reasons as command structs in [ADR-0005](0005-shared-application-layer.md#command-fields-are-raw-strings-and-here-is-exactly-why). `"last-90-days"` and `"2026-08"` resolve against the injected clock in the user's timezone, so all four surfaces agree on what "this month" means, including at 00:30 on the first. The closed-enum fields (`Kinds`, `AccountKinds`, `TagMode`) could be typed without needing I/O — they aren't, for the same reason `Tags` isn't: one uniform rule beats a per-field classification nobody will remember.
 
 **Semantics are fixed once, in the filter, not per surface:**
 
@@ -65,7 +65,9 @@ An analytics result is a structured series with labelled dimensions and typed mo
 
 ### Pagination and determinism
 
-List queries are cursor-paginated (opaque cursor over a stable sort key) rather than offset-paginated, so a page boundary does not shift when a transaction is inserted mid-scroll. Sort order is always fully specified — `(booked_date DESC, created_at DESC, id DESC)` — because a query with a non-deterministic tiebreak produces a different answer on two runs and is untestable.
+List queries are **offset-paginated** in M1. Sort order is always fully specified — `(booked_date DESC, created_at DESC, id DESC)` — because a query with a non-deterministic tiebreak produces a different answer on two runs and is untestable. That part is correctness and is not negotiable; the pagination scheme is not.
+
+Cursor pagination (opaque cursor over the sort key) is strictly better for an infinitely-scrolling list, because a page boundary doesn't shift when a transaction is inserted mid-scroll. It is deferred to M2, when a web UI exists and something actually scrolls. Building it in M1 — whose only consumers are a CLI and a REST API — would be paying encode/decode/validation complexity for a problem neither surface has.
 
 Analytics results are not paginated; they are aggregates. A grouping that would produce an unbounded number of buckets (`group by description`) is not offered.
 
@@ -79,7 +81,7 @@ Analytics results are not paginated; they are aggregates. A grouping that would 
 
 **Compute analytics in the browser from a raw transaction feed.** Very responsive, and enables client-side re-slicing without a round trip. Rejected as a direct violation of the one architectural principle: it puts financial logic where only one surface can reach it, and currency conversion in the browser would need the rate table in the browser.
 
-**Offset pagination.** Simpler. Rejected: shifting page boundaries during scroll is a real bug in a list that is inserted into.
+**Cursor pagination from M1.** Correct, and where this ends up. Rejected as premature: the bug it prevents (page boundaries shifting mid-scroll) needs a scrolling UI to manifest, and M1 has none. Offset now, cursors with the web UI.
 
 ## Consequences
 
@@ -90,5 +92,5 @@ Analytics results are not paginated; they are aggregates. A grouping that would 
 - **The filter struct is wide and will grow.** Every surface has to expose a lot of options, and the CLI in particular ends up with many flags. Better than the alternative, but it is real surface area.
 - **A closed metric set means new questions need backend work.** A user who wants a metric nobody anticipated cannot compose it from primitives; they file an issue. Accepted in exchange for the guarantee above — and the canonical export ([ADR-0008](0008-import-export-architecture.md)) is the escape hatch for genuinely bespoke analysis.
 - **Some analytics queries will be expensive** as history grows. Indexes on `(user_id, booked_date)`, `(account_id)`, and `(category_id)` are the first answer; materialisation is a measured last resort, subject to [ADR-0002](0002-authoritative-ledger-and-corrections.md)'s rule that a cached aggregate needs a test proving it equals the recomputed value.
-- **Cursor pagination is harder to implement** than offset and cannot jump to page N. The UI uses infinite scroll, which is what it wanted anyway.
+- **Offset pagination has a real, known flaw** — a page boundary shifts if a transaction is inserted while paging. Accepted for M1 because the CLI and API consumers page in one shot rather than scrolling incrementally. It becomes a genuine bug the moment the web UI lands, which is why cursors are M2 scope and not "someday".
 - **Raw-string filter fields** carry the same "shouldn't this be typed?" objection as [ADR-0005](0005-shared-application-layer.md)'s commands, and the same answer.

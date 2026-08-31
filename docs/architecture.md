@@ -62,7 +62,7 @@ Dependencies point inward. `domain` imports nothing from the project. `app` impo
 
 Surfaces are also where [`ux-principles.md`](ux-principles.md) applies: they own every string a person reads, and they are the only place the product's vocabulary and defaults can go wrong.
 
-They render errors, they never classify them. An error arrives from the application layer already carrying its code, its user-safe message, its field path, and a correlation ID; the surface looks up the status or exit code in one shared table. A handler choosing its own HTTP status is the same class of defect as a handler parsing its own date — see [ADR-0011](decisions/0011-error-model.md).
+They render errors, they never classify them. An error arrives from the application layer already carrying its code, its user-safe message, and its field path; the surface looks up the status or exit code in one shared table. A handler choosing its own HTTP status is the same class of defect as a handler parsing its own date — see [ADR-0011](decisions/0011-error-model.md).
 
 **`platform`** — Cross-cutting infrastructure: the clock, config loading, ID generation, structured logging, and the error registry ([ADR-0011](decisions/0011-error-model.md)) that every surface renders from.
 
@@ -244,16 +244,4 @@ This section is updated **in the same PR** as the work it describes, per CLAUDE.
 
 ## 10. Decision records
 
-| ADR | Decision |
-| --- | --- |
-| [0001](decisions/0001-technology-stack.md) | Technology stack: Go, SQLite, React, single binary |
-| [0002](decisions/0002-authoritative-ledger-and-corrections.md) | Transactions are authoritative; balances derived; mutable with audit trail |
-| [0003](decisions/0003-transaction-posting-model.md) | Transactions and postings; transfers, splits, categories |
-| [0004](decisions/0004-multi-currency-and-fx.md) | Money representation, currency precedence, FX conversion policies |
-| [0005](decisions/0005-shared-application-layer.md) | One application layer; normalise once; how it is enforced |
-| [0006](decisions/0006-authentication-and-multi-user-path.md) | Single-user first, multi-user shaped; sessions and API tokens |
-| [0007](decisions/0007-persistence-and-migrations.md) | SQLite, repository boundary, goose migrations |
-| [0008](decisions/0008-import-export-architecture.md) | Staged import pipeline; canonical versioned export |
-| [0009](decisions/0009-query-and-analytics-model.md) | One filter and analytics model shared by every surface |
-| [0010](decisions/0010-personal-finance-not-accounting-software.md) | Personal finance, not accounting software; the product philosophy constrains technical design |
-| [0011](decisions/0011-error-model.md) | Error model: central coarse codes, promoted granular codes, safe/internal split |
+Indexed, with their status and a one-line summary each, in [`decisions/README.md`](decisions/README.md). That file is the single list — this document links to individual ADRs inline where they're relevant rather than duplicating the table.

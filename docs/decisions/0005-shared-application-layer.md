@@ -63,9 +63,9 @@ A surface may **not**:
 - Import `internal/domain` or any adapter package.
 - Contain any `if` that is not about presentation.
 
-### Which command fields are raw strings, and why — precisely, not as a blanket policy
+### Command fields are raw strings, and here is exactly why
 
-Five fields, on write commands, are raw strings all the way to the application layer. Each is raw for one specific, load-bearing reason: **resolving it correctly requires either I/O or clock access that a surface structurally cannot have**, because giving it that access would defeat the reason the surface is banned from parsing in the first place.
+Command struct fields are raw strings all the way to the application layer. This is one uniform rule, and the reason is the same in every case: **resolving the field correctly requires either I/O or clock access that a surface structurally cannot have**, because giving it that access would defeat the reason the surface is banned from parsing in the first place.
 
 ```go
 type RecordOutflowCommand struct {
@@ -87,36 +87,19 @@ type RecordOutflowCommand struct {
                          // config, which surfaces cannot import (see Enforcement).
     Description string
     Notes       string
-    Tags        []Tag   // NOT raw. See below.
+    Tags        []string
 }
 ```
 
-Every one of those five is entangled with a lookup or the clock — not with "parsing" in the abstract. A smart constructor that a surface could call directly would need to either perform that I/O itself (impossible: surfaces have no repository) or fake it (a type that validates nothing real, which is worse than an honest string because it looks safe and isn't).
+Every one of those is entangled with a lookup or the clock — not with "parsing" in the abstract. A smart constructor a surface could call directly would need to either perform that I/O itself (impossible: surfaces have no repository) or fake it — a type that validates nothing real, which is worse than an honest string because it looks safe and isn't.
 
-**`Tags` is the counter-example, and it's real, not aspirational.** Tag normalisation — lowercase, strip a leading `#`, kebab-case — is a pure function of the input string. No account lookup, no clock, no ambiguity. So it is **not** a raw string:
-
-```go
-// internal/domain — unexported fields; the only way to get one that's valid
-type Tag struct{ value string }
-
-func NewTag(raw string) (Tag, error) { /* lowercase, strip #, kebab-case, validate */ }
-
-// internal/app — re-exports the type so a surface can hold one without
-// importing internal/domain directly
-type Tag = domain.Tag
-
-// re-exported constructor a surface CAN call, because it needs nothing
-// the surface doesn't already have
-func NewTag(raw string) (Tag, error) { return domain.NewTag(raw) }
-```
-
-A CLI flag `--tag reimbursable` or a JSON array `"tags": ["reimbursable"]` is converted to `[]app.Tag` **at the surface**, via `app.NewTag`, before the command is even constructed. If that construction fails, the surface returns the same validation error any other field would. This is the general rule: **a field is typed at the command boundary exactly when a pure function exists from raw input to that field, and raw otherwise.** It isn't a stringly-typed-everything policy; it's a small, closed set of fields that happen to need context only the app layer has.
+`Tags` is the one field where a surface-callable constructor would genuinely work, since tag normalisation is pure. It is still a raw string here, deliberately: typing exactly one field would mean introducing an app-layer type-alias and re-export layer, plus a per-field "is this typed or raw?" classification every future field has to answer, to buy type safety on a list of short strings. One uniform rule is worth more than that.
 
 ### Domain types are built only through validating constructors
 
 Independent of the command-boundary question: `Money`, `Date`, and `Tag` all have **unexported fields** and a public constructor that validates on construction — `domain.NewMoney`, `domain.NewDate`, `domain.NewTag`. This means an invalid value (a currency code that isn't real, a `Date{Month: 13}`, a tag that wasn't normalised) cannot exist anywhere in the codebase, including deep inside `internal/app` after a value has already been resolved. It costs nothing and it's unconditional — every call site that used to be able to construct a struct literal now goes through a function that can say no.
 
-`Money` and `Date`'s constructors are **not** the same as `normalize.Amount` / `normalize.DateOf`. `domain.NewDate(2026, 8, 14)` validates a calendar date from already-known, unambiguous integers — it needs no clock and is safe to call anywhere, including tests and fixtures. `normalize.DateOf("today", clk, tz)` is the one that resolves *ambiguous or relative* input, and it is the piece that must stay centralised. The constructor guards validity; the normaliser guards interpretation. Conflating the two is what made the earlier draft of this ADR sound like a blanket "everything is a string" policy when only interpretation-under-ambiguity actually needed to be.
+`Money` and `Date`'s constructors are **not** the same as `normalize.Amount` / `normalize.DateOf`. `domain.NewDate(2026, 8, 14)` validates a calendar date from already-known, unambiguous integers — it needs no clock and is safe to call anywhere, including tests and fixtures. `normalize.DateOf("today", clk, tz)` is the one that resolves *ambiguous or relative* input, and it is the piece that must stay centralised. **The constructor guards validity; the normaliser guards interpretation.** Surfaces reach neither: they can't import `internal/domain` at all (see Enforcement), so they hand over strings and the app layer does both.
 
 ### Normalisation is one package, and it is the only place ambiguous input becomes a domain value
 
@@ -129,7 +112,7 @@ Independent of the command-boundary question: `Money`, `Date`, and `Tag` all hav
 | Date | `normalize.DateOf` | ISO first, then configured locale formats, then relative keywords; resolved in the **user's** timezone via the injected clock |
 | Account / category | `normalize.Ref` | UUID, else exact name, else unique case-insensitive match, else a disambiguation error listing candidates |
 | Text | `normalize.Text` | Unicode NFC, trim, collapse internal whitespace, length caps |
-| Tags | `app.NewTag` (re-exported `domain.NewTag`) | Lowercase, strip a leading `#`, kebab-case — callable by a surface directly, since it needs no context |
+| Tags | `normalize.Tag` | Lowercase, strip a leading `#`, kebab-case |
 
 `"today"` and `"yesterday"` are handled centrally by `normalize.DateOf` — so the MCP server gets them for free, the CLI's `--today` flag is unnecessary, and all four surfaces agree on what they mean at 00:30 in `Asia/Kolkata`.
 
@@ -156,13 +139,13 @@ The contract above is worth as much as its enforcement. All of this runs in `mak
 | `internal/adapters/*` | `ports`, `domain`, `platform` |
 | `internal/surface/*` | `app`, `platform` — **not** `domain`, **not** adapters |
 
-A surface that cannot import `domain` cannot construct a `Money` or a `Date` directly — it can only reach the types the app package chooses to re-export (`app.Tag`), and only through the constructors the app package chooses to expose (`app.NewTag`). This is what makes "parse it in the handler" not a temptation but a compile error for the five entangled fields, while still leaving room for `Tags` to be genuinely typed.
+A surface that cannot import `domain` cannot construct a `Money` or a `Date` at all. This is what makes "parse it in the handler" not a temptation but a compile error.
 
 **2 · Banned-symbol check.** `time.Now()` outside `internal/platform/clock` fails. `os.Getenv` outside `internal/platform/config` fails. This is the mechanism that makes `Date` un-typeable at the surface boundary structural rather than conventional — there is no legal way for a surface to obtain the instant "today" is measured against.
 
 **3 · The surface conformance suite.** The one that catches what the others cannot.
 
-One table of raw inputs, each driven through all three in-process surfaces, asserting the resulting command struct is **identical**:
+One table of raw inputs, each driven through all three in-process surfaces via their **real entry points**, asserting the **observable result** is identical — what landed in the database, and what error came back:
 
 ```
 case: amount "1,800.50", currency "", date "today", account "hdfc savings"
@@ -171,23 +154,26 @@ case: amount "1,800.50", currency "", date "today", account "hdfc savings"
   API:  POST /api/v1/transactions  {"account":"hdfc savings","amount":"1,800.50","date":"today"}
   MCP:  record_outflow{account:"hdfc savings", amount:"1,800.50", date:"today"}
 
-  all three must produce byte-identical RecordOutflowCommand
-  and, under a frozen clock, byte-identical results
+  under a frozen clock, all three must produce an identical stored
+  transaction (same booked_date, amount, currency, account, category)
+  and identical errors for invalid input
 ```
 
-The table covers: empty date, `"today"`, `"yesterday"`, ISO dates, locale-format dates, grouped amounts, currency symbols, absent currency (precedence), account and category resolution by name, ambiguous names, case differences, whitespace, Unicode normalisation, tags with and without `#` (asserting all three surfaces reach the same `app.Tag` values, not just the same string), and the invalid-input error messages.
+Asserting on **results** rather than on the internal command struct is deliberate: comparing structs would mean refactoring each surface to expose its decode step as a callable test seam — a CLI whose flag parsing runs without cobra. Results catch the same divergence with none of that scaffolding, and they test the thing that actually matters.
+
+The table covers: empty date, `"today"`, `"yesterday"`, ISO dates, locale-format dates, grouped amounts, currency symbols, absent currency (precedence), account and category resolution by name, ambiguous names, case differences, whitespace, Unicode normalisation, tags with and without `#`, and the invalid-input error messages.
 
 Cases run under a frozen clock at a **deliberately hostile instant** — `2026-07-31T18:45:00Z`, which is 2026-08-01 in `Asia/Kolkata` — so any surface that resolves "today" itself, or in the wrong zone, produces a different date and fails.
 
 The suite is a single table in `internal/surface/conformance`. **Adding a user-facing operation means adding a row.** A new surface means wiring it into the harness once; every existing row then applies to it.
 
-This is also why the REST API ships in milestone 1 alongside the CLI rather than after it: with one surface the suite has nothing to compare, and the contract would be an untested claim for an entire milestone. It is, if anything, more important now than under a fully-stringly-typed design: it is the thing that verifies the five entangled fields resolve identically, since nothing in the type system can.
+This is also why the REST API ships in milestone 1 alongside the CLI rather than after it: with one surface the suite has nothing to compare, and the contract would be an untested claim for an entire milestone. It is the only check that verifies fields actually *resolve* identically, since nothing in the type system can.
 
 **4 · The web UI is checked differently**, since it is TypeScript and cannot join the Go conformance suite. It is constrained instead by construction: its API client is *generated* from the OpenAPI description, so it can only send what the API accepts; and an ESLint rule bans `new Date()`, `Date.now()`, and `Intl.DateTimeFormat` outside a single `src/lib/format.ts` module that is display-only and never produces a value sent to the server. When the UI needs "today", it omits the field and lets the server decide.
 
 ## Alternatives considered
 
-**Type every command field, with the surface calling a smart constructor for each.** The design this ADR considered and partly adopted. It works cleanly for fields with no I/O or clock dependency — `Tags` is the shipped example. It does **not** work for `AccountRef`, `CategoryRef`, `Amount`, `Currency`, or `Date`, because a correct constructor for any of them needs a repository lookup or the injected clock, neither of which a surface can be given without undoing the reason surfaces are constrained in the first place. A constructor that faked the check (validated only string shape, not real resolution) would be worse than an honest raw string: it would look type-safe in review while providing none of the guarantee.
+**Type every command field, with the surface calling a smart constructor for each.** Considered seriously and rejected. It cannot work for `AccountRef`, `CategoryRef`, `Amount`, `Currency`, or `Date`: a correct constructor for any of them needs a repository lookup or the injected clock, neither of which a surface can be given without undoing the reason surfaces are constrained. A constructor that faked the check — validating string shape but not real resolution — would be worse than an honest raw string, because it looks type-safe in review while guaranteeing nothing. It *would* work for `Tags`, which is pure; typing one field was judged not worth an app-layer type-alias and re-export layer plus a per-field classification rule for everything added later.
 
 **Route the CLI and MCP through HTTP to the API.** Guarantees normalise-once by construction — one process, one normaliser, no possibility of drift. Genuinely tempting, and rejected on product grounds: it means a server must be running before `bodger tx add` works, it makes a local MCP server a network client of a service on the same machine, and it puts serialisation latency in the path of the fast-entry workflow ([ADR-0010](0010-personal-finance-not-accounting-software.md), [`ux-principles.md` §3](../ux-principles.md#3-fast-entry)). In-process composition achieves the same guarantee — all three call the same function — and the conformance suite supplies the proof that HTTP would have supplied structurally.
 
@@ -201,14 +187,13 @@ This is also why the REST API ships in milestone 1 alongside the CLI rather than
 
 ## Consequences
 
-**Good.** A new operation is written once and appears correctly in four surfaces. Divergence fails CI rather than reaching a user. Date and currency semantics are testable at a hostile instant instead of being emergent. Adding a fifth surface — a TUI, a webhook receiver — costs a decode/encode adapter and a conformance harness wiring. Agents working from independent issues cannot silently disagree, because the check is mechanical. The scope of what's genuinely untyped is small and named — five fields per write command, each with a specific reason — rather than a blanket policy, and `Tags` demonstrates the pattern isn't purely defensive: where a field can be typed safely, it is.
+**Good.** A new operation is written once and appears correctly in four surfaces. Divergence fails CI rather than reaching a user. Date and currency semantics are testable at a hostile instant instead of being emergent. Adding a fifth surface — a TUI, a webhook receiver — costs a decode/encode adapter and a conformance harness wiring. Agents working from independent issues cannot silently disagree, because the check is mechanical. One rule, no per-field exceptions to remember.
 
 **Bad, and worth stating plainly:**
 
-- **Five specific fields will still attract a "shouldn't this be typed?" review comment** — `AccountRef`, `CategoryRef`, `Amount`, `Currency`, `Date` on every write command. It is deliberate, and the answer is now precise rather than a blanket appeal to this ADR: name which of I/O-dependency or clock-dependency applies to the field in question.
-- **Type safety on those five fields moves from the compiler to normalisation tests.** The parse layer must be tested hard, because it is the only thing standing between raw input and the domain for exactly those fields.
-- **The `Tags` pattern (app-layer re-exported types and constructors) is a second thing contributors need to learn**, alongside "which fields stay raw." Getting a new field's classification wrong in either direction — typing something that secretly needs I/O, or leaving something raw that's actually pure — is a plausible mistake, and there's no automated check for the classification itself, only for its consequences (the import-graph and conformance checks would still catch an *incorrectly* typed field that tried to smuggle I/O through a fake constructor, but wouldn't flag a field that's typed correctly and just adds needless ceremony).
+- **Command fields will attract a "shouldn't this be typed?" review comment.** It is deliberate, and the answer is specific rather than a blanket appeal to this ADR: name which of I/O-dependency or clock-dependency applies to the field in question. `Tags` is the honest edge case — it *could* be typed, and isn't, because one field doesn't justify a second mechanism.
+- **Type safety at the command boundary moves from the compiler to normalisation tests.** The parse layer must be tested hard, because it is the only thing standing between raw input and the domain.
 - **Error messages must be generated centrally and rendered per-surface.** A validation failure needs a machine-readable code and field path so the CLI can print it, the API can return a 422 body, MCP can return a tool error, and the web UI can attach it to the right input. Building that shared error vocabulary is real work in M1 — see [ADR-0011](0011-error-model.md).
-- **The conformance suite is a standing maintenance cost.** Every new operation adds a row. That is the point, and it will occasionally feel like friction on a small change. It is now doing more work than it would under a fully-stringly-typed design, since it's the only check verifying the five entangled fields' resolution, not just their surface-level shape.
+- **The conformance suite is a standing maintenance cost.** Every new operation adds a row. That is the point, and it will occasionally feel like friction on a small change.
 - **The web UI's enforcement is genuinely weaker** — a lint rule and a generated client, not a shared test. It is the surface most likely to drift, and the one to look at first when a number disagrees.
 - **In-process composition means multiple processes can open the same SQLite file.** See [ADR-0007](0007-persistence-and-migrations.md).
