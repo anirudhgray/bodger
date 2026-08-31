@@ -62,7 +62,9 @@ Dependencies point inward. `domain` imports nothing from the project. `app` impo
 
 Surfaces are also where [`ux-principles.md`](ux-principles.md) applies: they own every string a person reads, and they are the only place the product's vocabulary and defaults can go wrong.
 
-**`platform`** — Cross-cutting infrastructure: the clock, config loading, ID generation, structured logging.
+They render errors, they never classify them. An error arrives from the application layer already carrying its code, its user-safe message, its field path, and a correlation ID; the surface looks up the status or exit code in one shared table. A handler choosing its own HTTP status is the same class of defect as a handler parsing its own date — see [ADR-0011](decisions/0011-error-model.md).
+
+**`platform`** — Cross-cutting infrastructure: the clock, config loading, ID generation, structured logging, and the error registry ([ADR-0011](decisions/0011-error-model.md)) that every surface renders from.
 
 ### The rule that matters most
 
@@ -144,7 +146,7 @@ internal/
     http/              REST handlers, router, DTOs
     cli/               cobra commands
     mcp/               MCP tool definitions
-  platform/            clock, config, idgen, logging
+  platform/            clock, config, idgen, logging, error registry
 web/                   React + Vite app; built assets embedded at compile time
 docs/                  architecture, data model, ADRs, guides
 ```
@@ -230,7 +232,7 @@ Rules, scheduled occurrences, materialisation, forecasting. Occurrences never to
 | M7 — MCP server | ⬜ Not started |
 | M8 — Recurring transactions | ⬜ Not started |
 
-Delivered in M0: this document, [`data-model.md`](data-model.md), [`ux-principles.md`](ux-principles.md), ADRs 0001–0010, [`contributing.md`](contributing.md), a placeholder [`user-guide.md`](user-guide.md), `.tool-versions`, `Makefile`, and the GitHub Actions workflow.
+Delivered in M0: this document, [`data-model.md`](data-model.md), [`ux-principles.md`](ux-principles.md), ADRs 0001–0011, [`contributing.md`](contributing.md), a placeholder [`user-guide.md`](user-guide.md), `.tool-versions`, `Makefile`, and the GitHub Actions workflow.
 
 The bootstrap product brief has been fully absorbed into these documents and can be deleted; nothing in `docs/` cites it. See [`decisions/README.md`](decisions/README.md#on-the-brief).
 
@@ -254,3 +256,4 @@ This section is updated **in the same PR** as the work it describes, per CLAUDE.
 | [0008](decisions/0008-import-export-architecture.md) | Staged import pipeline; canonical versioned export |
 | [0009](decisions/0009-query-and-analytics-model.md) | One filter and analytics model shared by every surface |
 | [0010](decisions/0010-personal-finance-not-accounting-software.md) | Personal finance, not accounting software; the product philosophy constrains technical design |
+| [0011](decisions/0011-error-model.md) | Error model: central coarse codes, promoted granular codes, safe/internal split |

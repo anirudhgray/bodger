@@ -95,10 +95,13 @@ This is how "simple" and "powerful" coexist, and it's the part most likely to be
 
 ## 6. Errors, and telling the truth
 
-Errors are the place UX and correctness meet, and the place jargon leaks most.
+Errors are the place UX and correctness meet, and the place jargon leaks most. [ADR-0011](decisions/0011-error-model.md) is the machinery; this is what the user should experience.
+
+The split that makes both possible: **domain detail** (which account, which value, which field) always reaches the user, because that's what makes an error actionable. **Infrastructure detail** (the wrapped cause chain, SQL, paths) never does — it goes to the log, joined to the user's error by a correlation ID.
 
 - **Name what failed, which value, and what to do.** "Couldn't find an account called 'hdcf'. Did you mean 'HDFC Savings'?" — not "invalid account reference."
 - **No internal references.** No ADR numbers, doc paths, package names, or SQL. This is CLAUDE.md's rule and it applies to errors specifically, which are otherwise allowed to be detailed and specific.
+- **Every error is actionable or honestly refers you onward.** If the user can fix it, say how. If they can't, it's a bug — say so plainly and give them the reference that finds it in the log, rather than blaming their input.
 - **Never silently wrong.** A missing FX rate fails loudly with a named error rather than falling back to 1.0 or dropping the row ([ADR-0004](decisions/0004-multi-currency-and-fx.md)). A number the user cannot trust is worse than an error they can act on.
 - **Every converted amount shows its rate, date, and source** ([ADR-0004](decisions/0004-multi-currency-and-fx.md)). Transparency *is* a UX property here: this is the user's money, and a figure they can't check is a figure they won't believe.
 

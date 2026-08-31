@@ -99,6 +99,7 @@ The conventions in [`CLAUDE.md`](../CLAUDE.md) apply to humans too. The ones tha
 - **Track deferred work as GitHub issues**, not as a paragraph in a doc. Reference issue numbers in commits and PRs.
 - **No ADR numbers or internal paths in user-facing strings** — CLI help, UI labels, prompts. Errors should be specific and detailed about *what* failed, but they don't cite internal documents either.
 - **Anything a user reads is held to [`ux-principles.md`](ux-principles.md)** — vocabulary, defaults, error phrasing. §2's banned-term table has no automated check yet, so it's a review responsibility.
+- **Return errors from the registry, never `fmt.Errorf`, from an exported app-layer method.** Pick the coarse code, add an explanation if the default isn't specific enough, and `Wrap` the cause so it's logged but never shown. [ADR-0011](decisions/0011-error-model.md) has the codes, the promotion rule, and the safe/internal split. This has no automated check yet either.
 
 Session notes live in `agents/design-docs/` (gitignored, ephemeral). Anything durable graduates into `docs/`.
 

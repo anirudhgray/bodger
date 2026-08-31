@@ -18,6 +18,7 @@ Format: **Status · Context · Decision · Alternatives considered · Consequenc
 | [0008](0008-import-export-architecture.md) | Staged import pipeline; canonical versioned export | Accepted |
 | [0009](0009-query-and-analytics-model.md) | One filter and analytics model shared by every surface | Accepted |
 | [0010](0010-personal-finance-not-accounting-software.md) | Personal finance, not accounting software; the product philosophy constrains technical design | Accepted |
+| [0011](0011-error-model.md) | Error model: central coarse codes, promoted granular codes, safe/internal split | Accepted |
 
 ## On "the brief"
 

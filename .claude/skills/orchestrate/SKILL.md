@@ -81,6 +81,7 @@ feature slice:
 | `internal/surface/mcp/tools.go` | Central MCP tool registry |
 | `internal/surface/conformance/cases_test.go` | The one conformance table (ADR-0005). **Every** user-facing operation adds a row here, so almost every feature slice touches it |
 | `internal/domain/ledger/` | Core types. Two slices extending `Transaction` or `Posting` collide |
+| `internal/platform/errs/` | The error registry (ADR-0011). Nearly every slice adds a code |
 | `docs/architecture.md` §9 Status | Every milestone-item PR edits it, per step 7 |
 | `go.mod` / `go.sum` | Any slice adding a dependency |
 | `web/src/lib/api.ts`, `web/src/routes.tsx` | Generated API client and route registry (M2+) |
