@@ -1,0 +1,4 @@
+agents/design-docs
+bin/
+dist/
+.DS_Store

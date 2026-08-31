@@ -1,0 +1,184 @@
+---
+name: orchestrate
+description: "[fill in] Sync <project>'s project state (architecture doc status, open GitHub issues, open PRs, recent git log) and pick up the next unit of milestone work -- named issue(s)/a focus area passed as args, or the next unblocked item if none given. Decides sequential vs parallel execution, spawns worktree-isolated agents for bounded self-contained work, integrates the result (merging main in before calling anything ready), knows when newly-discovered work should become its own GitHub issue versus just getting fixed inline, and reports back. Use at the start of a work session on this repo."
+---
+
+# Orchestrate
+
+<!--
+  TEMPLATE - this is a pattern, not a drop-in skill. Fill in every
+  [fill in] marker below once the repo has real structure (build
+  commands, a milestone/label scheme, known shared-file hotspots).
+  Writing these in correctly before any code exists isn't possible -
+  come back to this after the first few PRs have landed and the repo's
+  actual hotspots are visible.
+-->
+
+This is [project]'s work-cycle playbook: how a session picks up where the
+project left off, decides what to build and in what order, and how it hands
+work to agents versus doing it directly. It assumes CLAUDE.md's baseline
+conventions (feature branches, atomic conventional commits, no direct
+commits to main, [fill in: any other repo-wide commit/PR conventions]) -
+this doc doesn't repeat those, it's the layer on top: what to work on and
+how to sequence it.
+
+## 1. Sync state first
+
+Don't trust anything from a prior conversation's memory - the source of
+truth is external. Every orchestrate run starts here:
+
+- `[fill in: path to the architecture/status doc]` - whichever
+  milestone/status section is current (check the doc's own headings; don't
+  assume it still says an earlier milestone name - the doc is kept current
+  per-PR, so trust its actual current structure over any specific section
+  name).
+- `[fill in: how milestones are tracked - native GitHub Milestones vs. a
+label scheme]` for the current milestone's issue counts. `gh issue list
+--milestone "<title>"` for its actual issues, `gh label list` for the
+  rest of the label scheme - don't assume any specific set of labels still
+  exists by the time you read this. Read the bodies of candidate issues,
+  not just titles - they should cite the docs/ADRs that frame the work and
+  often note dependencies on other issues. If the current milestone's open
+  issue count is zero, that's a milestone-transition moment - flag it
+  prominently in the report (see step 6). Don't treat it as silent
+  completion.
+- `gh pr list` - anything already in flight; don't duplicate it.
+- `git log --oneline -20` on `main` - recent history, in case docs/issues
+  are stale relative to what's actually merged.
+- `git worktree list` - reconcile against the above. A worktree whose
+  branch has already landed on `main` (squash-merged, so its tip commit
+  won't show up via `git branch --merged`; confirm by checking the PR's
+  merge status or that the branch's content is on `main`) is stale:
+  `git worktree remove <path>` (unlock first if needed) and
+  `git branch -d <branch>` for the now-fully-merged local branch. Do this
+  reconciliation whenever a PR merges, not just at the start of a session.
+
+## 2. Decide what to work on
+
+- If invoked with args (an issue number, a list of issues, or a described
+  focus area), that's the scope for this session.
+- If invoked bare, pick the next unblocked item(s): prefer whatever's
+  attached to the current open milestone over deferred/future-labeled
+  work, and within either, skip anything whose dependency note says it's
+  waiting on something not yet merged.
+
+## 3. Decide sequential vs. parallel
+
+Two or more candidate items can run in parallel (separate worktree-isolated
+agents, launched in one message) only if they're independent in scope AND
+low-risk on shared files. `[fill in]` the known shared-file hotspots in
+this repo, touched by nearly every feature slice - common patterns to look
+for: a central service/DI constructor that grows a parameter per feature, a
+central command/route registry, a migrations directory where parallel work
+can collide on the same sequence number.
+
+Two items that will both touch these files aren't independently mergeable
+even if their actual feature logic doesn't overlap - expect to merge one,
+then either rebase the other on top or merge both into one integration
+branch and resolve the conflict by hand once. Items that don't touch these
+files (e.g. a self-contained package, or docs-only work) are safe to fully
+parallelize.
+
+When in doubt, sequential is always safe; parallel is an optimization when
+the independence is clear.
+
+## 4. Decide direct vs. spawned-agent
+
+- **Do it directly** (no agent): single-file fixes, doc updates, small
+  corrections, anything you can scope and verify in a few tool calls.
+  Spawning an agent for this is overhead, not help.
+- **Spawn an agent**: a bounded, self-contained feature slice. Use
+  `isolation: "worktree"` so parallel agents don't collide on the working
+  tree.
+- **Fork vs. fresh agent**: fork when your own context is still reasonably
+  sized - it's cheap via cache sharing and inherits all the reasoning
+  already established this session, so the prompt can be a short
+  directive. Prefer a fresh agent, briefed with the specific issue number
+  plus which docs to read, once your own context is already large, or for
+  a big standalone build.
+
+Every agent prompt (fork or fresh) should include:
+
+- Exact scope: what's in, what's already being handled elsewhere (name
+  the other in-flight issues/branches so it doesn't duplicate work).
+- Run `[fill in: this project's build/vet/fmt/test command(s)]` clean
+  before finishing.
+- Commit atomically, conventional commits, [fill in: no co-author trailer
+  if that's the project's convention].
+- Don't push or open a PR unless told to - the orchestrator handles
+  integration once it's seen the result (this is what catches
+  cross-agent conflicts before they hit GitHub).
+
+## 5. Integrate - don't just trust the report
+
+An agent's self-report is a claim, not a fact. Before pushing anything:
+
+- `cd` into the worktree and independently run the same
+  build/vet/fmt/test commands.
+- Merge (or rebase on) current `origin/main` into the branch before
+  calling a PR ready - do this even if the branch seemed fine when the
+  agent finished, and do it again if the branch sits open for a while
+  before merging. A branch built in parallel with another can be broken
+  by whatever merged first without any git conflict at all. Re-run
+  build/vet/fmt/test after the merge, not just before it.
+- Check `gh api repos/<org>/<repo>/pulls/<N> --jq '{mergeable,
+mergeable_state}'` once a PR exists, as a second confirmation - it
+  should read `clean`/`true` after the merge-in above.
+- Resolve conflicts by hand for anything additive/mechanical; stop and ask
+  if a conflict looks like a real semantic disagreement rather than two
+  independent additions landing in the same spot.
+
+## 6. When to create a new issue
+
+Not just picking up existing issues - a session finds new work constantly.
+Rule of thumb: if it's fixed in the same session, in the same PR (or a
+small sibling PR), it doesn't need an issue - just do it and say so in the
+report. If it's _not_ getting done right now, it needs an issue, or it's
+just going to get lost. Concretely:
+
+- **Mid-task discovery of something out of scope** for the current work -
+  don't scope-creep the current PR to fix it and don't silently ignore it
+  either. Open an issue.
+- **A natural follow-up revealed by finishing something** - open an issue
+  for it rather than letting the current PR grow to cover it.
+- **A deferred/future idea surfaces** that isn't in scope for the current
+  milestone. Open it with the appropriate deferred/future label, not just
+  a mention in conversation or a docs/ paragraph.
+- **Planning a new milestone's components** - this one is not automatic.
+  When step 1 flags a milestone transition, that's a prompt to surface to
+  the user, not a trigger to start filing issues: propose a candidate
+  scope for the next milestone and ask before creating anything. What
+  ships next is a product decision, not a mechanical one. Once the user
+  has confirmed scope, seed it the way the original components were: one
+  issue per component, each citing the specific doc section or ADR that
+  frames it, each stating explicit out-of-scope boundaries and
+  dependencies on other issues.
+
+Before creating, `gh issue list --state all` to check it doesn't already
+exist (open or closed) - don't duplicate.
+
+## 7. Close the loop
+
+As part of the PR that completes or changes scope of a milestone item
+(not a follow-up, not end-of-session cleanup):
+
+- Update the architecture/status doc's Status section, then check whether
+  the change is user-visible or dev-visible - update whichever existing
+  docs cover that ground as part of the same PR, not a later docs pass.
+  If no existing doc is really the right home for something genuinely new,
+  create one rather than stretching an existing doc to cover it, and link
+  it in from wherever a reader would actually arrive at it.
+- Reference the GitHub issue it resolves; close it (or update it if only
+  partially addressed) once the PR is confirmed mergeable - don't wait
+  for the user to merge first if the work is genuinely done, but say so
+  explicitly in the report.
+- Grep the changed files for anything that looks like an internal
+  reference (an ADR, a package name, an issue number) leaking into a
+  user-facing string before calling it done.
+
+## 8. Report back
+
+End with a concise summary: what shipped (PR links), what's still open
+and why (waiting on review, waiting on a dependency), and what the
+natural next unblocked item is. Don't re-explain the architecture - the
+user has read it; say what changed.
