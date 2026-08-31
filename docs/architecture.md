@@ -184,7 +184,9 @@ Fixtures cover multiple currencies, transfers, splits, refunds, credit cards, im
 
 Each milestone leaves the application working, testable, and useful. Ordering after M2 is revisable as the product teaches us something.
 
-### M1 — Ledger core, CLI, and REST API
+Milestones get a **name** as well as a number, taken from Tolkien's legendarium — M1 is *Arda*, the world itself, which is what everything after it sits on. Names are assigned when a milestone is actually created and scoped, not reserved in advance; the unnamed ones below are sketches, and naming them now would imply more certainty about their scope than exists. Eventual releases will take the name of the milestone they complete rather than inventing a second vocabulary.
+
+### M1 · Arda — Ledger core, CLI, and REST API
 The smallest genuinely usable slice: record money moving and see where you stand.
 
 Domain model (money, accounts, categories, transactions, postings, transfers, splits) · SQLite persistence and migrations · application layer with the normalisation contract · CLI · read/write REST API · derived balances · the layer-boundary and conformance checks from §6.
@@ -218,12 +220,12 @@ Rules, scheduled occurrences, materialisation, forecasting. Occurrences never to
 
 ## 9. Status
 
-**Current milestone: M1 — Ledger core, CLI, and REST API.** Not started; issues seeded.
+**Current milestone: M1 · Arda — Ledger core, CLI, and REST API.** Not started; issues seeded.
 
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
-| M1 — Ledger core, CLI, REST API | 🔜 Planned, issues seeded |
+| M1 · Arda — Ledger core, CLI, REST API | 🔜 Planned, issues seeded |
 | M2 — Web UI and authentication | ⬜ Not started |
 | M3 — Multi-currency and FX | ⬜ Not started |
 | M4 — Analytics and charts | ⬜ Not started |

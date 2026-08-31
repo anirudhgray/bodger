@@ -32,9 +32,9 @@ truth is external. Every orchestrate run starts here:
   assume it still says an earlier milestone name - the doc is kept current
   per-PR, so trust its actual current structure over any specific section
   name).
-- **Native GitHub Milestones**, titled `M1 - Ledger core, CLI, and REST
-  API`, `M2 - Web UI and authentication`, and so on, matching
-  `docs/architecture.md` §8. `gh api repos/anirudhgray/bodger/milestones`
+- **Native GitHub Milestones**, titled `M<n> <Name> - <scope>` — e.g.
+  `M1 Arda - Ledger core, CLI, and REST API` — matching
+  `docs/architecture.md` §8. See step 6 for the naming convention. `gh api repos/anirudhgray/bodger/milestones`
   for the current milestone's issue counts, `gh issue list --milestone
   "<title>"` for its actual issues, and `gh label list` for the rest of the
   label scheme (`area:*` for the layer a slice touches, plus `deferred` and
@@ -172,6 +172,26 @@ just going to get lost. Concretely:
   issue per component, each citing the specific doc section or ADR that
   frames it, each stating explicit out-of-scope boundaries and
   dependencies on other issues.
+
+  **Give the milestone a name, not just a number and a description.**
+  Title format is `M<n> <Name> - <scope>`, e.g. `M1 Arda - Ledger core,
+  CLI, and REST API`. Names come from Tolkien's legendarium (M1 is
+  Arda, the world itself — apt for the milestone everything else sits
+  on); pick one that fits the milestone's character rather than working
+  through a list in order. A name gives the milestone something to be
+  referred to in conversation, commits, and PR titles that isn't "the
+  current one", which stops meaning anything the moment it isn't.
+
+  Name it when the milestone is created, not before — naming M3 through
+  M8 up front is the same speculative work as scoping them up front, and
+  their scope will move. Keep `docs/architecture.md` §8 and §9 in sync
+  with whatever gets chosen, in the same PR.
+
+  **The same scheme will apply to releases** once there's release
+  tooling to apply it to — there's no release workflow, tag convention,
+  or `release.yaml` yet, and none is needed until something is
+  shippable. When that lands, a release takes the name of the milestone
+  it completes rather than inventing a parallel vocabulary.
 
 Before creating, `gh issue list --state all` to check it doesn't already
 exist (open or closed) - don't duplicate.
