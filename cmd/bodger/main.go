@@ -58,7 +58,7 @@ func newRootCmd() *cobra.Command {
 			// end to end, and will be handed to those subcommands once
 			// they land.
 			_ = svc
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), "bodger: ready — no subcommands registered yet (see issues #7 and #8)")
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), "bodger: ready — no subcommands registered yet")
 			return err
 		},
 	}
