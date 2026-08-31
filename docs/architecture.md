@@ -184,7 +184,7 @@ Fixtures cover multiple currencies, transfers, splits, refunds, credit cards, im
 
 Each milestone leaves the application working, testable, and useful. Ordering after M2 is revisable as the product teaches us something.
 
-Milestones get a **name** as well as a number, taken from Tolkien's legendarium — M1 is *Arda*, the world itself, which is what everything after it sits on. Names are assigned when a milestone is actually created and scoped, not reserved in advance; the unnamed ones below are sketches, and naming them now would imply more certainty about their scope than exists. Eventual releases will take the name of the milestone they complete rather than inventing a second vocabulary.
+Milestones get a **name** as well as a number, taken from fantasy and sci-fi worlds and planets — M1 is *Arda*, the world itself, which is what everything after it sits on. Names are assigned when a milestone is actually created and scoped, not reserved in advance; the unnamed ones below are sketches, and naming them now would imply more certainty about their scope than exists. Eventual releases will take the name of the milestone they complete rather than inventing a second vocabulary.
 
 ### M1 · Arda — Ledger core, CLI, and REST API
 The smallest genuinely usable slice: record money moving and see where you stand.

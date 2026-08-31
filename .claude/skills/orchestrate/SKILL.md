@@ -175,12 +175,14 @@ just going to get lost. Concretely:
 
   **Give the milestone a name, not just a number and a description.**
   Title format is `M<n> <Name> - <scope>`, e.g. `M1 Arda - Ledger core,
-  CLI, and REST API`. Names come from Tolkien's legendarium (M1 is
-  Arda, the world itself — apt for the milestone everything else sits
-  on); pick one that fits the milestone's character rather than working
-  through a list in order. A name gives the milestone something to be
-  referred to in conversation, commits, and PR titles that isn't "the
-  current one", which stops meaning anything the moment it isn't.
+  CLI, and REST API`. Names come from **fantasy and sci-fi worlds and
+  planets** — Arda, Arrakis, Discworld, Solaris, Hyperion, Earthsea,
+  Trantor. Pick one that fits the milestone's character rather than
+  working through a list in order: M1 is Arda, the world itself, which
+  is what everything after it sits on. A name gives the milestone
+  something to be referred to in conversation, commits, and PR titles
+  that isn't "the current one", which stops meaning anything the moment
+  it isn't.
 
   Name it when the milestone is created, not before — naming M3 through
   M8 up front is the same speculative work as scoping them up front, and
