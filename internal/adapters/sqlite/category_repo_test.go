@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/anirudhgray/bodger/internal/domain"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
@@ -12,7 +14,7 @@ import (
 
 func mustCategory(t *testing.T, id, userID string, parentID *string, name string, kind ledger.CategoryKind) ledger.Category {
 	t.Helper()
-	c, err := ledger.NewCategory(id, userID, parentID, name, kind, false)
+	c, err := ledger.NewCategory(id, userID, parentID, name, kind, 0, nil)
 	if err != nil {
 		t.Fatalf("ledger.NewCategory: %v", err)
 	}
@@ -150,6 +152,43 @@ func TestCategoryRepository_Update_RejectsDeepCycle(t *testing.T) {
 	var e *errs.Error
 	if !errors.As(err, &e) || e.Code != errs.InvalidInput {
 		t.Errorf("Update creating a cycle: err = %v, want errs.InvalidInput", err)
+	}
+}
+
+// TestCategoryRepository_Update_ArchivedAtAndSortOrderRoundTrip covers the
+// two fields issue #22 added: sort_order is a plain int, and archived_at
+// round-trips through the nullable-date convention the rest of this
+// package uses for optional dates.
+func TestCategoryRepository_Update_ArchivedAtAndSortOrderRoundTrip(t *testing.T) {
+	db, _ := newTestDB(t)
+	repo := NewCategoryRepository(db)
+	ctx := context.Background()
+
+	food := mustCategory(t, "cat-food", ports.SeededUserID, nil, "Food", ledger.CategoryKindExpense)
+	if err := repo.Create(ctx, ports.SeededUserID, food); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	archivedOn, err := domain.NewDate(2026, time.March, 3)
+	if err != nil {
+		t.Fatalf("domain.NewDate: %v", err)
+	}
+	archived, err := ledger.NewCategory("cat-food", ports.SeededUserID, nil, "Food", ledger.CategoryKindExpense, 9, &archivedOn)
+	if err != nil {
+		t.Fatalf("NewCategory: %v", err)
+	}
+	if err := repo.Update(ctx, ports.SeededUserID, archived); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	got, err := repo.Get(ctx, ports.SeededUserID, "cat-food")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	gotArchivedAt, isArchived := got.ArchivedAt()
+	if got.SortOrder() != 9 || !isArchived || !gotArchivedAt.Equal(archivedOn) {
+		t.Errorf("Get after Update = sortOrder=%d archivedAt=%s/%v, want sortOrder=9 archivedAt=2026-03-03/true",
+			got.SortOrder(), gotArchivedAt, isArchived)
 	}
 }
 

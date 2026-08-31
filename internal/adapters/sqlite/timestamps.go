@@ -58,12 +58,3 @@ func nullableString(s string, ok bool) sql.NullString {
 	}
 	return sql.NullString{String: s, Valid: true}
 }
-
-// boolToInt converts a Go bool into the 0/1 SQLite stores for a CHECK
-// (... IN (0, 1)) boolean column.
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}

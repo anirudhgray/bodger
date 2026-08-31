@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
+	"github.com/anirudhgray/bodger/internal/domain"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
@@ -33,13 +34,14 @@ func (r *CategoryRepository) Create(ctx context.Context, actorID string, categor
 
 	now := formatTime(r.db.clock.Now())
 	parentID, hasParent := category.ParentID()
+	archivedAt, isArchived := category.ArchivedAt()
 
 	_, err := r.db.write.ExecContext(ctx, `
-		INSERT INTO categories (id, user_id, parent_id, name, kind, archived, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO categories (id, user_id, parent_id, name, kind, archived_at, sort_order, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		category.ID(), actorID, nullableString(parentID, hasParent), category.Name(), string(category.Kind()),
-		boolToInt(category.Archived()), now, now,
+		nullableDate(archivedAt, isArchived), category.SortOrder(), now, now,
 	)
 	if err != nil {
 		return wrapWriteError(err).Explain("Couldn't create category %q.", category.Name())
@@ -54,7 +56,7 @@ func (r *CategoryRepository) Get(ctx context.Context, actorID, id string) (ledge
 	}
 
 	row := r.db.read.QueryRowContext(ctx, `
-		SELECT id, user_id, parent_id, name, kind, archived
+		SELECT id, user_id, parent_id, name, kind, archived_at, sort_order
 		FROM categories
 		WHERE id = ? AND user_id = ?
 	`, id, actorID)
@@ -76,7 +78,7 @@ func (r *CategoryRepository) List(ctx context.Context, actorID string) ([]ledger
 	}
 
 	rows, err := r.db.read.QueryContext(ctx, `
-		SELECT id, user_id, parent_id, name, kind, archived
+		SELECT id, user_id, parent_id, name, kind, archived_at, sort_order
 		FROM categories
 		WHERE user_id = ?
 		ORDER BY name
@@ -111,14 +113,15 @@ func (r *CategoryRepository) Update(ctx context.Context, actorID string, categor
 
 	now := formatTime(r.db.clock.Now())
 	parentID, hasParent := category.ParentID()
+	archivedAt, isArchived := category.ArchivedAt()
 
 	result, err := r.db.write.ExecContext(ctx, `
 		UPDATE categories
-		SET parent_id = ?, name = ?, kind = ?, archived = ?, updated_at = ?
+		SET parent_id = ?, name = ?, kind = ?, archived_at = ?, sort_order = ?, updated_at = ?
 		WHERE id = ? AND user_id = ?
 	`,
 		nullableString(parentID, hasParent), category.Name(), string(category.Kind()),
-		boolToInt(category.Archived()), now,
+		nullableDate(archivedAt, isArchived), category.SortOrder(), now,
 		category.ID(), actorID,
 	)
 	if err != nil {
@@ -170,9 +173,10 @@ func scanCategory(row rowScanner) (ledger.Category, error) {
 	var (
 		id, userID, name, kind string
 		parentIDCol            sql.NullString
-		archived               int
+		archivedAtCol          sql.NullString
+		sortOrder              int
 	)
-	if err := row.Scan(&id, &userID, &parentIDCol, &name, &kind, &archived); err != nil {
+	if err := row.Scan(&id, &userID, &parentIDCol, &name, &kind, &archivedAtCol, &sortOrder); err != nil {
 		return ledger.Category{}, err
 	}
 
@@ -182,5 +186,14 @@ func scanCategory(row rowScanner) (ledger.Category, error) {
 		parentIDPtr = &v
 	}
 
-	return ledger.NewCategory(id, userID, parentIDPtr, name, ledger.CategoryKind(kind), archived != 0)
+	var archivedAtPtr *domain.Date
+	if archivedAtCol.Valid {
+		d, err := parseDate(archivedAtCol.String)
+		if err != nil {
+			return ledger.Category{}, err
+		}
+		archivedAtPtr = &d
+	}
+
+	return ledger.NewCategory(id, userID, parentIDPtr, name, ledger.CategoryKind(kind), sortOrder, archivedAtPtr)
 }

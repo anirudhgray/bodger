@@ -32,13 +32,17 @@ func (r *AccountRepository) Create(ctx context.Context, actorID string, account 
 
 	now := formatTime(r.db.clock.Now())
 	obDate, hasOBDate := account.OpeningBalanceDate()
+	institution, hasInstitution := account.Institution()
+	archivedAt, isArchived := account.ArchivedAt()
 
 	_, err := r.db.write.ExecContext(ctx, `
-		INSERT INTO accounts (id, user_id, name, kind, currency, opening_balance_minor, opening_balance_date, archived, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO accounts (id, user_id, name, kind, currency, institution, opening_balance_minor, opening_balance_date, archived_at, sort_order, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		account.ID(), actorID, account.Name(), string(account.Kind()), account.Currency(),
-		account.OpeningBalance().AmountMinor(), nullableDate(obDate, hasOBDate), boolToInt(account.Archived()),
+		nullableString(institution, hasInstitution),
+		account.OpeningBalance().AmountMinor(), nullableDate(obDate, hasOBDate),
+		nullableDate(archivedAt, isArchived), account.SortOrder(),
 		now, now,
 	)
 	if err != nil {
@@ -54,7 +58,7 @@ func (r *AccountRepository) Get(ctx context.Context, actorID, id string) (ledger
 	}
 
 	row := r.db.read.QueryRowContext(ctx, `
-		SELECT id, user_id, name, kind, currency, opening_balance_minor, opening_balance_date, archived
+		SELECT id, user_id, name, kind, currency, institution, opening_balance_minor, opening_balance_date, archived_at, sort_order
 		FROM accounts
 		WHERE id = ? AND user_id = ?
 	`, id, actorID)
@@ -76,7 +80,7 @@ func (r *AccountRepository) List(ctx context.Context, actorID string) ([]ledger.
 	}
 
 	rows, err := r.db.read.QueryContext(ctx, `
-		SELECT id, user_id, name, kind, currency, opening_balance_minor, opening_balance_date, archived
+		SELECT id, user_id, name, kind, currency, institution, opening_balance_minor, opening_balance_date, archived_at, sort_order
 		FROM accounts
 		WHERE user_id = ?
 		ORDER BY name
@@ -108,14 +112,17 @@ func (r *AccountRepository) Update(ctx context.Context, actorID string, account 
 
 	now := formatTime(r.db.clock.Now())
 	obDate, hasOBDate := account.OpeningBalanceDate()
+	institution, hasInstitution := account.Institution()
+	archivedAt, isArchived := account.ArchivedAt()
 
 	result, err := r.db.write.ExecContext(ctx, `
 		UPDATE accounts
-		SET name = ?, kind = ?, currency = ?, opening_balance_minor = ?, opening_balance_date = ?, archived = ?, updated_at = ?
+		SET name = ?, kind = ?, currency = ?, institution = ?, opening_balance_minor = ?, opening_balance_date = ?, archived_at = ?, sort_order = ?, updated_at = ?
 		WHERE id = ? AND user_id = ?
 	`,
-		account.Name(), string(account.Kind()), account.Currency(), account.OpeningBalance().AmountMinor(),
-		nullableDate(obDate, hasOBDate), boolToInt(account.Archived()), now,
+		account.Name(), string(account.Kind()), account.Currency(), nullableString(institution, hasInstitution),
+		account.OpeningBalance().AmountMinor(), nullableDate(obDate, hasOBDate),
+		nullableDate(archivedAt, isArchived), account.SortOrder(), now,
 		account.ID(), actorID,
 	)
 	if err != nil {
@@ -140,11 +147,13 @@ type rowScanner interface {
 func scanAccount(row rowScanner) (ledger.Account, error) {
 	var (
 		id, userID, name, kind, currency string
+		institutionCol                   sql.NullString
 		amountMinor                      int64
 		obDateCol                        sql.NullString
-		archived                         int
+		archivedAtCol                    sql.NullString
+		sortOrder                        int
 	)
-	if err := row.Scan(&id, &userID, &name, &kind, &currency, &amountMinor, &obDateCol, &archived); err != nil {
+	if err := row.Scan(&id, &userID, &name, &kind, &currency, &institutionCol, &amountMinor, &obDateCol, &archivedAtCol, &sortOrder); err != nil {
 		return ledger.Account{}, err
 	}
 
@@ -162,5 +171,20 @@ func scanAccount(row rowScanner) (ledger.Account, error) {
 		obDatePtr = &d
 	}
 
-	return ledger.NewAccount(id, userID, name, ledger.AccountKind(kind), m, obDatePtr, archived != 0)
+	var institutionPtr *string
+	if institutionCol.Valid {
+		v := institutionCol.String
+		institutionPtr = &v
+	}
+
+	var archivedAtPtr *domain.Date
+	if archivedAtCol.Valid {
+		d, err := parseDate(archivedAtCol.String)
+		if err != nil {
+			return ledger.Account{}, err
+		}
+		archivedAtPtr = &d
+	}
+
+	return ledger.NewAccount(id, userID, name, ledger.AccountKind(kind), m, obDatePtr, institutionPtr, sortOrder, archivedAtPtr)
 }
