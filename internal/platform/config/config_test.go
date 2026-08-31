@@ -36,26 +36,33 @@ func TestLoad_Precedence(t *testing.T) {
 		{
 			name: "currency override wins over instance default",
 			env:  map[string]string{EnvDefaultCurrency: "INR"},
-			want: Config{DefaultCurrency: "INR", UserTimezone: Defaults.UserTimezone},
+			want: Config{DefaultCurrency: "INR", UserTimezone: Defaults.UserTimezone, DBPath: Defaults.DBPath},
 		},
 		{
 			name: "timezone override wins over instance default",
 			env:  map[string]string{EnvUserTimezone: "Asia/Kolkata"},
-			want: Config{DefaultCurrency: Defaults.DefaultCurrency, UserTimezone: "Asia/Kolkata"},
+			want: Config{DefaultCurrency: Defaults.DefaultCurrency, UserTimezone: "Asia/Kolkata", DBPath: Defaults.DBPath},
 		},
 		{
-			name: "both overrides apply independently",
+			name: "db path override wins over instance default",
+			env:  map[string]string{EnvDBPath: "/var/lib/bodger/bodger.db"},
+			want: Config{DefaultCurrency: Defaults.DefaultCurrency, UserTimezone: Defaults.UserTimezone, DBPath: "/var/lib/bodger/bodger.db"},
+		},
+		{
+			name: "all overrides apply independently",
 			env: map[string]string{
 				EnvDefaultCurrency: "GBP",
 				EnvUserTimezone:    "Europe/London",
+				EnvDBPath:          "/data/bodger.db",
 			},
-			want: Config{DefaultCurrency: "GBP", UserTimezone: "Europe/London"},
+			want: Config{DefaultCurrency: "GBP", UserTimezone: "Europe/London", DBPath: "/data/bodger.db"},
 		},
 		{
 			name: "an empty override does not clobber the instance default",
 			env: map[string]string{
 				EnvDefaultCurrency: "",
 				EnvUserTimezone:    "",
+				EnvDBPath:          "",
 			},
 			want: Defaults,
 		},
@@ -98,12 +105,13 @@ func TestLoad_Precedence(t *testing.T) {
 func TestLoad_ReadsRealEnvironment(t *testing.T) {
 	t.Setenv(EnvDefaultCurrency, "JPY")
 	t.Setenv(EnvUserTimezone, "Asia/Tokyo")
+	t.Setenv(EnvDBPath, "/tmp/bodger-test.db")
 
 	got, err := Load()
 	if err != nil {
 		t.Fatalf("Load() unexpected error: %v", err)
 	}
-	want := Config{DefaultCurrency: "JPY", UserTimezone: "Asia/Tokyo"}
+	want := Config{DefaultCurrency: "JPY", UserTimezone: "Asia/Tokyo", DBPath: "/tmp/bodger-test.db"}
 	if got != want {
 		t.Errorf("Load() = %+v, want %+v", got, want)
 	}

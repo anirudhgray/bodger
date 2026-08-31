@@ -30,14 +30,21 @@ type Config struct {
 	// specifically so a bug that reads the host zone instead of this one
 	// fails immediately.
 	UserTimezone string
+	// DBPath is the filesystem path to bodger's SQLite database file,
+	// opened by internal/adapters/sqlite.Open. Relative paths resolve
+	// against the process's working directory.
+	DBPath string
 }
 
 // Defaults are the values bodger ships with when the operator sets no
 // override. They are deliberately neutral: UTC and USD assume nothing
-// about who is running the instance.
+// about who is running the instance. DBPath defaults to a file in the
+// working directory, which is enough for local and single-container use;
+// operators who want it elsewhere set EnvDBPath.
 var Defaults = Config{
 	DefaultCurrency: "USD",
 	UserTimezone:    "UTC",
+	DBPath:          "bodger.db",
 }
 
 const (
@@ -45,6 +52,8 @@ const (
 	EnvDefaultCurrency = "BODGER_DEFAULT_CURRENCY"
 	// EnvUserTimezone, when set, overrides Defaults.UserTimezone.
 	EnvUserTimezone = "BODGER_USER_TIMEZONE"
+	// EnvDBPath, when set, overrides Defaults.DBPath.
+	EnvDBPath = "BODGER_DB_PATH"
 )
 
 // currencyPattern is a structural check only — three uppercase ASCII
@@ -75,6 +84,9 @@ func load(lookup lookupFunc) (Config, error) {
 	}
 	if v, ok := lookup(EnvUserTimezone); ok && v != "" {
 		cfg.UserTimezone = v
+	}
+	if v, ok := lookup(EnvDBPath); ok && v != "" {
+		cfg.DBPath = v
 	}
 
 	if !currencyPattern.MatchString(cfg.DefaultCurrency) {
