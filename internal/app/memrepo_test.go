@@ -273,14 +273,6 @@ func (m *memTransactions) Update(_ context.Context, actorID string, txn ledger.T
 
 var _ ports.TransactionRepository = (*memTransactions)(nil)
 
-// getRaw fetches a transaction regardless of its deleted_at state, for
-// tests that need to assert a soft-deleted transaction is still present in
-// the store even though Get and List both refuse to return it.
-func (m *memTransactions) getRaw(id string) (ledger.Transaction, bool) {
-	rec, ok := m.byID[id]
-	return rec.txn, ok
-}
-
 func hasPostingOnAccount(txn ledger.Transaction, accountID string) bool {
 	for _, p := range txn.Postings() {
 		if p.AccountID() == accountID {

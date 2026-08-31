@@ -19,7 +19,7 @@ func attachField(err error, field string) error {
 	}
 	var e *errs.Error
 	if errors.As(err, &e) {
-		e.Field(field)
+		_ = e.Field(field)
 	}
 	return err
 }
