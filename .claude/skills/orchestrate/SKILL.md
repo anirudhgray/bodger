@@ -1,42 +1,45 @@
 ---
 name: orchestrate
-description: "[fill in] Sync <project>'s project state (architecture doc status, open GitHub issues, open PRs, recent git log) and pick up the next unit of milestone work -- named issue(s)/a focus area passed as args, or the next unblocked item if none given. Decides sequential vs parallel execution, spawns worktree-isolated agents for bounded self-contained work, integrates the result (merging main in before calling anything ready), knows when newly-discovered work should become its own GitHub issue versus just getting fixed inline, and reports back. Use at the start of a work session on this repo."
+description: "Sync bodger's project state (architecture doc status, open GitHub issues, open PRs, recent git log) and pick up the next unit of milestone work -- named issue(s)/a focus area passed as args, or the next unblocked item if none given. Decides sequential vs parallel execution, spawns worktree-isolated agents for bounded self-contained work, integrates the result (merging main in before calling anything ready), knows when newly-discovered work should become its own GitHub issue versus just getting fixed inline, and reports back. Use at the start of a work session on this repo."
 ---
 
 # Orchestrate
 
 <!--
-  TEMPLATE - this is a pattern, not a drop-in skill. Fill in every
-  [fill in] marker below once the repo has real structure (build
-  commands, a milestone/label scheme, known shared-file hotspots).
-  Writing these in correctly before any code exists isn't possible -
-  come back to this after the first few PRs have landed and the repo's
-  actual hotspots are visible.
+  Filled in during the M0 architecture phase, from docs/architecture.md
+  and the ADRs. The hotspot list in step 3 is the part most likely to go
+  stale: it was derived from the planned package layout before any code
+  existed, so revisit it once the first few M1 PRs have landed and the
+  repo's actual collision points are visible rather than predicted.
 -->
 
-This is [project]'s work-cycle playbook: how a session picks up where the
+This is bodger's work-cycle playbook: how a session picks up where the
 project left off, decides what to build and in what order, and how it hands
 work to agents versus doing it directly. It assumes CLAUDE.md's baseline
 conventions (feature branches, atomic conventional commits, no direct
-commits to main, [fill in: any other repo-wide commit/PR conventions]) -
-this doc doesn't repeat those, it's the layer on top: what to work on and
-how to sequence it.
+commits to main, conventional-commit PR titles since PRs are squash-merged,
+no Claude co-author trailer, and docs updated in the same PR as the code
+they describe) - this doc doesn't repeat those, it's the layer on top: what
+to work on and how to sequence it.
 
 ## 1. Sync state first
 
 Don't trust anything from a prior conversation's memory - the source of
 truth is external. Every orchestrate run starts here:
 
-- `[fill in: path to the architecture/status doc]` - whichever
+- `docs/architecture.md` - its Status section (§9), whichever
   milestone/status section is current (check the doc's own headings; don't
   assume it still says an earlier milestone name - the doc is kept current
   per-PR, so trust its actual current structure over any specific section
   name).
-- `[fill in: how milestones are tracked - native GitHub Milestones vs. a
-label scheme]` for the current milestone's issue counts. `gh issue list
---milestone "<title>"` for its actual issues, `gh label list` for the
-  rest of the label scheme - don't assume any specific set of labels still
-  exists by the time you read this. Read the bodies of candidate issues,
+- **Native GitHub Milestones**, titled `M1 - Ledger core, CLI, and REST
+  API`, `M2 - Web UI and authentication`, and so on, matching
+  `docs/architecture.md` §8. `gh api repos/anirudhgray/bodger/milestones`
+  for the current milestone's issue counts, `gh issue list --milestone
+  "<title>"` for its actual issues, and `gh label list` for the rest of the
+  label scheme (`area:*` for the layer a slice touches, plus `deferred` and
+  `blocked`) - don't assume any specific set of labels still exists by the
+  time you read this. Read the bodies of candidate issues,
   not just titles - they should cite the docs/ADRs that frame the work and
   often note dependencies on other issues. If the current milestone's open
   issue count is zero, that's a milestone-transition moment - flag it
@@ -66,11 +69,21 @@ label scheme]` for the current milestone's issue counts. `gh issue list
 
 Two or more candidate items can run in parallel (separate worktree-isolated
 agents, launched in one message) only if they're independent in scope AND
-low-risk on shared files. `[fill in]` the known shared-file hotspots in
-this repo, touched by nearly every feature slice - common patterns to look
-for: a central service/DI constructor that grows a parameter per feature, a
-central command/route registry, a migrations directory where parallel work
-can collide on the same sequence number.
+low-risk on shared files. bodger's known hotspots, touched by nearly every
+feature slice:
+
+| Hotspot | Why it collides |
+| --- | --- |
+| `internal/app/service.go` | The service container. Grows a field and a constructor parameter per feature - two parallel slices both add one, in the same place |
+| `internal/adapters/sqlite/migrations/` | Sequential numeric prefixes (ADR-0007), deliberately - two branches both claim `00007_`. A visible collision, but a guaranteed one |
+| `internal/surface/http/router.go` | Central route registry |
+| `internal/surface/cli/root.go` | Central cobra command registry |
+| `internal/surface/mcp/tools.go` | Central MCP tool registry |
+| `internal/surface/conformance/cases_test.go` | The one conformance table (ADR-0005). **Every** user-facing operation adds a row here, so almost every feature slice touches it |
+| `internal/domain/ledger/` | Core types. Two slices extending `Transaction` or `Posting` collide |
+| `docs/architecture.md` §9 Status | Every milestone-item PR edits it, per step 7 |
+| `go.mod` / `go.sum` | Any slice adding a dependency |
+| `web/src/lib/api.ts`, `web/src/routes.tsx` | Generated API client and route registry (M2+) |
 
 Two items that will both touch these files aren't independently mergeable
 even if their actual feature logic doesn't overlap - expect to merge one,
@@ -78,6 +91,11 @@ then either rebase the other on top or merge both into one integration
 branch and resolve the conflict by hand once. Items that don't touch these
 files (e.g. a self-contained package, or docs-only work) are safe to fully
 parallelize.
+
+The conformance table and the service container together mean **most M1
+slices are not cleanly parallel**. Work that genuinely is: a new import
+parser (ADR-0008), an FX provider adapter, docs-only changes, and anything
+inside a single leaf package that registers nothing centrally.
 
 When in doubt, sequential is always safe; parallel is an optimization when
 the independence is clear.
@@ -101,10 +119,10 @@ Every agent prompt (fork or fresh) should include:
 
 - Exact scope: what's in, what's already being handled elsewhere (name
   the other in-flight issues/branches so it doesn't duplicate work).
-- Run `[fill in: this project's build/vet/fmt/test command(s)]` clean
-  before finishing.
-- Commit atomically, conventional commits, [fill in: no co-author trailer
-  if that's the project's convention].
+- Run `make check` (fmt-check, vet, lint, test) and `make build` clean
+  before finishing - the same two commands CI runs, and the only ones.
+- Commit atomically, conventional commits, **no Claude co-author trailer**
+  and no session link in PR bodies.
 - Don't push or open a PR unless told to - the orchestrator handles
   integration once it's seen the result (this is what catches
   cross-agent conflicts before they hit GitHub).
