@@ -250,6 +250,14 @@ Delivered so far in M1:
 - `internal/domain/ledger` — `Account`, `Category`, `Tag`, `Transaction`,
   and `Posting`, with the invariants from data-model.md §14 and a pure
   `Balance` function (issue #2).
+- `internal/ports` — `AccountRepository`, `CategoryRepository`,
+  `TransactionRepository`, and `TagRepository` interfaces, and
+  `internal/adapters/sqlite` — their `modernc.org/sqlite` implementation:
+  the ADR-0007 pragmas, a single-connection write pool and a pooled read
+  pool, goose migrations embedded via `embed.FS` with a tested
+  `-- +goose Down` and pre-migration `VACUUM INTO` backup, and the single
+  M1 user seeded with a fixed UUID (ADR-0006) by the first migration
+  (issue #3).
 
 Not yet built: everything else in §2.
 
