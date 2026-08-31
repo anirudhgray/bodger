@@ -247,6 +247,9 @@ Delivered so far in M1:
   `internal/platform/idgen`, `internal/platform/logging`,
   `internal/platform/errs` — injected clock, layered config, ID
   generation, structured logging, shared error registry (issue #4).
+- `internal/domain/ledger` — `Account`, `Category`, `Tag`, `Transaction`,
+  and `Posting`, with the invariants from data-model.md §14 and a pure
+  `Balance` function (issue #2).
 
 Not yet built: everything else in §2.
 
