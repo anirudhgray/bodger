@@ -93,6 +93,20 @@ branch and resolve the conflict by hand once. Items that don't touch these
 files (e.g. a self-contained package, or docs-only work) are safe to fully
 parallelize.
 
+**For a purely-additive hotspot - a bootstrap file both branches need for
+the same mechanical reason, or a status/doc section both need to record
+progress in - pre-reconcile instead of deferring.** Draft the combined
+edit once (the version that's true once both land) and apply it
+byte-identical to every parallel branch before any of them merges. Merge
+order then produces a no-op diff on whichever branch merges second - no
+conflict, and no follow-up PR. This is different from a semantic
+collision (two branches genuinely changing the same logic), which does
+need the rebase-and-resolve treatment above; it applies specifically when
+the two edits would converge on the same content anyway. Deferring
+`docs/architecture.md` §9 to a follow-up PR after the fact violates
+CLAUDE.md's "same PR, not a later docs pass" rule and leaves the doc
+briefly wrong after the first branch merges - pre-reconciling doesn't.
+
 The conformance table and the service container together mean **most M1
 slices are not cleanly parallel**. Work that genuinely is: a new import
 parser (ADR-0008), an FX provider adapter, docs-only changes, and anything
