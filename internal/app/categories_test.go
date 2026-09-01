@@ -199,3 +199,29 @@ func TestCategoryUseCases_CrossActorRefIsInvisible(t *testing.T) {
 	_, err = svc.RenameCategory(ctx, app.RenameCategoryCommand{ActorID: "someone-else", CategoryRef: food.Category.ID(), Name: "Stolen"})
 	wantErrCode(t, err, errs.NotFound)
 }
+
+func TestGetCategory(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	created, err := svc.CreateCategory(ctx, app.CreateCategoryCommand{ActorID: testActorID, Name: "Food", Kind: "expense"})
+	if err != nil {
+		t.Fatalf("CreateCategory: %v", err)
+	}
+
+	byID, err := svc.GetCategory(ctx, app.GetCategoryQuery{ActorID: testActorID, CategoryRef: created.Category.ID()})
+	if err != nil {
+		t.Fatalf("GetCategory by ID: %v", err)
+	}
+	if byID.Category.ID() != created.Category.ID() {
+		t.Errorf("GetCategory by ID = %+v, want %+v", byID.Category, created.Category)
+	}
+}
+
+func TestGetCategory_UnknownRef(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	_, err := svc.GetCategory(ctx, app.GetCategoryQuery{ActorID: testActorID, CategoryRef: "nonexistent"})
+	wantErrCode(t, err, errs.NotFound)
+}

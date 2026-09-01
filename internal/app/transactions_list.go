@@ -6,6 +6,7 @@ import (
 
 	"github.com/anirudhgray/bodger/internal/app/normalize"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
+	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
 )
 
@@ -23,6 +24,32 @@ const (
 	// the correct way to get "everything".
 	maxTransactionListLimit = 200
 )
+
+// GetTransactionQuery fetches a single transaction (with its tags) by ID,
+// scoped to the actor (ADR-0006). EditTransaction and DeleteTransaction
+// already call TransactionRepository.Get directly for their own purposes;
+// this is the same lookup exposed as its own use case, for the REST API's
+// GET /api/v1/transactions/{id} (issue #8).
+type GetTransactionQuery struct {
+	ActorID        string
+	TransactionRef string
+}
+
+// GetTransaction implements the "fetch one" use case
+// GET /api/v1/transactions/{id} needs.
+func (s *Service) GetTransaction(ctx context.Context, q GetTransactionQuery) (TransactionResult, error) {
+	if err := requireActorID(q.ActorID); err != nil {
+		return TransactionResult{}, err
+	}
+	if strings.TrimSpace(q.TransactionRef) == "" {
+		return TransactionResult{}, errs.New(errs.InvalidInput).Explain("A transaction ID is required.").Field("transaction_ref")
+	}
+	txn, tags, err := s.Transactions.Get(ctx, q.ActorID, q.TransactionRef)
+	if err != nil {
+		return TransactionResult{}, err
+	}
+	return TransactionResult{Transaction: txn, Tags: tags}, nil
+}
 
 // ListTransactionsQuery is issue #6's reduced M1 filter: a date range,
 // account, category (subtree included by default — ADR-0009, not
