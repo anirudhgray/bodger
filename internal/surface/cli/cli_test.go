@@ -672,6 +672,99 @@ func TestTransactions_DeleteDropsItFromListsAndBalances(t *testing.T) {
 	wantErrCode(t, err, errs.NotFound)
 }
 
+// categoryTreeNode mirrors `categories tree`'s JSON shape: a category's
+// own fields inlined, with its children nested underneath.
+type categoryTreeNode struct {
+	ID       string             `json:"id"`
+	Name     string             `json:"name"`
+	Type     string             `json:"type"`
+	ParentID string             `json:"parent_id"`
+	Children []categoryTreeNode `json:"children"`
+}
+
+// categoryTree runs `categories tree --json` and decodes it into a fresh
+// value every time — decoding repeatedly into one variable would let a
+// field the next response omits (parent_id, once a category is back at the
+// top level) survive from the previous one.
+func categoryTree(t *testing.T, factory clisurface.ServiceFactory) []categoryTreeNode {
+	t.Helper()
+	var roots []categoryTreeNode
+	decodeData(t, mustRun(t, factory, "categories", "tree", "--json"), &roots)
+	return roots
+}
+
+func reparentCategory(t *testing.T, factory clisurface.ServiceFactory, args ...string) categoryTreeNode {
+	t.Helper()
+	var got categoryTreeNode
+	decodeData(t, mustRun(t, factory, append([]string{"categories", "reparent"}, args...)...), &got)
+	return got
+}
+
+func TestCategories_ReparentAndTree(t *testing.T) {
+	factory := newTestFactory(t, mustFrozen(t))
+	mustRun(t, factory, "categories", "add", "food", "--type", "expense")
+	mustRun(t, factory, "categories", "add", "groceries", "--type", "expense")
+	mustRun(t, factory, "categories", "add", "dining", "--type", "expense", "--parent", "food")
+
+	// Two top-level categories to start with, one of which already has a
+	// child from --parent at creation time.
+	roots := categoryTree(t, factory)
+	if len(roots) != 2 {
+		t.Fatalf("tree roots = %+v, want food and groceries", roots)
+	}
+
+	reparented := reparentCategory(t, factory, "groceries", "--parent", "food", "--json")
+	if reparented.Name != "groceries" || reparented.ParentID == "" {
+		t.Fatalf("reparented = %+v, want groceries under a parent", reparented)
+	}
+
+	roots = categoryTree(t, factory)
+	if len(roots) != 1 || roots[0].Name != "food" {
+		t.Fatalf("tree roots = %+v, want food alone at the top", roots)
+	}
+	if len(roots[0].Children) != 2 {
+		t.Fatalf("food's children = %+v, want dining and groceries", roots[0].Children)
+	}
+	if roots[0].Children[0].ParentID != roots[0].ID {
+		t.Errorf("child parent_id = %q, want %q", roots[0].Children[0].ParentID, roots[0].ID)
+	}
+
+	// The plain-text tree indents each level under the one above.
+	text := mustRun(t, factory, "categories", "tree")
+	if !strings.Contains(text, "food (expense)\n  ") {
+		t.Errorf("tree output = %q, want children indented under their parent", text)
+	}
+
+	// Omitting --parent moves a category back to the top level.
+	backAtTop := reparentCategory(t, factory, "groceries", "--json")
+	if backAtTop.ParentID != "" {
+		t.Errorf("parent_id = %q, want it cleared by a reparent with no --parent", backAtTop.ParentID)
+	}
+	if roots := categoryTree(t, factory); len(roots) != 2 {
+		t.Errorf("tree roots = %+v, want groceries back at the top", roots)
+	}
+}
+
+func TestCategories_ReparentRejectsACycle(t *testing.T) {
+	factory := newTestFactory(t, mustFrozen(t))
+	mustRun(t, factory, "categories", "add", "food", "--type", "expense")
+	mustRun(t, factory, "categories", "add", "dining", "--type", "expense", "--parent", "food")
+
+	_, _, err := run(t, factory, "categories", "reparent", "food", "--parent", "dining")
+	if err == nil {
+		t.Fatal("want an error for a cycle, got nil")
+	}
+	wantErrCode(t, err, errs.InvalidInput)
+}
+
+func TestCategories_TreeEmptyState(t *testing.T) {
+	factory := newTestFactory(t, mustFrozen(t))
+	stdout := mustRun(t, factory, "categories", "tree")
+	if !strings.Contains(stdout, "No categories yet") {
+		t.Errorf("stdout = %q, want a friendly empty-state message", stdout)
+	}
+}
+
 func TestBalance_EmptyInstance(t *testing.T) {
 	factory := newTestFactory(t, mustFrozen(t))
 	stdout := mustRun(t, factory, "balance")
