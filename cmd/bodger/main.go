@@ -3,11 +3,10 @@
 //
 // This file is the root command skeleton (issue #5): it loads config,
 // opens the database, applies migrations, and builds the application
-// layer's Service container, but registers no subcommands. Issues #7 and
-// #8 add the CLI verbs and `serve` respectively, in parallel, both
-// attaching to newRootCmd's tree rather than each creating their own root
-// — that's why this file exists now rather than being built by either of
-// them.
+// layer's Service container. internal/surface/cli (issue #7) attaches the
+// account, category, transaction, and balance commands to newRootCmd's
+// tree via Register; issue #8 will attach `serve` the same way — both add
+// to this tree rather than creating their own root.
 package main
 
 import (
@@ -22,26 +21,36 @@ import (
 	"github.com/anirudhgray/bodger/internal/platform/clock"
 	"github.com/anirudhgray/bodger/internal/platform/config"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
+	clisurface "github.com/anirudhgray/bodger/internal/surface/cli"
 )
 
 func main() {
-	if err := newRootCmd().Execute(); err != nil {
-		os.Exit(1)
+	root := newRootCmd()
+	if err := root.Execute(); err != nil {
+		jsonMode, _ := root.Flags().GetBool("json")
+		os.Exit(clisurface.RenderError(os.Stderr, err, jsonMode))
 	}
 }
 
-// newRootCmd builds bodger's root cobra command. It has no subcommands
-// yet: running it bootstraps the application (config, database,
-// migrations, service container) and reports readiness, which is exactly
-// issue #5's "done when" requirement that `go run ./cmd/bodger` starts,
-// migrates a fresh database, builds the service container, and exits
-// cleanly.
+// newRootCmd builds bodger's root cobra command and attaches every CLI
+// subcommand issue #7 built (internal/surface/cli.Register). Running the
+// binary with no subcommand still bootstraps the application (config,
+// database, migrations, service container) and reports readiness, which
+// is issue #5's original "done when" requirement — kept as-is so it
+// continues to prove the container wires together end to end even now
+// that real subcommands exist.
+//
+// SilenceErrors is true so this package controls error rendering itself
+// (main, above): an error returned by Execute is rendered through
+// internal/surface/cli.RenderError, which knows how to print an
+// *errs.Error's safe message and exit code rather than cobra's own
+// generic "Error: ..." formatting.
 func newRootCmd() *cobra.Command {
-	return &cobra.Command{
+	root := &cobra.Command{
 		Use:           "bodger",
 		Short:         "bodger is a personal finance ledger.",
 		SilenceUsage:  true,
-		SilenceErrors: false,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			svc, closeDB, err := bootstrap(cmd.Context())
 			if err != nil {
@@ -53,15 +62,14 @@ func newRootCmd() *cobra.Command {
 				}
 			}()
 
-			// No subcommands are registered yet (issues #7 and #8 add
-			// them); svc exists to prove the container wires together
-			// end to end, and will be handed to those subcommands once
-			// they land.
 			_ = svc
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), "bodger: ready — no subcommands registered yet")
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), "bodger: ready — run `bodger --help` to see what you can do")
 			return err
 		},
 	}
+
+	clisurface.Register(root, bootstrap)
+	return root
 }
 
 // bootstrap performs the sequence every future subcommand needs before it
