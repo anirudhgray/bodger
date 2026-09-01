@@ -160,6 +160,7 @@ Conventions that live only in a document decay. These are checked by `make check
 - **Layer boundaries** — an import-graph check fails the build if `domain` imports anything project-local, if a surface imports `domain` or an adapter, or if an adapter imports `app`.
 - **No wall clock outside the clock** — `time.Now()` anywhere but `internal/platform/clock` fails the build. Time is injected, which also makes date-boundary tests deterministic.
 - **No environment reads outside config** — `os.Getenv` outside `internal/platform/config` fails the build.
+- **No unclassified errors out of the app layer** — a `fmt.Errorf` or `errors.New` in `internal/app` that isn't wrapped as an `*errs.Error`'s cause fails the build, so every failure a surface receives arrives with a code ([ADR-0011](decisions/0011-error-model.md)). `internal/domain` and the adapters are unaffected: their errors are meant to be plain, or to *become* that cause.
 - **Surface conformance suite** — one table of raw inputs driven through the CLI, the REST API, and MCP, asserting all three produce identical normalised command structs. This is the test that catches normalise-once erosion, and it is why the API is in milestone 1 alongside the CLI rather than after it.
 - **`TZ=UTC` in CI** — so a test that accidentally depends on the host timezone fails on the machine that matters.
 
@@ -299,6 +300,13 @@ Delivered so far in M1:
   `HTTPBindAddr` (default `127.0.0.1:8080`) and refuses to load a
   configuration that binds anywhere but loopback, since there is no
   authentication yet (issue #8, ADR-0006).
+
+- `internal/lint` — the mechanical guard ADR-0011 names but didn't have:
+  a parse of `internal/app` that fails `make check` on any `fmt.Errorf` or
+  `errors.New` not nested inside a `Wrap(...)` call, so no error can reach
+  a surface without a code. `NewService`'s nil-dependency checks, the one
+  existing violation, now return `errs.Internal` with the dependency name
+  in the logged cause (issue #12).
 
 Not yet built: everything else in §2.
 
