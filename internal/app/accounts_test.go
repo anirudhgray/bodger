@@ -285,3 +285,50 @@ func TestAccountUseCases_RequireActorID(t *testing.T) {
 	_, err = svc.ListAccounts(ctx, app.ListAccountsQuery{})
 	wantErrCode(t, err, errs.InvalidInput)
 }
+
+func TestGetAccount(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	created, err := svc.CreateAccount(ctx, app.CreateAccountCommand{ActorID: testActorID, Name: "HDFC Savings", Kind: "bank", Currency: "INR"})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+
+	byID, err := svc.GetAccount(ctx, app.GetAccountQuery{ActorID: testActorID, AccountRef: created.Account.ID()})
+	if err != nil {
+		t.Fatalf("GetAccount by ID: %v", err)
+	}
+	if byID.Account.ID() != created.Account.ID() {
+		t.Errorf("GetAccount by ID = %+v, want %+v", byID.Account, created.Account)
+	}
+
+	byName, err := svc.GetAccount(ctx, app.GetAccountQuery{ActorID: testActorID, AccountRef: "HDFC Savings"})
+	if err != nil {
+		t.Fatalf("GetAccount by name: %v", err)
+	}
+	if byName.Account.ID() != created.Account.ID() {
+		t.Errorf("GetAccount by name = %+v, want %+v", byName.Account, created.Account)
+	}
+}
+
+func TestGetAccount_UnknownRef(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	_, err := svc.GetAccount(ctx, app.GetAccountQuery{ActorID: testActorID, AccountRef: "nonexistent"})
+	wantErrCode(t, err, errs.NotFound)
+}
+
+func TestGetAccount_CrossActorRefIsInvisible(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	created, err := svc.CreateAccount(ctx, app.CreateAccountCommand{ActorID: "someone-else", Name: "Not Mine", Kind: "bank", Currency: "USD"})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+
+	_, err = svc.GetAccount(ctx, app.GetAccountQuery{ActorID: testActorID, AccountRef: created.Account.ID()})
+	wantErrCode(t, err, errs.NotFound)
+}

@@ -36,17 +36,22 @@ func TestLoad_Precedence(t *testing.T) {
 		{
 			name: "currency override wins over instance default",
 			env:  map[string]string{EnvDefaultCurrency: "INR"},
-			want: Config{DefaultCurrency: "INR", UserTimezone: Defaults.UserTimezone, DBPath: Defaults.DBPath},
+			want: Config{DefaultCurrency: "INR", UserTimezone: Defaults.UserTimezone, DBPath: Defaults.DBPath, HTTPBindAddr: Defaults.HTTPBindAddr},
 		},
 		{
 			name: "timezone override wins over instance default",
 			env:  map[string]string{EnvUserTimezone: "Asia/Kolkata"},
-			want: Config{DefaultCurrency: Defaults.DefaultCurrency, UserTimezone: "Asia/Kolkata", DBPath: Defaults.DBPath},
+			want: Config{DefaultCurrency: Defaults.DefaultCurrency, UserTimezone: "Asia/Kolkata", DBPath: Defaults.DBPath, HTTPBindAddr: Defaults.HTTPBindAddr},
 		},
 		{
 			name: "db path override wins over instance default",
 			env:  map[string]string{EnvDBPath: "/var/lib/bodger/bodger.db"},
-			want: Config{DefaultCurrency: Defaults.DefaultCurrency, UserTimezone: Defaults.UserTimezone, DBPath: "/var/lib/bodger/bodger.db"},
+			want: Config{DefaultCurrency: Defaults.DefaultCurrency, UserTimezone: Defaults.UserTimezone, DBPath: "/var/lib/bodger/bodger.db", HTTPBindAddr: Defaults.HTTPBindAddr},
+		},
+		{
+			name: "http bind addr override wins over instance default",
+			env:  map[string]string{EnvHTTPBindAddr: "127.0.0.1:9090"},
+			want: Config{DefaultCurrency: Defaults.DefaultCurrency, UserTimezone: Defaults.UserTimezone, DBPath: Defaults.DBPath, HTTPBindAddr: "127.0.0.1:9090"},
 		},
 		{
 			name: "all overrides apply independently",
@@ -54,8 +59,9 @@ func TestLoad_Precedence(t *testing.T) {
 				EnvDefaultCurrency: "GBP",
 				EnvUserTimezone:    "Europe/London",
 				EnvDBPath:          "/data/bodger.db",
+				EnvHTTPBindAddr:    "127.0.0.1:9091",
 			},
-			want: Config{DefaultCurrency: "GBP", UserTimezone: "Europe/London", DBPath: "/data/bodger.db"},
+			want: Config{DefaultCurrency: "GBP", UserTimezone: "Europe/London", DBPath: "/data/bodger.db", HTTPBindAddr: "127.0.0.1:9091"},
 		},
 		{
 			name: "an empty override does not clobber the instance default",
@@ -63,6 +69,7 @@ func TestLoad_Precedence(t *testing.T) {
 				EnvDefaultCurrency: "",
 				EnvUserTimezone:    "",
 				EnvDBPath:          "",
+				EnvHTTPBindAddr:    "",
 			},
 			want: Defaults,
 		},
@@ -75,6 +82,36 @@ func TestLoad_Precedence(t *testing.T) {
 			name:    "unknown IANA timezone override is rejected",
 			env:     map[string]string{EnvUserTimezone: "Nowhere/Imaginary"},
 			wantErr: "not a known IANA time zone",
+		},
+		{
+			name:    "http bind addr with no port is rejected",
+			env:     map[string]string{EnvHTTPBindAddr: "127.0.0.1"},
+			wantErr: "not a valid host:port address",
+		},
+		{
+			name:    "non-loopback http bind addr is refused without authentication",
+			env:     map[string]string{EnvHTTPBindAddr: "0.0.0.0:8080"},
+			wantErr: "binds a non-loopback address",
+		},
+		{
+			name:    "binding every interface via an empty host is refused",
+			env:     map[string]string{EnvHTTPBindAddr: ":8080"},
+			wantErr: "binds a non-loopback address",
+		},
+		{
+			name:    "a routable IP bind is refused",
+			env:     map[string]string{EnvHTTPBindAddr: "192.168.1.5:8080"},
+			wantErr: "binds a non-loopback address",
+		},
+		{
+			name: "localhost is accepted as loopback",
+			env:  map[string]string{EnvHTTPBindAddr: "localhost:8080"},
+			want: Config{DefaultCurrency: Defaults.DefaultCurrency, UserTimezone: Defaults.UserTimezone, DBPath: Defaults.DBPath, HTTPBindAddr: "localhost:8080"},
+		},
+		{
+			name: "the IPv6 loopback address is accepted",
+			env:  map[string]string{EnvHTTPBindAddr: "[::1]:8080"},
+			want: Config{DefaultCurrency: Defaults.DefaultCurrency, UserTimezone: Defaults.UserTimezone, DBPath: Defaults.DBPath, HTTPBindAddr: "[::1]:8080"},
 		},
 	}
 
@@ -106,12 +143,13 @@ func TestLoad_ReadsRealEnvironment(t *testing.T) {
 	t.Setenv(EnvDefaultCurrency, "JPY")
 	t.Setenv(EnvUserTimezone, "Asia/Tokyo")
 	t.Setenv(EnvDBPath, "/tmp/bodger-test.db")
+	t.Setenv(EnvHTTPBindAddr, "127.0.0.1:9092")
 
 	got, err := Load()
 	if err != nil {
 		t.Fatalf("Load() unexpected error: %v", err)
 	}
-	want := Config{DefaultCurrency: "JPY", UserTimezone: "Asia/Tokyo", DBPath: "/tmp/bodger-test.db"}
+	want := Config{DefaultCurrency: "JPY", UserTimezone: "Asia/Tokyo", DBPath: "/tmp/bodger-test.db", HTTPBindAddr: "127.0.0.1:9092"}
 	if got != want {
 		t.Errorf("Load() = %+v, want %+v", got, want)
 	}

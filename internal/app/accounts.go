@@ -239,6 +239,30 @@ func (s *Service) ArchiveAccount(ctx context.Context, cmd ArchiveAccountCommand)
 	return AccountResult{Account: updated}, nil
 }
 
+// GetAccountQuery fetches a single account by ref (a UUID, or a unique
+// name — normalize.Ref's usual resolution), scoped to the actor the same
+// way every other account use case is (ADR-0006).
+type GetAccountQuery struct {
+	ActorID    string
+	AccountRef string
+}
+
+// GetAccount implements the "fetch one" use case the REST API's
+// GET /api/v1/accounts/{id} needs (issue #8) — the CLI and MCP surfaces
+// have had no occasion to ask for a single account by ref yet, since
+// ListAccounts already serves picker and --json needs, but a REST
+// resource URL is exactly that ask.
+func (s *Service) GetAccount(ctx context.Context, q GetAccountQuery) (AccountResult, error) {
+	if err := requireActorID(q.ActorID); err != nil {
+		return AccountResult{}, err
+	}
+	account, err := s.resolveOwnedAccount(ctx, q.ActorID, q.AccountRef)
+	if err != nil {
+		return AccountResult{}, attachField(err, "account_ref")
+	}
+	return AccountResult{Account: account}, nil
+}
+
 // ListAccountsQuery lists every account actorID owns.
 type ListAccountsQuery struct {
 	ActorID string

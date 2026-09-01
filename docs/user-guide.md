@@ -2,7 +2,7 @@
 
 This is the guide for actually using `bodger` — not for building it (that's [`contributing.md`](contributing.md)) and not for how it's put together inside (that's [`architecture.md`](architecture.md)).
 
-Right now that means the command line. There's no web version yet and no hosted server — you run one binary on your own machine, and it keeps your data in a single file next to it. A REST API is coming (tracked as its own piece of work) but isn't in this guide yet; a web UI, multi-currency support, budgets, and an AI-agent interface come in later milestones — see [Status](architecture.md#9-status) if you want the full roadmap.
+Right now that means the command line and, if you want it, a REST API served from the same binary. There's no web version yet — you run one binary on your own machine, and it keeps your data in a single file next to it. A web UI, multi-currency support, budgets, and an AI-agent interface come in later milestones — see [Status](architecture.md#9-status) if you want the full roadmap.
 
 ---
 
@@ -31,6 +31,7 @@ A few things you can set before you start, if the defaults don't suit you — no
 | `BODGER_DB_PATH` | Where the database file lives | `bodger.db` in the current directory |
 | `BODGER_DEFAULT_CURRENCY` | The currency used when nothing more specific applies | `USD` |
 | `BODGER_USER_TIMEZONE` | The timezone "today" and your dates are resolved in | `UTC` |
+| `BODGER_HTTP_BIND_ADDR` | Where `bodger serve` (see below) listens | `127.0.0.1:8080` |
 
 For example, if you're in India and want dates and "today" resolved correctly:
 
@@ -157,6 +158,29 @@ An error comes back the same shape either way — as plain text normally, or as 
 
 ---
 
+## Running the REST API
+
+`bodger serve` starts a REST API server backed by the same database and the same application logic as the command line — nothing about how a transaction is recorded or validated differs between the two.
+
+```sh
+bodger serve
+bodger: listening on 127.0.0.1:8080
+```
+
+It binds `127.0.0.1` (loopback) by default, and there's no login yet, so it refuses to start bound to anything else — set `BODGER_HTTP_BIND_ADDR` if you need a different loopback address or port, but it will still refuse a non-loopback one until authentication exists. If you want it reachable from another machine in the meantime, put it behind something that handles authentication itself (a reverse proxy, a VPN) rather than exposing it directly.
+
+Every resource the CLI can touch has an equivalent under `/api/v1`: accounts, categories, transactions, transfers, and balances, plus `/healthz` to check the server is up. A request with no `date` field books to today the same way `spend`/`receive`/`move` do — resolved on the server, in your configured timezone, never by the client. Amounts are always sent and returned as plain decimal strings with a separate currency field, never as numbers.
+
+```sh
+curl http://127.0.0.1:8080/api/v1/accounts
+curl -X POST http://127.0.0.1:8080/api/v1/transactions \
+  -d '{"type":"outflow","account":"HDFC Savings","category":"groceries","amount":"800","description":"Groceries"}'
+```
+
+The full set of routes, request and response shapes, and error codes is described in the project's OpenAPI document (`internal/surface/http/openapi.json`) — point any OpenAPI-aware tool at that file for a browsable reference.
+
+---
+
 ## Command reference
 
 All commands default to plain-text output; add `--json` to any of them for machine-readable output instead.
@@ -175,6 +199,7 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | `bodger categories add <name> --type <type> [--parent] [--sort-order]` | Add a category |
 | `bodger categories rename <category> <new-name>` | Rename a category |
 | `bodger categories archive <category>` | Archive a category |
+| `bodger serve` | Start the REST API server |
 
 `<account>` and `<category>` accept either the name you gave it (case-insensitive) or its ID. If a name matches more than one of your accounts or categories, `bodger` lists the candidates instead of guessing.
 
@@ -189,4 +214,4 @@ Editing or deleting a transaction after you've recorded it isn't wired up as a c
 - **What does it store, and what do the words mean?** → [`data-model.md`](data-model.md)
 - **How do I build it?** → [`contributing.md`](contributing.md)
 
-The REST API reference, the web UI, multi-currency, reports, budgets, and the MCP server all land here in the same PR that ships them, per [`contributing.md`](contributing.md) — not in a catch-up pass afterwards.
+The web UI, multi-currency, reports, budgets, and the MCP server all land here in the same PR that ships them, per [`contributing.md`](contributing.md) — not in a catch-up pass afterwards.

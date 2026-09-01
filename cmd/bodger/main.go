@@ -5,8 +5,9 @@
 // opens the database, applies migrations, and builds the application
 // layer's Service container. internal/surface/cli (issue #7) attaches the
 // account, category, transaction, and balance commands to newRootCmd's
-// tree via Register; issue #8 will attach `serve` the same way — both add
-// to this tree rather than creating their own root.
+// tree via Register, and internal/surface/http (issue #8) attaches
+// `serve` the same way — both add to this tree rather than creating
+// their own root.
 package main
 
 import (
@@ -22,6 +23,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/platform/config"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
 	clisurface "github.com/anirudhgray/bodger/internal/surface/cli"
+	httpsurface "github.com/anirudhgray/bodger/internal/surface/http"
 )
 
 func main() {
@@ -69,6 +71,7 @@ func newRootCmd() *cobra.Command {
 	}
 
 	clisurface.Register(root, bootstrap)
+	httpsurface.Register(root, bootstrap)
 	return root
 }
 

@@ -1,0 +1,521 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "bodger REST API",
+    "version": "1.0.0",
+    "description": "bodger's read/write REST API. This is the web UI's only interface (milestone 2 generates its TypeScript client from this description) and is available to external clients and integrations. There is no authentication yet: the server binds a loopback address only, and refuses to start otherwise. Monetary values are always JSON strings, never numbers."
+  },
+  "servers": [{ "url": "/" }],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "summary": "Report that the server is running.",
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "description": "The server is up.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthzEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/accounts": {
+      "get": {
+        "summary": "List every account.",
+        "operationId": "listAccounts",
+        "responses": {
+          "200": {
+            "description": "Every account, in name order.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountListEnvelope" } } }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create an account.",
+        "operationId": "createAccount",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateAccountRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "The created account.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountEnvelope" } } }
+          },
+          "422": { "$ref": "#/components/responses/InvalidInput" }
+        }
+      }
+    },
+    "/api/v1/accounts/{id}": {
+      "get": {
+        "summary": "Fetch one account by ID or unique name.",
+        "operationId": "getAccount",
+        "parameters": [{ "$ref": "#/components/parameters/Id" }],
+        "responses": {
+          "200": {
+            "description": "The account.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountEnvelope" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "summary": "Rename an account, or re-declare its opening balance.",
+        "description": "The request body must set exactly one of \"name\" or \"opening_balance\" - these are two separate operations at the application layer, and a request naming both or neither is rejected.",
+        "operationId": "patchAccount",
+        "parameters": [{ "$ref": "#/components/parameters/Id" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PatchAccountRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated account.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountEnvelope" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/InvalidInput" }
+        }
+      },
+      "delete": {
+        "summary": "Archive an account.",
+        "description": "This hides the account from pickers; its history remains. There is no hard delete for an account with any history.",
+        "operationId": "archiveAccount",
+        "parameters": [{ "$ref": "#/components/parameters/Id" }],
+        "responses": {
+          "200": {
+            "description": "The archived account.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountEnvelope" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/categories": {
+      "get": {
+        "summary": "List every category, flat.",
+        "operationId": "listCategories",
+        "responses": {
+          "200": {
+            "description": "Every category.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CategoryListEnvelope" } } }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a category.",
+        "operationId": "createCategory",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateCategoryRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "The created category.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CategoryEnvelope" } } }
+          },
+          "422": { "$ref": "#/components/responses/InvalidInput" }
+        }
+      }
+    },
+    "/api/v1/categories/{id}": {
+      "get": {
+        "summary": "Fetch one category by ID or unique name.",
+        "operationId": "getCategory",
+        "parameters": [{ "$ref": "#/components/parameters/Id" }],
+        "responses": {
+          "200": {
+            "description": "The category.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CategoryEnvelope" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "summary": "Rename a category, or move it to a new parent.",
+        "description": "The request body must set exactly one of \"name\" or \"parent\" (an empty \"parent\" moves the category to top-level) - these are two separate operations at the application layer, and a request naming both or neither is rejected.",
+        "operationId": "patchCategory",
+        "parameters": [{ "$ref": "#/components/parameters/Id" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PatchCategoryRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated category.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CategoryEnvelope" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/InvalidInput" }
+        }
+      },
+      "delete": {
+        "summary": "Archive a category.",
+        "description": "This hides the category from pickers; transactions that already reference it remain valid.",
+        "operationId": "archiveCategory",
+        "parameters": [{ "$ref": "#/components/parameters/Id" }],
+        "responses": {
+          "200": {
+            "description": "The archived category.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CategoryEnvelope" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/transactions": {
+      "get": {
+        "summary": "List transactions, newest first, with an optional filter.",
+        "operationId": "listTransactions",
+        "parameters": [
+          { "name": "account", "in": "query", "description": "An account's ID or unique name.", "schema": { "type": "string" } },
+          { "name": "category", "in": "query", "description": "A category's ID or unique name; its whole subtree is included.", "schema": { "type": "string" } },
+          { "name": "type", "in": "query", "description": "One of \"outflow\", \"inflow\", or \"transfer\".", "schema": { "type": "string", "enum": ["outflow", "inflow", "transfer"] } },
+          { "name": "from", "in": "query", "description": "The inclusive start of a booked-date range.", "schema": { "type": "string", "format": "date" } },
+          { "name": "to", "in": "query", "description": "The inclusive end of a booked-date range.", "schema": { "type": "string", "format": "date" } },
+          { "name": "limit", "in": "query", "description": "Page size; defaults to 50 and caps at 200.", "schema": { "type": "integer", "minimum": 1, "maximum": 200 } },
+          { "name": "cursor", "in": "query", "description": "An opaque token from a previous page's \"next_cursor\". Its encoding is not part of the API's contract and may change.", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of matching transactions.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionListEnvelope" } } }
+          },
+          "422": { "$ref": "#/components/responses/InvalidInput" }
+        }
+      },
+      "post": {
+        "summary": "Record an outflow or an inflow.",
+        "description": "For a transfer between two of the actor's own accounts, use POST /api/v1/transfers instead. When \"date\" is omitted, the server books the transaction to today in the actor's own timezone - never the client's.",
+        "operationId": "createTransaction",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateTransactionRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "The recorded transaction.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionEnvelope" } } }
+          },
+          "422": { "$ref": "#/components/responses/InvalidInput" }
+        }
+      }
+    },
+    "/api/v1/transactions/{id}": {
+      "get": {
+        "summary": "Fetch one transaction by ID.",
+        "operationId": "getTransaction",
+        "parameters": [{ "$ref": "#/components/parameters/Id" }],
+        "responses": {
+          "200": {
+            "description": "The transaction.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionEnvelope" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "summary": "Replace a transaction's editable fields.",
+        "description": "This is a full replacement of every field in the request body, not a partial patch: send every field's current value, not only the one that's changing. A transaction's type (outflow, inflow, transfer) can't change.",
+        "operationId": "editTransaction",
+        "parameters": [{ "$ref": "#/components/parameters/Id" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EditTransactionRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated transaction.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionEnvelope" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/InvalidInput" }
+        }
+      },
+      "delete": {
+        "summary": "Delete a transaction.",
+        "description": "The transaction stops appearing in lists and balances, but its history is retained.",
+        "operationId": "deleteTransaction",
+        "parameters": [{ "$ref": "#/components/parameters/Id" }],
+        "responses": {
+          "200": {
+            "description": "The deleted transaction.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionEnvelope" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/transfers": {
+      "post": {
+        "summary": "Move money between two of the actor's own accounts.",
+        "description": "A transfer between accounts in different currencies is rejected; cross-currency transfers aren't supported yet.",
+        "operationId": "createTransfer",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateTransferRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "The recorded transfer.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionEnvelope" } } }
+          },
+          "422": { "$ref": "#/components/responses/InvalidInput" }
+        }
+      }
+    },
+    "/api/v1/balances": {
+      "get": {
+        "summary": "Every account's balance as of a date.",
+        "operationId": "getBalances",
+        "parameters": [
+          { "name": "as_of", "in": "query", "description": "Defaults to today in the actor's own timezone when omitted.", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Every account's balance as of the resolved date.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BalancesEnvelope" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "Id": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "The resource's ID, or (for an account or category) its unique name.",
+        "schema": { "type": "string" }
+      }
+    },
+    "responses": {
+      "NotFound": {
+        "description": "No such resource.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+      },
+      "InvalidInput": {
+        "description": "The request failed validation.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string", "enum": ["invalid_input", "not_found", "conflict", "precondition_failed", "not_allowed", "unauthenticated", "unavailable", "internal"] },
+          "message": { "type": "string" },
+          "field": { "type": "string" },
+          "details": { "type": "object" }
+        },
+        "required": ["code", "message"]
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "properties": { "error": { "$ref": "#/components/schemas/Error" } },
+        "required": ["error"]
+      },
+      "Healthz": {
+        "type": "object",
+        "properties": { "status": { "type": "string", "enum": ["ok"] } },
+        "required": ["status"]
+      },
+      "HealthzEnvelope": {
+        "type": "object",
+        "properties": { "data": { "$ref": "#/components/schemas/Healthz" } },
+        "required": ["data"]
+      },
+      "Account": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["bank", "cash", "credit_card", "wallet", "investment", "loan", "other"] },
+          "currency": { "type": "string", "description": "An ISO 4217 currency code." },
+          "opening_balance": { "type": "string", "description": "A plain decimal amount, in currency - never a JSON number." },
+          "opening_balance_date": { "type": "string", "format": "date" },
+          "institution": { "type": "string" },
+          "sort_order": { "type": "integer" },
+          "archived": { "type": "boolean" },
+          "archived_at": { "type": "string", "format": "date" }
+        },
+        "required": ["id", "name", "type", "currency", "opening_balance", "sort_order", "archived"]
+      },
+      "AccountEnvelope": {
+        "type": "object",
+        "properties": { "data": { "$ref": "#/components/schemas/Account" } },
+        "required": ["data"]
+      },
+      "AccountListEnvelope": {
+        "type": "object",
+        "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Account" } } },
+        "required": ["data"]
+      },
+      "CreateAccountRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["bank", "cash", "credit_card", "wallet", "investment", "loan", "other"] },
+          "currency": { "type": "string", "description": "Omit to apply the currency precedence ladder." },
+          "opening_balance": { "type": "string", "description": "A plain decimal amount; defaults to zero." },
+          "opening_balance_date": { "type": "string", "format": "date" },
+          "institution": { "type": "string" },
+          "sort_order": { "type": "integer" }
+        },
+        "required": ["name", "type"]
+      },
+      "PatchAccountRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "opening_balance": { "type": "string" },
+          "opening_balance_date": { "type": "string", "format": "date" }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["expense", "income"] },
+          "parent_id": { "type": "string" },
+          "sort_order": { "type": "integer" },
+          "archived": { "type": "boolean" },
+          "archived_at": { "type": "string", "format": "date" }
+        },
+        "required": ["id", "name", "type", "sort_order", "archived"]
+      },
+      "CategoryEnvelope": {
+        "type": "object",
+        "properties": { "data": { "$ref": "#/components/schemas/Category" } },
+        "required": ["data"]
+      },
+      "CategoryListEnvelope": {
+        "type": "object",
+        "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Category" } } },
+        "required": ["data"]
+      },
+      "CreateCategoryRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["expense", "income"] },
+          "parent": { "type": "string", "description": "A parent category's ID or unique name; omit for a top-level category." },
+          "sort_order": { "type": "integer" }
+        },
+        "required": ["name", "type"]
+      },
+      "PatchCategoryRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "parent": { "type": "string", "description": "An empty string moves the category to top-level." }
+        }
+      },
+      "Transaction": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string", "enum": ["outflow", "inflow", "transfer"] },
+          "date": { "type": "string", "format": "date" },
+          "description": { "type": "string" },
+          "notes": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "account_id": { "type": "string", "description": "Set for an outflow or inflow." },
+          "category_id": { "type": "string", "description": "Set for an outflow or inflow with a category." },
+          "from_account_id": { "type": "string", "description": "Set for a transfer." },
+          "to_account_id": { "type": "string", "description": "Set for a transfer." },
+          "amount": { "type": "string", "description": "A plain decimal amount, always positive - never a JSON number." },
+          "currency": { "type": "string" }
+        },
+        "required": ["id", "type", "date", "description", "amount", "currency"]
+      },
+      "TransactionEnvelope": {
+        "type": "object",
+        "properties": { "data": { "$ref": "#/components/schemas/Transaction" } },
+        "required": ["data"]
+      },
+      "TransactionList": {
+        "type": "object",
+        "properties": {
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/Transaction" } },
+          "next_cursor": { "type": "string", "description": "Present only when there is a next page." }
+        },
+        "required": ["data"]
+      },
+      "TransactionListEnvelope": {
+        "type": "object",
+        "properties": { "data": { "$ref": "#/components/schemas/TransactionList" } },
+        "required": ["data"]
+      },
+      "CreateTransactionRequest": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "enum": ["outflow", "inflow"] },
+          "account": { "type": "string", "description": "An account's ID or unique name." },
+          "category": { "type": "string", "description": "A category's ID or unique name." },
+          "amount": { "type": "string" },
+          "currency": { "type": "string", "description": "Omit to apply the currency precedence ladder." },
+          "date": { "type": "string", "description": "Omit to book to today in the actor's timezone." },
+          "description": { "type": "string" },
+          "notes": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["type", "account", "amount", "description"]
+      },
+      "EditTransactionRequest": {
+        "type": "object",
+        "properties": {
+          "account": { "type": "string" },
+          "category": { "type": "string" },
+          "from_account": { "type": "string" },
+          "to_account": { "type": "string" },
+          "currency": { "type": "string" },
+          "amount": { "type": "string" },
+          "date": { "type": "string" },
+          "description": { "type": "string" },
+          "notes": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["amount", "description"]
+      },
+      "CreateTransferRequest": {
+        "type": "object",
+        "properties": {
+          "from_account": { "type": "string" },
+          "to_account": { "type": "string" },
+          "amount": { "type": "string" },
+          "date": { "type": "string", "description": "Omit to book to today in the actor's timezone." },
+          "description": { "type": "string" },
+          "notes": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["from_account", "to_account", "amount", "description"]
+      },
+      "Balance": {
+        "type": "object",
+        "properties": {
+          "account_id": { "type": "string" },
+          "account": { "type": "string" },
+          "amount": { "type": "string" },
+          "currency": { "type": "string" }
+        },
+        "required": ["account_id", "account", "amount", "currency"]
+      },
+      "Balances": {
+        "type": "object",
+        "properties": {
+          "as_of": { "type": "string", "format": "date" },
+          "balances": { "type": "array", "items": { "$ref": "#/components/schemas/Balance" } }
+        },
+        "required": ["as_of", "balances"]
+      },
+      "BalancesEnvelope": {
+        "type": "object",
+        "properties": { "data": { "$ref": "#/components/schemas/Balances" } },
+        "required": ["data"]
+      }
+    }
+  }
+}

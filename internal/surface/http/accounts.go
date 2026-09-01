@@ -1,0 +1,135 @@
+package http
+
+import (
+	"net/http"
+
+	"github.com/anirudhgray/bodger/internal/app"
+	"github.com/anirudhgray/bodger/internal/platform/errs"
+)
+
+// createAccountRequest is POST /api/v1/accounts' request body.
+// Every field passes through to app.CreateAccountCommand as the raw
+// string the client sent (ADR-0005) — Type is validated against the
+// domain's closed set of account kinds by the application layer, not
+// here; Currency, when empty, resolves through the currency precedence
+// ladder there too.
+type createAccountRequest struct {
+	Name               string `json:"name"`
+	Type               string `json:"type"`
+	Currency           string `json:"currency,omitempty"`
+	OpeningBalance     string `json:"opening_balance,omitempty"`
+	OpeningBalanceDate string `json:"opening_balance_date,omitempty"`
+	Institution        string `json:"institution,omitempty"`
+	SortOrder          int    `json:"sort_order,omitempty"`
+}
+
+func (h *handlers) createAccount(w http.ResponseWriter, r *http.Request) {
+	var body createAccountRequest
+	if err := decodeJSON(r, &body); err != nil {
+		respondError(w, err)
+		return
+	}
+
+	result, err := h.svc.CreateAccount(r.Context(), app.CreateAccountCommand{
+		ActorID:            actorID(),
+		Name:               body.Name,
+		Kind:               body.Type,
+		Currency:           body.Currency,
+		OpeningBalance:     body.OpeningBalance,
+		OpeningBalanceDate: body.OpeningBalanceDate,
+		Institution:        body.Institution,
+		SortOrder:          body.SortOrder,
+	})
+	if err != nil {
+		respondError(w, err)
+		return
+	}
+	respond(w, http.StatusCreated, accountViewFrom(result))
+}
+
+func (h *handlers) listAccounts(w http.ResponseWriter, r *http.Request) {
+	result, err := h.svc.ListAccounts(r.Context(), app.ListAccountsQuery{ActorID: actorID()})
+	if err != nil {
+		respondError(w, err)
+		return
+	}
+	views := make([]accountView, 0, len(result.Accounts))
+	for _, a := range result.Accounts {
+		views = append(views, accountViewFrom(app.AccountResult{Account: a}))
+	}
+	respond(w, http.StatusOK, views)
+}
+
+func (h *handlers) getAccount(w http.ResponseWriter, r *http.Request) {
+	result, err := h.svc.GetAccount(r.Context(), app.GetAccountQuery{
+		ActorID:    actorID(),
+		AccountRef: r.PathValue("id"),
+	})
+	if err != nil {
+		respondError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, accountViewFrom(result))
+}
+
+// patchAccountRequest is PATCH /api/v1/accounts/{id}'s request body. It
+// expresses exactly one of two sibling update intents the application
+// layer exposes as separate use cases — renaming, or re-declaring the
+// opening balance — never both in the same request (see this package's
+// doc comment for why choosing between them here is presentation
+// routing, not a business decision).
+type patchAccountRequest struct {
+	Name               *string `json:"name,omitempty"`
+	OpeningBalance     *string `json:"opening_balance,omitempty"`
+	OpeningBalanceDate *string `json:"opening_balance_date,omitempty"`
+}
+
+func (h *handlers) patchAccount(w http.ResponseWriter, r *http.Request) {
+	var body patchAccountRequest
+	if err := decodeJSON(r, &body); err != nil {
+		respondError(w, err)
+		return
+	}
+
+	id := r.PathValue("id")
+	switch {
+	case body.Name != nil && body.OpeningBalance == nil:
+		result, err := h.svc.RenameAccount(r.Context(), app.RenameAccountCommand{
+			ActorID: actorID(), AccountRef: id, Name: *body.Name,
+		})
+		if err != nil {
+			respondError(w, err)
+			return
+		}
+		respond(w, http.StatusOK, accountViewFrom(result))
+
+	case body.OpeningBalance != nil && body.Name == nil:
+		var obDate string
+		if body.OpeningBalanceDate != nil {
+			obDate = *body.OpeningBalanceDate
+		}
+		result, err := h.svc.SetOpeningBalance(r.Context(), app.SetOpeningBalanceCommand{
+			ActorID: actorID(), AccountRef: id, OpeningBalance: *body.OpeningBalance, OpeningBalanceDate: obDate,
+		})
+		if err != nil {
+			respondError(w, err)
+			return
+		}
+		respond(w, http.StatusOK, accountViewFrom(result))
+
+	default:
+		respondError(w, errs.New(errs.InvalidInput).
+			Explain("A request must set exactly one of \"name\" or \"opening_balance\"."))
+	}
+}
+
+func (h *handlers) archiveAccount(w http.ResponseWriter, r *http.Request) {
+	result, err := h.svc.ArchiveAccount(r.Context(), app.ArchiveAccountCommand{
+		ActorID: actorID(), AccountRef: r.PathValue("id"),
+	})
+	if err != nil {
+		respondError(w, err)
+		return
+	}
+	respond(w, http.StatusOK, accountViewFrom(result))
+}

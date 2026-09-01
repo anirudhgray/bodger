@@ -205,6 +205,27 @@ func (s *Service) ArchiveCategory(ctx context.Context, cmd ArchiveCategoryComman
 	return CategoryResult{Category: updated}, nil
 }
 
+// GetCategoryQuery fetches a single category by ref, scoped to the actor
+// (ADR-0006) — see GetAccountQuery's doc comment for why this exists
+// alongside the list use cases.
+type GetCategoryQuery struct {
+	ActorID     string
+	CategoryRef string
+}
+
+// GetCategory implements the "fetch one" use case the REST API's
+// GET /api/v1/categories/{id} needs (issue #8).
+func (s *Service) GetCategory(ctx context.Context, q GetCategoryQuery) (CategoryResult, error) {
+	if err := requireActorID(q.ActorID); err != nil {
+		return CategoryResult{}, err
+	}
+	category, err := s.resolveOwnedCategory(ctx, q.ActorID, q.CategoryRef)
+	if err != nil {
+		return CategoryResult{}, attachField(err, "category_ref")
+	}
+	return CategoryResult{Category: category}, nil
+}
+
 // ListCategoriesQuery lists every category actorID owns, flat (not as a
 // tree) - see ListCategoryTree for the tree-shaped equivalent issue #6
 // asks for.

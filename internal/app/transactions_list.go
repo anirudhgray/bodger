@@ -6,6 +6,7 @@ import (
 
 	"github.com/anirudhgray/bodger/internal/app/normalize"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
+	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
 )
 
@@ -23,6 +24,32 @@ const (
 	// the correct way to get "everything".
 	maxTransactionListLimit = 200
 )
+
+// GetTransactionQuery fetches a single transaction (with its tags) by ID,
+// scoped to the actor (ADR-0006). EditTransaction and DeleteTransaction
+// already call TransactionRepository.Get directly for their own purposes;
+// this is the same lookup exposed as its own use case, for the REST API's
+// GET /api/v1/transactions/{id} (issue #8).
+type GetTransactionQuery struct {
+	ActorID        string
+	TransactionRef string
+}
+
+// GetTransaction implements the "fetch one" use case
+// GET /api/v1/transactions/{id} needs.
+func (s *Service) GetTransaction(ctx context.Context, q GetTransactionQuery) (TransactionResult, error) {
+	if err := requireActorID(q.ActorID); err != nil {
+		return TransactionResult{}, err
+	}
+	if strings.TrimSpace(q.TransactionRef) == "" {
+		return TransactionResult{}, errs.New(errs.InvalidInput).Explain("A transaction ID is required.").Field("transaction_ref")
+	}
+	txn, tags, err := s.Transactions.Get(ctx, q.ActorID, q.TransactionRef)
+	if err != nil {
+		return TransactionResult{}, err
+	}
+	return TransactionResult{Transaction: txn, Tags: tags}, nil
+}
 
 // ListTransactionsQuery is issue #6's reduced M1 filter: a date range,
 // account, category (subtree included by default — ADR-0009, not
@@ -44,9 +71,15 @@ type ListTransactionsQuery struct {
 // transaction, sorted (booked_date DESC, created_at DESC, id DESC) —
 // ADR-0009's fully-specified sort, so the same query run twice returns the
 // same rows in the same order, including when booked_date and created_at
-// tie.
+// tie. Limit and Offset are the values actually applied — after
+// defaulting an unset or negative Limit and clamping an oversized one —
+// so a caller that builds its own pagination (a REST surface's opaque
+// cursor, say) can tell whether a full page came back without needing to
+// know this package's default or maximum page size itself.
 type ListTransactionsResult struct {
 	Transactions []ledger.Transaction
+	Limit        int
+	Offset       int
 }
 
 // ListTransactions implements issue #6's ListTransactions use case.
@@ -117,5 +150,5 @@ func (s *Service) ListTransactions(ctx context.Context, q ListTransactionsQuery)
 	if err != nil {
 		return ListTransactionsResult{}, err
 	}
-	return ListTransactionsResult{Transactions: txns}, nil
+	return ListTransactionsResult{Transactions: txns, Limit: filter.Limit, Offset: filter.Offset}, nil
 }
