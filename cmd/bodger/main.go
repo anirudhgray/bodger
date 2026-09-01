@@ -50,7 +50,7 @@ func main() {
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "bodger",
-		Short:         "bodger is a personal finance ledger.",
+		Short:         "Track where your money goes and what you have left.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
