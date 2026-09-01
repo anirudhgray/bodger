@@ -323,6 +323,31 @@ func TestAccounts_AddMissingTypeFails(t *testing.T) {
 	_ = stderr
 }
 
+// TestAccounts_RenameKeepsHistory checks the rename lands and that the
+// transactions already recorded against the account are still recorded
+// against it afterwards — a rename is a relabelling, not a new account.
+func TestAccounts_RenameKeepsHistory(t *testing.T) {
+	factory := newTestFactory(t, mustFrozen(t))
+	mustRun(t, factory, "accounts", "add", "HDFC Savngs", "--type", "bank", "--currency", "INR")
+	mustRun(t, factory, "categories", "add", "groceries", "--type", "expense")
+	mustRun(t, factory, "spend", "800", "groceries", "--on", "2026-08-10")
+
+	var renamed struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+		Type string `json:"type"`
+	}
+	decodeData(t, mustRun(t, factory, "accounts", "rename", "HDFC Savngs", "HDFC Savings", "--json"), &renamed)
+	if renamed.Name != "HDFC Savings" || renamed.Type != "bank" {
+		t.Errorf("renamed = %+v", renamed)
+	}
+
+	listed := listTransactions(t, factory, "--account", "HDFC Savings")
+	if len(listed.Transactions) != 1 || listed.Transactions[0].AccountID != renamed.ID {
+		t.Errorf("transactions after the rename = %+v, want the one spend, still on this account", listed.Transactions)
+	}
+}
+
 func TestCategories_AddListRenameArchive(t *testing.T) {
 	factory := newTestFactory(t, mustFrozen(t))
 
