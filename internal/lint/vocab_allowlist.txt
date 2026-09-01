@@ -1,0 +1,18 @@
+# Vocabulary allowlist — exemptions from docs/ux-principles.md §2's
+# banned-term table, checked by internal/lint/vocab_test.go.
+#
+# One entry per line:
+#
+#     term|the exact string that may contain it
+#
+# The split is on the first "|" only, so the string itself may contain one.
+# Matching is exact: an entry exempts one term in one specific string, and
+# editing that string re-arms the check for it. That is deliberate — an
+# exemption should expire with the wording that justified it.
+#
+# Add an entry only for a genuinely unrelated use of the word. If the term
+# means what §2 says it means, the string is wrong, not the check. The
+# failure message prints the exact line to paste here.
+#
+# Empty today: nothing in the error registry's default messages or in any
+# cobra help or flag usage string currently needs an exemption.
