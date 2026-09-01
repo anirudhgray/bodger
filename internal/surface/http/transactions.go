@@ -22,12 +22,12 @@ const (
 // application layer (internal/app/normalize.DateOf) — this handler never
 // reads the wall clock or otherwise decides what "today" means.
 type createTransactionRequest struct {
-	Type        string   `json:"type"`
-	Account     string   `json:"account"`
-	Category    string   `json:"category,omitempty"`
-	Amount      string   `json:"amount"`
+	Type        string   `json:"type" enum:"recordable_transaction_kind"`
+	Account     string   `json:"account" doc:"An account's ID or unique name."`
+	Category    string   `json:"category,omitempty" doc:"A category's ID or unique name."`
+	Amount      string   `json:"amount" doc:"Always positive; type says which way the money moves." format:"money"`
 	Currency    string   `json:"currency,omitempty"`
-	Date        string   `json:"date,omitempty"`
+	Date        string   `json:"date,omitempty" doc:"Omit to book the transaction to today in the account owner's own timezone." format:"date"`
 	Description string   `json:"description"`
 	Notes       string   `json:"notes,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
@@ -96,13 +96,13 @@ func (h *handlers) getTransaction(w http.ResponseWriter, r *http.Request) {
 // Whichever pair doesn't match the transaction's own kind is ignored by
 // the application layer, not by this handler.
 type editTransactionRequest struct {
-	Account     string   `json:"account,omitempty"`
-	Category    string   `json:"category,omitempty"`
-	FromAccount string   `json:"from_account,omitempty"`
-	ToAccount   string   `json:"to_account,omitempty"`
+	Account     string   `json:"account,omitempty" doc:"An account's ID or unique name. Read when editing an outflow or an inflow."`
+	Category    string   `json:"category,omitempty" doc:"A category's ID or unique name. Read when editing an outflow or an inflow."`
+	FromAccount string   `json:"from_account,omitempty" doc:"An account's ID or unique name. Read when editing a transfer."`
+	ToAccount   string   `json:"to_account,omitempty" doc:"An account's ID or unique name. Read when editing a transfer."`
 	Currency    string   `json:"currency,omitempty"`
-	Amount      string   `json:"amount"`
-	Date        string   `json:"date,omitempty"`
+	Amount      string   `json:"amount" doc:"Always positive; the transaction's own type says which way the money moves." format:"money"`
+	Date        string   `json:"date,omitempty" doc:"Omit to book the transaction to today in the account owner's own timezone." format:"date"`
 	Description string   `json:"description"`
 	Notes       string   `json:"notes,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
@@ -158,7 +158,7 @@ func (h *handlers) deleteTransaction(w http.ResponseWriter, r *http.Request) {
 // — empty once there isn't one.
 type transactionListView struct {
 	Data       []transactionView `json:"data"`
-	NextCursor string            `json:"next_cursor,omitempty"`
+	NextCursor string            `json:"next_cursor,omitempty" doc:"An opaque token for the next page. Present only when there is a next page; its encoding isn't part of the API's contract and may change."`
 }
 
 func (h *handlers) listTransactions(w http.ResponseWriter, r *http.Request) {

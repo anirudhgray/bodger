@@ -8,17 +8,28 @@ import "github.com/anirudhgray/bodger/internal/app"
 // currency, the same way domain.Account's own OpeningBalance() is always
 // in Currency() — repeating it would only be a second place for the two
 // to disagree.
+//
+// The `enum`, `doc`, and `format` tags below are read only by the OpenAPI
+// generator (openapi_gen.go's SchemaCustomizer), never at runtime: `enum`
+// names one of the closed value sets openapi_gen.go defines, `doc` is
+// prose for a field whose meaning the Go type alone doesn't carry, and
+// `format` marks a plain JSON string as actually a money amount
+// ("money", ADR-0004: always a string, in the sibling currency field's
+// currency, never a JSON number) or a calendar date ("date",
+// domain.Date's YYYY-MM-DD wire form). openapigen_test.go is what fails
+// CI if a struct changes here without a matching `go generate` — see its
+// own doc comment.
 type accountView struct {
 	ID                 string `json:"id"`
 	Name               string `json:"name"`
-	Type               string `json:"type"`
+	Type               string `json:"type" enum:"account_kind"`
 	Currency           string `json:"currency"`
-	OpeningBalance     string `json:"opening_balance"`
-	OpeningBalanceDate string `json:"opening_balance_date,omitempty"`
+	OpeningBalance     string `json:"opening_balance" format:"money"`
+	OpeningBalanceDate string `json:"opening_balance_date,omitempty" doc:"The date the opening balance is stated as of." format:"date"`
 	Institution        string `json:"institution,omitempty"`
-	SortOrder          int    `json:"sort_order"`
+	SortOrder          int    `json:"sort_order" doc:"Where the account sorts in a list; lower comes first."`
 	Archived           bool   `json:"archived"`
-	ArchivedAt         string `json:"archived_at,omitempty"`
+	ArchivedAt         string `json:"archived_at,omitempty" doc:"Set only once the account is archived." format:"date"`
 }
 
 func accountViewFrom(r app.AccountResult) accountView {
@@ -48,11 +59,11 @@ func accountViewFrom(r app.AccountResult) accountView {
 type categoryView struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
-	Type       string `json:"type"`
-	ParentID   string `json:"parent_id,omitempty"`
-	SortOrder  int    `json:"sort_order"`
+	Type       string `json:"type" enum:"category_kind"`
+	ParentID   string `json:"parent_id,omitempty" doc:"Absent for a top-level category."`
+	SortOrder  int    `json:"sort_order" doc:"Where the category sorts in a list; lower comes first."`
 	Archived   bool   `json:"archived"`
-	ArchivedAt string `json:"archived_at,omitempty"`
+	ArchivedAt string `json:"archived_at,omitempty" doc:"Set only once the category is archived." format:"date"`
 }
 
 func categoryViewFrom(r app.CategoryResult) categoryView {
@@ -86,16 +97,16 @@ func categoryViewFrom(r app.CategoryResult) categoryView {
 // simply omitted.
 type transactionView struct {
 	ID            string   `json:"id"`
-	Type          string   `json:"type"`
-	Date          string   `json:"date"`
+	Type          string   `json:"type" enum:"transaction_kind"`
+	Date          string   `json:"date" doc:"The date the transaction is booked to." format:"date"`
 	Description   string   `json:"description"`
 	Notes         string   `json:"notes,omitempty"`
 	Tags          []string `json:"tags,omitempty"`
-	AccountID     string   `json:"account_id,omitempty"`
-	CategoryID    string   `json:"category_id,omitempty"`
-	FromAccountID string   `json:"from_account_id,omitempty"`
-	ToAccountID   string   `json:"to_account_id,omitempty"`
-	Amount        string   `json:"amount"`
+	AccountID     string   `json:"account_id,omitempty" doc:"Set on an outflow or an inflow."`
+	CategoryID    string   `json:"category_id,omitempty" doc:"Set on an outflow or an inflow that has a category."`
+	FromAccountID string   `json:"from_account_id,omitempty" doc:"Set on a transfer: the account the money left."`
+	ToAccountID   string   `json:"to_account_id,omitempty" doc:"Set on a transfer: the account the money arrived in."`
+	Amount        string   `json:"amount" doc:"Always positive; the transaction's type says which way the money moved." format:"money"`
 	Currency      string   `json:"currency"`
 }
 
@@ -142,8 +153,8 @@ func transactionViewFrom(r app.TransactionResult) transactionView {
 // here).
 type balanceView struct {
 	AccountID string `json:"account_id"`
-	Account   string `json:"account"`
-	Amount    string `json:"amount"`
+	Account   string `json:"account" doc:"The account's name."`
+	Amount    string `json:"amount" format:"money"`
 	Currency  string `json:"currency"`
 }
 

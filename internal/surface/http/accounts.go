@@ -15,12 +15,12 @@ import (
 // ladder there too.
 type createAccountRequest struct {
 	Name               string `json:"name"`
-	Type               string `json:"type"`
+	Type               string `json:"type" enum:"account_kind"`
 	Currency           string `json:"currency,omitempty"`
-	OpeningBalance     string `json:"opening_balance,omitempty"`
-	OpeningBalanceDate string `json:"opening_balance_date,omitempty"`
+	OpeningBalance     string `json:"opening_balance,omitempty" doc:"Defaults to zero." format:"money"`
+	OpeningBalanceDate string `json:"opening_balance_date,omitempty" doc:"The date the opening balance is stated as of. Omit to state it as of today." format:"date"`
 	Institution        string `json:"institution,omitempty"`
-	SortOrder          int    `json:"sort_order,omitempty"`
+	SortOrder          int    `json:"sort_order,omitempty" doc:"Where the account sorts in a list; lower comes first."`
 }
 
 func (h *handlers) createAccount(w http.ResponseWriter, r *http.Request) {
@@ -79,9 +79,9 @@ func (h *handlers) getAccount(w http.ResponseWriter, r *http.Request) {
 // doc comment for why choosing between them here is presentation
 // routing, not a business decision).
 type patchAccountRequest struct {
-	Name               *string `json:"name,omitempty"`
-	OpeningBalance     *string `json:"opening_balance,omitempty"`
-	OpeningBalanceDate *string `json:"opening_balance_date,omitempty"`
+	Name               *string `json:"name,omitempty" doc:"The account's new name."`
+	OpeningBalance     *string `json:"opening_balance,omitempty" doc:"The opening balance to re-declare." format:"money"`
+	OpeningBalanceDate *string `json:"opening_balance_date,omitempty" doc:"The date the new opening balance is stated as of. Only read alongside opening_balance." format:"date"`
 }
 
 func (h *handlers) patchAccount(w http.ResponseWriter, r *http.Request) {
