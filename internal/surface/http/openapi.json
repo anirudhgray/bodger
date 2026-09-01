@@ -234,7 +234,7 @@
       },
       "delete": {
         "summary": "Delete a transaction.",
-        "description": "This is a soft delete: the transaction stops appearing in lists and balances, but its history is retained.",
+        "description": "The transaction stops appearing in lists and balances, but its history is retained.",
         "operationId": "deleteTransaction",
         "parameters": [{ "$ref": "#/components/parameters/Id" }],
         "responses": {

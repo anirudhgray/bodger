@@ -283,7 +283,22 @@ Delivered so far in M1:
   application method; `--json` gives stable machine-readable output on
   every data-returning command (issue #7). Transaction listing/editing/
   deletion and account renaming/category reparenting aren't wired to a
-  command yet — tracked as issue #30. Issue #8 (REST API) hasn't started.
+  command yet — tracked as issue #30.
+- `internal/surface/http` — bodger's REST API, on stdlib
+  `net/http.ServeMux`, registered as `bodger serve` onto the same root
+  command. Every handler decodes JSON into a command or query struct,
+  calls exactly one application method, and encodes the result — the same
+  adapter-contract discipline as the CLI. Covers accounts, categories,
+  transactions (including cursor-paginated listing), transfers, and
+  balances, plus `/healthz`; `GetAccount`, `GetCategory`, and
+  `GetTransaction` were added to `internal/app` alongside it so a single
+  resource's `GET /{id}` route has one application method to call. Ships
+  with a hand-written OpenAPI 3 description
+  (`internal/surface/http/openapi.json`) checked against the registered
+  routes by a Go test, not by review. `internal/platform/config` gained
+  `HTTPBindAddr` (default `127.0.0.1:8080`) and refuses to load a
+  configuration that binds anywhere but loopback, since there is no
+  authentication yet (issue #8, ADR-0006).
 
 Not yet built: everything else in §2.
 
