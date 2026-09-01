@@ -40,13 +40,13 @@ func balancesViewFrom(r app.AccountBalancesResult) balancesView {
 
 func printBalances(w io.Writer, v balancesView) {
 	if len(v.Balances) == 0 {
-		fmt.Fprintln(w, "No accounts yet. Add one with `bodger accounts add`.")
+		_, _ = fmt.Fprintln(w, "No accounts yet. Add one with `bodger accounts add`.")
 		return
 	}
-	fmt.Fprintf(w, "As of %s:\n", v.AsOf)
+	_, _ = fmt.Fprintf(w, "As of %s:\n", v.AsOf)
 	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
 	for _, b := range v.Balances {
-		fmt.Fprintf(tw, "%s\t%s %s\n", b.Account, b.Balance, b.Currency)
+		_, _ = fmt.Fprintf(tw, "%s\t%s %s\n", b.Account, b.Balance, b.Currency)
 	}
 	_ = tw.Flush()
 }

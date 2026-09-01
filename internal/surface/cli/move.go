@@ -63,8 +63,8 @@ func moveViewFrom(fromLabel, toLabel string, r app.TransactionResult) moveView {
 }
 
 func printMove(w io.Writer, v moveView) {
-	fmt.Fprintf(w, "Moved %s %s from %s to %s (%s)\n", v.Amount, v.Currency, v.From, v.To, v.Date)
-	fmt.Fprintf(w, "id: %s\n", v.ID)
+	_, _ = fmt.Fprintf(w, "Moved %s %s from %s to %s (%s)\n", v.Amount, v.Currency, v.From, v.To, v.Date)
+	_, _ = fmt.Fprintf(w, "id: %s\n", v.ID)
 }
 
 type moveFlags struct {

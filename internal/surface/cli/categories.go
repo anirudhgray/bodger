@@ -41,17 +41,17 @@ func categoryViewFrom(r app.CategoryResult) categoryView {
 }
 
 func printCategory(w io.Writer, v categoryView) {
-	fmt.Fprintf(w, "%s (%s)\n", v.Name, v.Type)
-	fmt.Fprintf(w, "id: %s\n", v.ID)
+	_, _ = fmt.Fprintf(w, "%s (%s)\n", v.Name, v.Type)
+	_, _ = fmt.Fprintf(w, "id: %s\n", v.ID)
 }
 
 func printCategoryTable(w io.Writer, views []categoryView) {
 	if len(views) == 0 {
-		fmt.Fprintln(w, "No categories yet. Add one with `bodger categories add`.")
+		_, _ = fmt.Fprintln(w, "No categories yet. Add one with `bodger categories add`.")
 		return
 	}
 	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tTYPE\tPARENT\tARCHIVED")
+	_, _ = fmt.Fprintln(tw, "NAME\tTYPE\tPARENT\tARCHIVED")
 	for _, v := range views {
 		archived := "no"
 		if v.Archived {
@@ -61,7 +61,7 @@ func printCategoryTable(w io.Writer, views []categoryView) {
 		if parent == "" {
 			parent = "-"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", v.Name, v.Type, parent, archived)
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", v.Name, v.Type, parent, archived)
 	}
 	_ = tw.Flush()
 }
@@ -176,7 +176,7 @@ func newCategoriesRenameCmd(factory ServiceFactory) *cobra.Command {
 			}
 			view := categoryViewFrom(result)
 			return render(cmd, view, func(w io.Writer) {
-				fmt.Fprintf(w, "Renamed category to %q.\n", view.Name)
+				_, _ = fmt.Fprintf(w, "Renamed category to %q.\n", view.Name)
 			})
 		},
 	}
@@ -204,7 +204,7 @@ func newCategoriesArchiveCmd(factory ServiceFactory) *cobra.Command {
 			}
 			view := categoryViewFrom(result)
 			return render(cmd, view, func(w io.Writer) {
-				fmt.Fprintf(w, "Archived category %q.\n", view.Name)
+				_, _ = fmt.Fprintf(w, "Archived category %q.\n", view.Name)
 			})
 		},
 	}

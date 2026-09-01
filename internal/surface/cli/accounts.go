@@ -35,7 +35,7 @@ func accountViewFrom(r app.AccountResult) accountView {
 		Name:           r.Account.Name(),
 		Type:           string(r.Account.Kind()),
 		Currency:       r.Account.Currency(),
-		OpeningBalance: r.Account.OpeningBalance().String(),
+		OpeningBalance: r.Account.OpeningBalance().AmountString(),
 		SortOrder:      r.Account.SortOrder(),
 		Archived:       r.Account.Archived(),
 	}
@@ -52,23 +52,23 @@ func accountViewFrom(r app.AccountResult) accountView {
 }
 
 func printAccount(w io.Writer, v accountView) {
-	fmt.Fprintf(w, "%s (%s, %s) — opening balance %s\n", v.Name, v.Type, v.Currency, v.OpeningBalance)
-	fmt.Fprintf(w, "id: %s\n", v.ID)
+	_, _ = fmt.Fprintf(w, "%s (%s, %s) — opening balance %s %s\n", v.Name, v.Type, v.Currency, v.OpeningBalance, v.Currency)
+	_, _ = fmt.Fprintf(w, "id: %s\n", v.ID)
 }
 
 func printAccountTable(w io.Writer, views []accountView) {
 	if len(views) == 0 {
-		fmt.Fprintln(w, "No accounts yet. Add one with `bodger accounts add`.")
+		_, _ = fmt.Fprintln(w, "No accounts yet. Add one with `bodger accounts add`.")
 		return
 	}
 	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tTYPE\tCURRENCY\tOPENING BALANCE\tARCHIVED")
+	_, _ = fmt.Fprintln(tw, "NAME\tTYPE\tCURRENCY\tOPENING BALANCE\tARCHIVED")
 	for _, v := range views {
 		archived := "no"
 		if v.Archived {
 			archived = "yes"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", v.Name, v.Type, v.Currency, v.OpeningBalance, archived)
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", v.Name, v.Type, v.Currency, v.OpeningBalance, archived)
 	}
 	_ = tw.Flush()
 }
@@ -191,7 +191,7 @@ func newAccountsArchiveCmd(factory ServiceFactory) *cobra.Command {
 			}
 			view := accountViewFrom(result)
 			return render(cmd, view, func(w io.Writer) {
-				fmt.Fprintf(w, "Archived account %q.\n", view.Name)
+				_, _ = fmt.Fprintf(w, "Archived account %q.\n", view.Name)
 			})
 		},
 	}
@@ -222,7 +222,7 @@ func newAccountsSetOpeningBalanceCmd(factory ServiceFactory) *cobra.Command {
 			}
 			view := accountViewFrom(result)
 			return render(cmd, view, func(w io.Writer) {
-				fmt.Fprintf(w, "Set %q's opening balance to %s.\n", view.Name, view.OpeningBalance)
+				_, _ = fmt.Fprintf(w, "Set %q's opening balance to %s %s.\n", view.Name, view.OpeningBalance, view.Currency)
 			})
 		},
 	}

@@ -100,11 +100,11 @@ func entryVerb(entryType string) string {
 func printEntry(w io.Writer, v entryView) {
 	verb := entryVerb(v.Type)
 	if v.Category != "" {
-		fmt.Fprintf(w, "%s %s %s on %s (%s, %s)\n", verb, v.Amount, v.Currency, v.Category, v.Account, v.Date)
+		_, _ = fmt.Fprintf(w, "%s %s %s on %s (%s, %s)\n", verb, v.Amount, v.Currency, v.Category, v.Account, v.Date)
 	} else {
-		fmt.Fprintf(w, "%s %s %s (%s, %s)\n", verb, v.Amount, v.Currency, v.Account, v.Date)
+		_, _ = fmt.Fprintf(w, "%s %s %s (%s, %s)\n", verb, v.Amount, v.Currency, v.Account, v.Date)
 	}
-	fmt.Fprintf(w, "id: %s\n", v.ID)
+	_, _ = fmt.Fprintf(w, "id: %s\n", v.ID)
 }
 
 // resolveDefaultAccount implements docs/ux-principles.md §3's "account

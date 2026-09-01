@@ -2,10 +2,10 @@
 // here follows the adapter contract docs/decisions/0005-shared-application-layer.md
 // describes: decode cobra flags into an internal/app command struct, call
 // exactly one application-layer method, and render the result. Nothing in
-// this package parses a date, an amount, or a currency, and nothing calls
-// time.Now() — those are the application layer's job, and CI is meant to
-// fail if either happens here (see the package's grep-checked "done when"
-// item in issue #7).
+// this package parses a date or an amount, and nothing asks the wall
+// clock what time it is — those are the application layer's job, and CI
+// is meant to fail if either happens here (see the package's grep-checked
+// "done when" item in issue #7).
 //
 // This package never imports internal/domain or its subpackages
 // (internal/domain/ledger, internal/domain/money) — docs/architecture.md
@@ -116,7 +116,7 @@ func render(cmd *cobra.Command, data any, human func(io.Writer)) error {
 // than only the bare root command.
 func closeQuietly(cmd *cobra.Command, closeDB func() error) {
 	if err := closeDB(); err != nil {
-		fmt.Fprintln(cmd.ErrOrStderr(), "bodger: close database:", err)
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "bodger: close database:", err)
 	}
 }
 
@@ -134,11 +134,11 @@ func RenderError(w io.Writer, err error, jsonMode bool) int {
 		if jsonMode {
 			_ = writeJSONError(w, e)
 		} else {
-			fmt.Fprintln(w, e.CLIMessage())
+			_, _ = fmt.Fprintln(w, e.CLIMessage())
 		}
 		return e.CLIExitCode()
 	}
-	fmt.Fprintln(w, "bodger:", err)
+	_, _ = fmt.Fprintln(w, "bodger:", err)
 	return 1
 }
 
