@@ -16,6 +16,7 @@ import (
 
 	"github.com/anirudhgray/bodger/internal/platform/clock"
 	"github.com/anirudhgray/bodger/internal/platform/config"
+	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
 	"github.com/anirudhgray/bodger/internal/ports"
 )
@@ -74,17 +75,17 @@ func NewService(
 ) (*Service, error) {
 	switch {
 	case clk == nil:
-		return nil, fmt.Errorf("app: clock must not be nil")
+		return nil, missingDependency("clock")
 	case ids == nil:
-		return nil, fmt.Errorf("app: id generator must not be nil")
+		return nil, missingDependency("id generator")
 	case accounts == nil:
-		return nil, fmt.Errorf("app: account repository must not be nil")
+		return nil, missingDependency("account repository")
 	case categories == nil:
-		return nil, fmt.Errorf("app: category repository must not be nil")
+		return nil, missingDependency("category repository")
 	case transactions == nil:
-		return nil, fmt.Errorf("app: transaction repository must not be nil")
+		return nil, missingDependency("transaction repository")
 	case tags == nil:
-		return nil, fmt.Errorf("app: tag repository must not be nil")
+		return nil, missingDependency("tag repository")
 	}
 
 	return &Service{
@@ -96,4 +97,24 @@ func NewService(
 		Transactions: transactions,
 		Tags:         tags,
 	}, nil
+}
+
+// missingDependency reports a nil constructor argument as a registry error
+// rather than a bare fmt.Errorf, so that a mis-wired binary fails the same
+// way every other app-layer failure does — with a code a surface can turn
+// into an exit code or a status (ADR-0011).
+//
+// The code is Internal because a nil dependency can only come from
+// cmd/bodger wiring the container wrongly; nothing a user typed can cause
+// it, and telling them which of bodger's internal parts is missing would
+// be an internal detail they can't act on. So the dependency's name goes
+// into the wrapped cause — logged in full, never serialised — and the user
+// gets a message that says what happened and where to look. This is also
+// the shape internal/lint's bare-error check exists to require: a
+// fmt.Errorf inside Wrap is exactly right, the same call returned directly
+// is not.
+func missingDependency(name string) error {
+	return errs.New(errs.Internal).
+		Explain("bodger couldn't start because it isn't set up correctly. Check the log for what went wrong.").
+		Wrap(fmt.Errorf("app: %s must not be nil", name))
 }
