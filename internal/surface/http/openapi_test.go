@@ -93,8 +93,8 @@ func TestOpenAPIDocumentIsWellFormedJSON(t *testing.T) {
 
 // TestOpenAPIDocumentOnDiskMatchesEmbedded guards against openapi.json
 // being edited without a rebuild picking it up in some unusual build
-// setup — cheap enough to run always, and it's what actually caught
-// go:embed misuse during development.
+// setup — cheap enough to run always, and it's what actually caught this
+// package's embed directive being misused during development.
 func TestOpenAPIDocumentOnDiskMatchesEmbedded(t *testing.T) {
 	onDisk, err := os.ReadFile("openapi.json")
 	if err != nil {
