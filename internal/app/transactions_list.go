@@ -71,9 +71,15 @@ type ListTransactionsQuery struct {
 // transaction, sorted (booked_date DESC, created_at DESC, id DESC) —
 // ADR-0009's fully-specified sort, so the same query run twice returns the
 // same rows in the same order, including when booked_date and created_at
-// tie.
+// tie. Limit and Offset are the values actually applied — after
+// defaulting an unset or negative Limit and clamping an oversized one —
+// so a caller that builds its own pagination (a REST surface's opaque
+// cursor, say) can tell whether a full page came back without needing to
+// know this package's default or maximum page size itself.
 type ListTransactionsResult struct {
 	Transactions []ledger.Transaction
+	Limit        int
+	Offset       int
 }
 
 // ListTransactions implements issue #6's ListTransactions use case.
@@ -144,5 +150,5 @@ func (s *Service) ListTransactions(ctx context.Context, q ListTransactionsQuery)
 	if err != nil {
 		return ListTransactionsResult{}, err
 	}
-	return ListTransactionsResult{Transactions: txns}, nil
+	return ListTransactionsResult{Transactions: txns, Limit: filter.Limit, Offset: filter.Offset}, nil
 }
