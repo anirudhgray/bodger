@@ -72,6 +72,28 @@ bodger accounts list
 bodger categories list
 ```
 
+Categories can sit under one another — `groceries` and `dining` both under `food`, say — so `categories tree` shows the shape of that, where `categories list` shows the flat roll of everything:
+
+```sh
+bodger categories tree
+```
+
+```
+food (expense)
+  dining (expense)
+  groceries (expense)
+salary (income)
+```
+
+Got the name wrong, or want to move a category under a different one? Renaming and reparenting change only that — every transaction already recorded against them stays exactly as it was:
+
+```sh
+bodger accounts rename "HDFC Savngs" "HDFC Savings"
+bodger categories rename groceries food
+bodger categories reparent groceries --parent food
+bodger categories reparent groceries            # no --parent moves it back to the top level
+```
+
 An account or category you no longer use can be archived rather than deleted — it disappears from these lists, but every transaction that already used it stays exactly as it was:
 
 ```sh
@@ -118,6 +140,56 @@ bodger spend 450 dining --account Cash --tag "date-night" --tag weekend --note "
 `--tag` can be repeated. `--note` is free text for anything you want to remember about the entry.
 
 **Recording a split** (one expense across several categories, like a shopping trip that's part groceries and part household goods) isn't built yet — it's planned for the next milestone.
+
+---
+
+## Seeing what you've recorded
+
+```sh
+bodger transactions list
+```
+
+```
+DATE        TYPE   AMOUNT      DESCRIPTION                 ID
+2026-08-14  move   500.00 INR  Transfer from Bank to Cash  b2479c06-4f58-4299-adc5-596d70ea792c
+2026-08-14  spend  800.00 INR  groceries                   cc033a79-96e6-431c-87d8-cfbe3570bab6
+```
+
+Newest first. Narrow it down with any combination of an account, a category (which includes anything filed under it), a type, and a date range:
+
+```sh
+bodger transactions list --account "HDFC Savings" --category food --since 2026-08-01 --until 2026-08-31
+bodger transactions list --type spend
+```
+
+`--type` takes the same words you record with: `spend`, `receive`, or `move`.
+
+Long lists come back a page at a time. `--limit` sets how many you see at once and `--offset` how many to skip — when there might be more, the output tells you the `--offset` to pass for the next page:
+
+```sh
+bodger transactions list --limit 20 --offset 20
+```
+
+---
+
+## Fixing and deleting transactions
+
+Recorded something wrong? Fix it in place — there's no reversing entry to make, and the correction is what counts from then on:
+
+```sh
+bodger transactions edit cc033a79-96e6-431c-87d8-cfbe3570bab6 \
+  --amount 950 --description "Weekly shop" --account Cash --category groceries --on 2026-08-13
+```
+
+**An edit replaces the whole transaction**, so pass every value you want it to end up with — anything you leave out is cleared, not kept. `bodger transactions list --json` shows you what's there now. `--amount` and `--description` are always required; use `--account`, `--category`, and `--currency` for money you spent or received, and `--from` and `--to` for a move. What you can't change is which of the three it is: money you spent stays money you spent — delete it and record it again if that's what you need.
+
+Recorded something that never happened? Delete it:
+
+```sh
+bodger transactions delete cc033a79-96e6-431c-87d8-cfbe3570bab6
+```
+
+It stops counting towards your balances and drops out of your lists immediately. Nothing is erased from your database, so you keep a record of what was there — there's no confirmation prompt for the same reason.
 
 ---
 
@@ -191,19 +263,23 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | `bodger receive <amount> <category> [--account] [--on] [--tag] [--note]` | Record money you received |
 | `bodger move <amount> --from <account> --to <account> [--on] [--tag] [--note]` | Move money between two of your accounts |
 | `bodger balance [--on]` | See what every account holds |
+| `bodger transactions list [--account] [--category] [--type] [--since] [--until] [--limit] [--offset]` | List what you've recorded, newest first |
+| `bodger transactions edit <id> --amount <amount> --description <text> [--account] [--category] [--currency] [--from] [--to] [--on] [--tag] [--note]` | Correct a transaction — replaces every value |
+| `bodger transactions delete <id>` | Delete a transaction you recorded by mistake |
 | `bodger accounts list` | List your accounts |
 | `bodger accounts add <name> --type <type> [--currency] [--opening-balance] [--opening-balance-date] [--institution] [--sort-order]` | Add an account |
+| `bodger accounts rename <account> <new-name>` | Rename an account |
 | `bodger accounts archive <account>` | Archive an account |
 | `bodger accounts set-opening-balance <account> <amount> [--on]` | Re-declare an account's starting balance |
 | `bodger categories list` | List your categories |
+| `bodger categories tree` | Show your categories with what sits under what |
 | `bodger categories add <name> --type <type> [--parent] [--sort-order]` | Add a category |
 | `bodger categories rename <category> <new-name>` | Rename a category |
+| `bodger categories reparent <category> [--parent]` | Move a category under a different one, or to the top level |
 | `bodger categories archive <category>` | Archive a category |
 | `bodger serve` | Start the REST API server |
 
-`<account>` and `<category>` accept either the name you gave it (case-insensitive) or its ID. If a name matches more than one of your accounts or categories, `bodger` lists the candidates instead of guessing.
-
-Editing or deleting a transaction after you've recorded it isn't wired up as a command yet, even though nothing about it is destructive under the hood — it's tracked as follow-up work.
+`<account>` and `<category>` accept either the name you gave it (case-insensitive) or its ID. If a name matches more than one of your accounts or categories, `bodger` lists the candidates instead of guessing. `<id>` is a transaction's own ID, which `bodger transactions list` shows in its last column.
 
 ---
 

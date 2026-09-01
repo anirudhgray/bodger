@@ -277,13 +277,16 @@ Delivered so far in M1:
   sort, and `AccountBalances(asOf)` computed from postings per ADR-0002
   (issue #6).
 - `internal/surface/cli` — `spend`, `receive`, `move`, `balance`,
-  `accounts` (list/add/archive/set-opening-balance), and `categories`
-  (list/add/rename/archive), registered onto `cmd/bodger`'s root command.
-  Every command decodes flags into a command struct and calls exactly one
-  application method; `--json` gives stable machine-readable output on
-  every data-returning command (issue #7). Transaction listing/editing/
-  deletion and account renaming/category reparenting aren't wired to a
-  command yet — tracked as issue #30.
+  `transactions` (list/edit/delete), `accounts`
+  (list/add/rename/archive/set-opening-balance), and `categories`
+  (list/tree/add/rename/reparent/archive), registered onto `cmd/bodger`'s
+  root command. Every command decodes flags into a command struct and
+  calls exactly one application method; `--json` gives stable
+  machine-readable output on every data-returning command (issues #7 and
+  #30). Every use case `internal/app` exposes now has a command; the CLI
+  speaks one vocabulary throughout, so a transaction is filtered and
+  described with the verb that recorded it (`spend`/`receive`/`move`)
+  rather than the application layer's own kind names.
 - `internal/surface/http` — bodger's REST API, on stdlib
   `net/http.ServeMux`, registered as `bodger serve` onto the same root
   command. Every handler decodes JSON into a command or query struct,

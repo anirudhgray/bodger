@@ -249,7 +249,7 @@ func newTransactionsListCmd(factory ServiceFactory) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&f.account, "account", "", "only transactions touching this account")
 	cmd.Flags().StringVar(&f.category, "category", "", "only transactions in this category, including anything under it")
-	cmd.Flags().StringVar(&f.txnType, "type", "", "only one kind: spend, receive, or move")
+	cmd.Flags().StringVar(&f.txnType, "type", "", "only one type: spend, receive, or move")
 	cmd.Flags().StringVar(&f.since, "since", "", "only transactions on or after this date")
 	cmd.Flags().StringVar(&f.until, "until", "", "only transactions on or before this date")
 	cmd.Flags().IntVar(&f.limit, "limit", 0, "how many to show at once")
