@@ -136,5 +136,5 @@ bodger accounts | categories
 
 Two gaps worth naming rather than hiding:
 
-- **Vocabulary has no automated enforcement yet.** [ADR-0005](decisions/0005-shared-application-layer.md)'s conformance suite checks that surfaces *behave* identically, not that they *speak* consistently. A banned-term lint over user-facing strings is the obvious mechanism; it's filed as follow-up, not built. Until then §2 is a review checklist.
+- **Vocabulary is only partly enforced.** §2's table is now checked by `make check` — but only over the error registry's default messages and cobra help and flag usage text ([`contributing.md`](contributing.md#the-vocabulary-check)). Those two have no ambiguity about what "user-facing" means; OpenAPI descriptions, MCP tool descriptions, and web UI strings do, and a check with false positives is one people learn to bypass. Everywhere else, and everything in this document that isn't a word on a list, §2 remains a review checklist.
 - **No real user has used this.** Every expectation here is derived from the brief and from reasoning, not from watching anyone. The first genuine usability signal arrives with M2, and this document should be revised against it rather than defended.

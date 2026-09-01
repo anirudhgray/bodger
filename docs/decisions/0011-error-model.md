@@ -104,4 +104,4 @@ Once shipped, a code is API surface: scripts branch on CLI exit codes, agents br
 - **Codes being permanent means a badly-named one is permanent.** Superseding is the only exit, and it leaves both in the registry.
 - **No correlation ID** means matching a user-reported error to a log line is a `grep` by time and message rather than an exact lookup. Fine for one user on one machine; the first thing to revisit if that stops being true.
 - **Two places to look** when writing an error: the registry for the code, the call site for the explanation. That's the cost of the message not being at the call site.
-- **The registry's default messages are user-facing strings** and are therefore subject to [`ux-principles.md` §2](../ux-principles.md#2-vocabulary) — with no automated check until [#11](https://github.com/anirudhgray/bodger/issues/11) lands.
+- **The registry's default messages are user-facing strings** and are therefore subject to [`ux-principles.md` §2](../ux-principles.md#2-vocabulary), which `make check` enforces over them ([#11](https://github.com/anirudhgray/bodger/issues/11)).

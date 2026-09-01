@@ -75,6 +75,29 @@ Domain types (`Money`, `Date`, `Tag`) still have unexported fields and validatin
 
 The **conformance suite** (`internal/surface/conformance`) drives the same raw input through the CLI, REST API, and MCP and asserts all three produce identical commands, under a frozen clock at an instant deliberately chosen to expose timezone bugs. **Adding a user-facing operation means adding a row to that table.**
 
+### The vocabulary check
+
+`internal/lint` fails the build when a word from [`ux-principles.md` §2](ux-principles.md#2-vocabulary)'s banned-term table reaches a string a person reads. The conformance suite checks that surfaces *behave* alike; this checks that they *speak* alike, which is otherwise invisible in review because every individual string looks fine.
+
+It reads two places, chosen for having no ambiguity about what "user-facing" means:
+
+- every default message in the error registry (`internal/platform/errs`), and
+- every cobra `Use`, `Short`, `Long`, and `Example`, and every flag's usage text, wherever a command is declared.
+
+Everything else — OpenAPI descriptions, MCP tool descriptions, web UI strings — stays a review responsibility. Defining "user-facing" precisely enough across those to avoid false positives is the hard part, and a check people learn to bypass is worse than no check.
+
+Strings are found by parsing Go source, not by grepping it, because §2 bans these words in user-facing strings *only*: `Posting` is a `Posting` in `internal/domain`, and the doc comment above `newReceiveCmd` may say "a single-posting inflow". Identifiers, package names, and comments are structurally out of the check's reach.
+
+Matching is case-insensitive, whole-word, and covers the obvious inflections (`postings`, `debited`). Letters, digits, and underscore count as word characters, so the account type `credit_card` does not trip the `credit` row.
+
+**To exempt a genuine false positive**, add a line to [`internal/lint/vocab_allowlist.txt`](../internal/lint/vocab_allowlist.txt):
+
+```
+term|the exact string that may contain it
+```
+
+The failure message prints the exact line to paste. An entry exempts one term in one exact string, so editing that string re-arms the check for it — an exemption expires with the wording that justified it. Add one only for a use of the word that has nothing to do with what §2 means by it; if the term means what the table says it means, the string is wrong, not the check.
+
 ---
 
 ## Testing
@@ -108,7 +131,7 @@ The conventions in [`CLAUDE.md`](../CLAUDE.md) apply to humans too. The ones tha
 - **Docs change in the same PR as the code.** The [Status](architecture.md#9-status) section for anything that moves a milestone; the user guide for anything user-visible; this file or an ADR for anything dev-visible. Not a later docs pass.
 - **Track deferred work as GitHub issues**, not as a paragraph in a doc. Reference issue numbers in commits and PRs.
 - **No ADR numbers or internal paths in user-facing strings** — CLI help, UI labels, prompts. Errors should be specific and detailed about *what* failed, but they don't cite internal documents either.
-- **Anything a user reads is held to [`ux-principles.md`](ux-principles.md)** — vocabulary, defaults, error phrasing. §2's banned-term table has no automated check yet, so it's a review responsibility.
+- **Anything a user reads is held to [`ux-principles.md`](ux-principles.md)** — vocabulary, defaults, error phrasing. §2's banned-term table is checked automatically in error registry messages and cobra help text ([the vocabulary check](#the-vocabulary-check)); everywhere else it's still a review responsibility.
 - **Return errors from the registry, never `fmt.Errorf`, from an exported app-layer method.** Pick the coarse code, add an explanation if the default isn't specific enough, and `Wrap` the cause so it's logged but never shown. [ADR-0011](decisions/0011-error-model.md) has the codes, the promotion rule, and the safe/internal split. This has no automated check yet either.
 
 Session notes live in `agents/design-docs/` (gitignored, ephemeral). Anything durable graduates into `docs/`.

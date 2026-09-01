@@ -161,6 +161,7 @@ Conventions that live only in a document decay. These are checked by `make check
 - **No wall clock outside the clock** — `time.Now()` anywhere but `internal/platform/clock` fails the build. Time is injected, which also makes date-boundary tests deterministic.
 - **No environment reads outside config** — `os.Getenv` outside `internal/platform/config` fails the build.
 - **Surface conformance suite** — one table of raw inputs driven through the CLI, the REST API, and MCP, asserting all three produce identical normalised command structs. This is the test that catches normalise-once erosion, and it is why the API is in milestone 1 alongside the CLI rather than after it.
+- **Vocabulary** — [`ux-principles.md` §2](ux-principles.md#2-vocabulary)'s banned-term table is checked against the error registry's default messages and every cobra help and flag usage string. Conformance checks that surfaces *behave* alike; this checks that they *speak* alike. See [`contributing.md`](contributing.md#the-vocabulary-check).
 - **`TZ=UTC` in CI** — so a test that accidentally depends on the host timezone fails on the machine that matters.
 
 ---
