@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/anirudhgray/bodger/internal/app/normalize"
@@ -162,7 +163,7 @@ func (s *Service) resolveOwnedAccount(ctx context.Context, actorID, ref string) 
 	}
 	id, err := normalize.Ref(ref, accountCandidates(accounts))
 	if err != nil {
-		return ledger.Account{}, err
+		return ledger.Account{}, humanizeRefError(err, "account", ref)
 	}
 	return findAccount(accounts, id), nil
 }
@@ -175,9 +176,33 @@ func (s *Service) resolveOwnedCategory(ctx context.Context, actorID, ref string)
 	}
 	id, err := normalize.Ref(ref, categoryCandidates(categories))
 	if err != nil {
-		return ledger.Category{}, err
+		return ledger.Category{}, humanizeRefError(err, "category", ref)
 	}
 	return findCategory(categories, id), nil
+}
+
+// humanizeRefError rewrites the generic message normalize.Ref produces
+// ("no match for %q", "%q matches more than one: ...") into one that
+// names what kind of thing ref was being resolved against. normalize.Ref
+// itself can't do this — it has no idea whether its candidates came from
+// AccountRepository or CategoryRepository — so the caller that does know
+// fills in the noun. This is what makes a bare "no match" readable on its
+// own, since CLIMessage doesn't append FieldPath for a person to infer it
+// from.
+func humanizeRefError(err error, noun, ref string) error {
+	var e *errs.Error
+	if !errors.As(err, &e) {
+		return err
+	}
+	switch e.Code {
+	case errs.NotFound:
+		_ = e.Explain("No %s matches %q.", noun, ref)
+	case errs.InvalidInput:
+		if names, ok := e.Details["candidates"].([]string); ok {
+			_ = e.Explain("%q matches more than one %s: %s", ref, noun, strings.Join(names, ", "))
+		}
+	}
+	return e
 }
 
 // parseAccountKind validates raw against ledger's closed set of account
@@ -199,7 +224,7 @@ func parseAccountKind(raw string) (ledger.AccountKind, error) {
 	default:
 		return "", errs.New(errs.InvalidInput).
 			Explain("%q isn't a valid account type.", raw).
-			Field("kind").
+			Field("type").
 			With("valid_kinds", []string{"bank", "cash", "credit_card", "wallet", "investment", "loan", "other"})
 	}
 }
@@ -213,7 +238,7 @@ func parseCategoryKind(raw string) (ledger.CategoryKind, error) {
 	default:
 		return "", errs.New(errs.InvalidInput).
 			Explain("%q isn't a valid category type.", raw).
-			Field("kind").
+			Field("type").
 			With("valid_kinds", []string{"expense", "income"})
 	}
 }
@@ -228,7 +253,7 @@ func parseTransactionKind(raw string) (ledger.TransactionKind, error) {
 	default:
 		return "", errs.New(errs.InvalidInput).
 			Explain("%q isn't a valid transaction type.", raw).
-			Field("kind").
+			Field("type").
 			With("valid_kinds", []string{"outflow", "inflow", "transfer"})
 	}
 }

@@ -77,9 +77,14 @@ func TestCLIMessage_OmitsFieldWhenUnset(t *testing.T) {
 	}
 }
 
-func TestCLIMessage_IncludesFieldWhenSet(t *testing.T) {
+// TestCLIMessage_NeverIncludesFieldPath locks in that FieldPath never
+// leaks into CLI output, however it's set. FieldPath is an internal
+// identifier for the --json field key and a REST surface's form
+// attribution, not for a human reading the terminal — see CLIMessage's
+// doc comment.
+func TestCLIMessage_NeverIncludesFieldPath(t *testing.T) {
 	err := errs.New(errs.InvalidInput).Explain("Amount must be positive.").Field("amount")
-	want := "Amount must be positive. (amount)"
+	want := "Amount must be positive."
 	if got := err.CLIMessage(); got != want {
 		t.Errorf("CLIMessage() = %q, want %q", got, want)
 	}
