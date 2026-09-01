@@ -357,6 +357,296 @@ func TestCategories_AddListRenameArchive(t *testing.T) {
 	}
 }
 
+// txnView mirrors the JSON shape internal/surface/cli's transactionView
+// renders, as a test's-eye view of it: decoding into a struct declared
+// here (rather than asserting on substrings of the plain-text output) is
+// what makes these tests fail if a field name in the --json envelope
+// changes, which is the part scripts depend on.
+type txnView struct {
+	ID            string   `json:"id"`
+	Type          string   `json:"type"`
+	Date          string   `json:"date"`
+	Description   string   `json:"description"`
+	Notes         string   `json:"notes"`
+	Tags          []string `json:"tags"`
+	AccountID     string   `json:"account_id"`
+	CategoryID    string   `json:"category_id"`
+	FromAccountID string   `json:"from_account_id"`
+	ToAccountID   string   `json:"to_account_id"`
+	Amount        string   `json:"amount"`
+	Currency      string   `json:"currency"`
+}
+
+type txnListView struct {
+	Transactions []txnView `json:"transactions"`
+	Limit        int       `json:"limit"`
+	Offset       int       `json:"offset"`
+}
+
+// seedTransactions records one of everything, on four consecutive days,
+// and returns the factory the rest of a transactions test runs against.
+func seedTransactions(t *testing.T) clisurface.ServiceFactory {
+	t.Helper()
+	factory := newTestFactory(t, mustFrozen(t))
+	mustRun(t, factory, "accounts", "add", "Cash", "--type", "cash", "--currency", "INR")
+	mustRun(t, factory, "accounts", "add", "Bank", "--type", "bank", "--currency", "INR")
+	mustRun(t, factory, "categories", "add", "groceries", "--type", "expense")
+	mustRun(t, factory, "categories", "add", "salary", "--type", "income")
+
+	mustRun(t, factory, "spend", "800", "groceries", "--account", "Cash", "--on", "2026-08-10")
+	mustRun(t, factory, "spend", "200", "groceries", "--account", "Bank", "--on", "2026-08-11")
+	mustRun(t, factory, "receive", "150000", "salary", "--account", "Bank", "--on", "2026-08-12")
+	mustRun(t, factory, "move", "500", "--from", "Bank", "--to", "Cash", "--on", "2026-08-13")
+	return factory
+}
+
+func listTransactions(t *testing.T, factory clisurface.ServiceFactory, args ...string) txnListView {
+	t.Helper()
+	var got txnListView
+	decodeData(t, mustRun(t, factory, append([]string{"transactions", "list", "--json"}, args...)...), &got)
+	return got
+}
+
+// TestTransactions_ListSpeaksTheCLIsOwnVerbs pins the vocabulary decision
+// transactions.go's transactionTypeFor documents: a listed transaction is
+// described with the same verb that recorded it (spend/receive/move), not
+// with the application layer's own kind names.
+func TestTransactions_ListSpeaksTheCLIsOwnVerbs(t *testing.T) {
+	factory := seedTransactions(t)
+
+	got := listTransactions(t, factory)
+	if len(got.Transactions) != 4 {
+		t.Fatalf("listed %d transactions, want 4: %+v", len(got.Transactions), got.Transactions)
+	}
+	// Sorted booked-date descending, so the move (the 13th) comes first
+	// and the first spend (the 10th) comes last.
+	wantTypes := []string{"move", "receive", "spend", "spend"}
+	for i, want := range wantTypes {
+		if got.Transactions[i].Type != want {
+			t.Errorf("transaction %d type = %q, want %q", i, got.Transactions[i].Type, want)
+		}
+	}
+
+	move := got.Transactions[0]
+	if move.FromAccountID == "" || move.ToAccountID == "" {
+		t.Errorf("move = %+v, want both ends named", move)
+	}
+	if move.AccountID != "" || move.CategoryID != "" {
+		t.Errorf("move = %+v, want no single account or category", move)
+	}
+	if move.Amount != "500.00" || move.Currency != "INR" {
+		t.Errorf("move amount/currency = %q/%q, want 500.00/INR", move.Amount, move.Currency)
+	}
+
+	spend := got.Transactions[3]
+	if spend.AccountID == "" || spend.CategoryID == "" {
+		t.Errorf("spend = %+v, want an account and a category", spend)
+	}
+	if spend.FromAccountID != "" || spend.ToAccountID != "" {
+		t.Errorf("spend = %+v, want no move ends", spend)
+	}
+	// Money spent is stored as a negative amount; the view shows the
+	// magnitude, with the direction carried by the type.
+	if spend.Amount != "800.00" {
+		t.Errorf("spend amount = %q, want 800.00", spend.Amount)
+	}
+}
+
+func TestTransactions_ListFilters(t *testing.T) {
+	factory := seedTransactions(t)
+
+	spends := listTransactions(t, factory, "--type", "spend")
+	if len(spends.Transactions) != 2 {
+		t.Errorf("--type spend returned %d, want 2", len(spends.Transactions))
+	}
+
+	// Both the Cash spend and the move (which lands in Cash) touch Cash.
+	cash := listTransactions(t, factory, "--account", "Cash")
+	if len(cash.Transactions) != 2 {
+		t.Errorf("--account Cash returned %d, want 2", len(cash.Transactions))
+	}
+
+	groceries := listTransactions(t, factory, "--category", "groceries")
+	if len(groceries.Transactions) != 2 {
+		t.Errorf("--category groceries returned %d, want 2", len(groceries.Transactions))
+	}
+
+	window := listTransactions(t, factory, "--since", "2026-08-11", "--until", "2026-08-12")
+	if len(window.Transactions) != 2 {
+		t.Fatalf("--since/--until returned %d, want 2: %+v", len(window.Transactions), window.Transactions)
+	}
+	if window.Transactions[0].Date != "2026-08-12" || window.Transactions[1].Date != "2026-08-11" {
+		t.Errorf("dates = %q/%q, want 2026-08-12/2026-08-11", window.Transactions[0].Date, window.Transactions[1].Date)
+	}
+}
+
+func TestTransactions_ListRejectsAnUnknownType(t *testing.T) {
+	factory := seedTransactions(t)
+	_, _, err := run(t, factory, "transactions", "list", "--type", "outflow")
+	wantErrCode(t, err, errs.InvalidInput)
+}
+
+func TestTransactions_ListPagesWithLimitAndOffset(t *testing.T) {
+	factory := seedTransactions(t)
+
+	first := listTransactions(t, factory, "--limit", "2")
+	if len(first.Transactions) != 2 || first.Limit != 2 || first.Offset != 0 {
+		t.Fatalf("first page = %+v", first)
+	}
+	second := listTransactions(t, factory, "--limit", "2", "--offset", "2")
+	if len(second.Transactions) != 2 || second.Offset != 2 {
+		t.Fatalf("second page = %+v", second)
+	}
+	if first.Transactions[0].ID == second.Transactions[0].ID {
+		t.Error("the second page repeats the first page's first transaction")
+	}
+
+	// The plain-text renderer offers the next page only when this one came
+	// back exactly full, since that's the only hint of more to come.
+	full := mustRun(t, factory, "transactions", "list", "--limit", "2")
+	if !strings.Contains(full, "--offset 2") {
+		t.Errorf("output = %q, want it to point at the next page", full)
+	}
+	last := mustRun(t, factory, "transactions", "list", "--limit", "3", "--offset", "3")
+	if strings.Contains(last, "--offset") {
+		t.Errorf("output = %q, want no next-page hint on a page that isn't full", last)
+	}
+}
+
+func TestTransactions_ListEmptyState(t *testing.T) {
+	factory := newTestFactory(t, mustFrozen(t))
+	stdout := mustRun(t, factory, "transactions", "list")
+	if !strings.Contains(stdout, "No transactions found") {
+		t.Errorf("stdout = %q, want a friendly empty-state message", stdout)
+	}
+}
+
+// TestTransactions_EditReplacesEveryField exercises the full-replacement
+// contract transactions.go's newTransactionsEditCmd documents, and checks
+// the correction actually lands in the balances — the point of ADR-0002's
+// correctable ledger, from a user's seat.
+func TestTransactions_EditReplacesEveryField(t *testing.T) {
+	factory := seedTransactions(t)
+	mustRun(t, factory, "categories", "add", "dining", "--type", "expense")
+
+	listed := listTransactions(t, factory, "--type", "spend", "--account", "Cash")
+	if len(listed.Transactions) != 1 {
+		t.Fatalf("want exactly one Cash spend to edit, got %+v", listed.Transactions)
+	}
+	id := listed.Transactions[0].ID
+
+	var edited txnView
+	decodeData(t, mustRun(t, factory, "transactions", "edit", id,
+		"--amount", "950.25", "--description", "Anniversary dinner", "--account", "Cash",
+		"--category", "dining", "--on", "2026-08-09", "--note", "split the bill",
+		"--tag", "date-night", "--json"), &edited)
+
+	if edited.ID != id {
+		t.Errorf("edited a different transaction: %q, want %q", edited.ID, id)
+	}
+	if edited.Type != "spend" {
+		t.Errorf("type = %q, want it to stay %q", edited.Type, "spend")
+	}
+	if edited.Amount != "950.25" || edited.Date != "2026-08-09" {
+		t.Errorf("amount/date = %q/%q, want 950.25/2026-08-09", edited.Amount, edited.Date)
+	}
+	if edited.Description != "Anniversary dinner" || edited.Notes != "split the bill" {
+		t.Errorf("description/notes = %q/%q", edited.Description, edited.Notes)
+	}
+	if len(edited.Tags) != 1 || edited.Tags[0] != "date-night" {
+		t.Errorf("tags = %v, want [date-night]", edited.Tags)
+	}
+	if edited.CategoryID == "" || edited.CategoryID == listed.Transactions[0].CategoryID {
+		t.Errorf("category_id = %q, want the new category's", edited.CategoryID)
+	}
+
+	// Cash: -950.25 spent, +500.00 moved in.
+	var balances struct {
+		Balances []struct {
+			Account string `json:"account"`
+			Balance string `json:"balance"`
+		} `json:"balances"`
+	}
+	decodeData(t, mustRun(t, factory, "balance", "--json"), &balances)
+	for _, b := range balances.Balances {
+		if b.Account == "Cash" && b.Balance != "-450.25" {
+			t.Errorf("Cash balance = %q, want -450.25 after the correction", b.Balance)
+		}
+	}
+}
+
+func TestTransactions_EditRefusesBothFlagSetsAtOnce(t *testing.T) {
+	factory := seedTransactions(t)
+	listed := listTransactions(t, factory, "--type", "move")
+	id := listed.Transactions[0].ID
+
+	_, _, err := run(t, factory, "transactions", "edit", id,
+		"--amount", "500", "--description", "Moved", "--account", "Cash", "--from", "Bank", "--to", "Cash")
+	wantErrCode(t, err, errs.InvalidInput)
+}
+
+func TestTransactions_EditAMove(t *testing.T) {
+	factory := seedTransactions(t)
+	listed := listTransactions(t, factory, "--type", "move")
+	id := listed.Transactions[0].ID
+
+	var edited txnView
+	decodeData(t, mustRun(t, factory, "transactions", "edit", id,
+		"--amount", "750", "--description", "Top up Cash", "--from", "Bank", "--to", "Cash",
+		"--on", "2026-08-13", "--json"), &edited)
+
+	if edited.Type != "move" || edited.Amount != "750.00" {
+		t.Errorf("edited = %+v, want a 750.00 move", edited)
+	}
+	if edited.FromAccountID != listed.Transactions[0].FromAccountID || edited.ToAccountID != listed.Transactions[0].ToAccountID {
+		t.Errorf("from/to = %q/%q, want them unchanged", edited.FromAccountID, edited.ToAccountID)
+	}
+}
+
+func TestTransactions_DeleteDropsItFromListsAndBalances(t *testing.T) {
+	factory := seedTransactions(t)
+	listed := listTransactions(t, factory, "--type", "receive")
+	if len(listed.Transactions) != 1 {
+		t.Fatalf("want exactly one receive, got %+v", listed.Transactions)
+	}
+	id := listed.Transactions[0].ID
+
+	var deleted txnView
+	decodeData(t, mustRun(t, factory, "transactions", "delete", id, "--json"), &deleted)
+	if deleted.ID != id {
+		t.Errorf("deleted %q, want %q", deleted.ID, id)
+	}
+
+	after := listTransactions(t, factory)
+	if len(after.Transactions) != 3 {
+		t.Errorf("listed %d transactions after the delete, want 3", len(after.Transactions))
+	}
+	for _, txn := range after.Transactions {
+		if txn.ID == id {
+			t.Errorf("transaction %q is still listed after being deleted", id)
+		}
+	}
+
+	// Bank: -200.00 spent, -500.00 moved out, and no salary any more.
+	var balances struct {
+		Balances []struct {
+			Account string `json:"account"`
+			Balance string `json:"balance"`
+		} `json:"balances"`
+	}
+	decodeData(t, mustRun(t, factory, "balance", "--json"), &balances)
+	for _, b := range balances.Balances {
+		if b.Account == "Bank" && b.Balance != "-700.00" {
+			t.Errorf("Bank balance = %q, want -700.00 once the salary is deleted", b.Balance)
+		}
+	}
+
+	// Deleting the same transaction twice can't work — it's gone from
+	// every read path, so the second attempt is an ordinary not-found.
+	_, _, err := run(t, factory, "transactions", "delete", id)
+	wantErrCode(t, err, errs.NotFound)
+}
+
 func TestBalance_EmptyInstance(t *testing.T) {
 	factory := newTestFactory(t, mustFrozen(t))
 	stdout := mustRun(t, factory, "balance")
