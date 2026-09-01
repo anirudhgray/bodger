@@ -7,8 +7,8 @@
 // what time it is; a missing "date" field on a request is passed through
 // to the application layer as an empty string, and the application layer
 // (internal/app/normalize.DateOf) is what resolves it to "today" in the
-// actor's timezone. CI is meant to fail if this package ever calls
-// time.Now() itself — see TestNoWallClock in grep_test.go.
+// actor's timezone. CI is meant to fail if this package ever reads the
+// wall clock directly itself — see TestNoWallClock in grep_test.go.
 //
 // This package never imports internal/domain or its subpackages
 // (internal/domain/ledger, internal/domain/money) — docs/architecture.md

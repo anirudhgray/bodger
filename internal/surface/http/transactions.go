@@ -20,7 +20,7 @@ const (
 // content (see this package's doc comment). date, when omitted, resolves
 // to the correct booked date in the actor's timezone entirely inside the
 // application layer (internal/app/normalize.DateOf) — this handler never
-// calls time.Now() or otherwise decides what "today" means.
+// reads the wall clock or otherwise decides what "today" means.
 type createTransactionRequest struct {
 	Type        string   `json:"type"`
 	Account     string   `json:"account"`
