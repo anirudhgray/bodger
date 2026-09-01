@@ -275,8 +275,15 @@ Delivered so far in M1:
   `ListTransactions` with the reduced M1 filter (date range, account,
   category subtree, kind), offset pagination, and a fully deterministic
   sort, and `AccountBalances(asOf)` computed from postings per ADR-0002
-  (issue #6). No surface calls these yet — issues #7 and #8 add the CLI
-  and REST API next, in parallel.
+  (issue #6).
+- `internal/surface/cli` — `spend`, `receive`, `move`, `balance`,
+  `accounts` (list/add/archive/set-opening-balance), and `categories`
+  (list/add/rename/archive), registered onto `cmd/bodger`'s root command.
+  Every command decodes flags into a command struct and calls exactly one
+  application method; `--json` gives stable machine-readable output on
+  every data-returning command (issue #7). Transaction listing/editing/
+  deletion and account renaming/category reparenting aren't wired to a
+  command yet — tracked as issue #30. Issue #8 (REST API) hasn't started.
 
 Not yet built: everything else in §2.
 

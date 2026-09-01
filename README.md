@@ -4,7 +4,7 @@ A personal finance application you actually host yourself. Record what you spend
 
 `bodger` is built around one idea: **one financial core, several thin interfaces over it.** A command line, a REST API, a web UI, and a local MCP server for AI agents all call the same code, so they can never disagree about what your money did.
 
-> **Status: pre-alpha.** Architecture and design are complete; the application is not built yet. See [Status](docs/architecture.md#9-status) for the milestone breakdown. Nothing here is installable today.
+> **Status: pre-alpha.** The domain model, persistence layer, and CLI are built and tested; the REST API, web UI, and MCP server are not yet. See [Status](docs/architecture.md#9-status) for the milestone breakdown. You can build the binary today (`make build`) and use the CLI against a local SQLite file — see the [user guide](docs/user-guide.md) — but there's no server, no web UI, and no packaged release yet.
 
 ---
 
@@ -23,7 +23,7 @@ Personal finance for a normal person — not accounting software. You should nev
 
 | | |
 | --- | --- |
-| **CLI** | `bodger tx out --account "HDFC Savings" --amount 800 --category Groceries` |
+| **CLI** | `bodger spend 800 groceries --account "HDFC Savings" --on 2026-08-14` |
 | **REST API** | `bodger serve` — what the web UI talks to, and what your scripts can too |
 | **Web UI** | Dashboards, charts, review workflows. Built into the binary; no separate deployment |
 | **MCP server** | `bodger mcp` — let a local AI agent read and record against your own data |
@@ -39,7 +39,7 @@ None of these is the "real" one. They are peers over the same application layer,
 | [UX principles](docs/ux-principles.md) | Who this is for, and the expectations every surface is held to |
 | [Decision records](docs/decisions/) | Why the load-bearing calls were made the way they were |
 | [Contributing](docs/contributing.md) | Toolchain setup, build commands, conventions |
-| [User guide](docs/user-guide.md) | Deferred until there is something to use — see the file for why |
+| [User guide](docs/user-guide.md) | Installing, first run, recording transactions, reading balances, the CLI reference |
 
 New here? Read [`docs/data-model.md`](docs/data-model.md) first. The domain model was designed before any interface, deliberately, and everything else makes more sense once you know it.
 

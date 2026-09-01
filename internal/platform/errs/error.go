@@ -115,13 +115,15 @@ func (e *Error) CLIExitCode() int {
 }
 
 // CLIMessage renders the error the way a CLI surface should print it: the
-// safe message, with the field path appended when one is set. It never
-// includes the wrapped cause.
+// safe message, and nothing else. It never includes the wrapped cause, and
+// it never appends FieldPath — FieldPath is an internal identifier
+// ("category_ref", "from_account_ref"), meant for a script reading the
+// --json field key, not for a person reading the terminal. A message that
+// genuinely needs to say which thing it's about should say so in English
+// (Explain("No account matches %q.", ref)), not rely on a raw field name
+// tacked on afterwards.
 func (e *Error) CLIMessage() string {
-	if e.FieldPath == "" {
-		return e.Message
-	}
-	return fmt.Sprintf("%s (%s)", e.Message, e.FieldPath)
+	return e.Message
 }
 
 // wireError is the JSON shape of an Error. It exists so the wire field is
