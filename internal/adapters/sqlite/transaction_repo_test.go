@@ -226,7 +226,7 @@ func TestTransactionRepository_List_FilterByAccountAndAsOf(t *testing.T) {
 	}
 
 	asOf := mustDate(t, 2026, time.August, 15)
-	list, err := repo.List(ctx, ports.SeededUserID, ports.TransactionFilter{AccountID: "acc-1", AsOf: &asOf})
+	list, err := repo.List(ctx, ports.SeededUserID, ports.TransactionFilter{AccountID: "acc-1", ToDate: &asOf})
 	if err != nil {
 		t.Fatalf("List filtered: %v", err)
 	}

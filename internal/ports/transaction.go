@@ -8,15 +8,50 @@ import (
 )
 
 // TransactionFilter narrows TransactionRepository.List. The zero value
-// lists every non-deleted transaction actorID owns.
+// lists every non-deleted transaction actorID owns, unpaginated.
+//
+// This is issue #6's reduced M1 filter — date range, account, category
+// (subtree included by default), and kind — not ADR-0009's full
+// TransactionFilter (amount range, tags, currencies, description search,
+// import batch), which is M4 scope. internal/app is this port's only
+// consumer today (ADR-0007: ports are defined by the consumer), and it
+// never sets a field this struct doesn't have — extending it further is
+// exactly the "add it once, every surface gains it" story ADR-0009
+// describes, deferred until M4 actually needs it.
 type TransactionFilter struct {
 	// AccountID, when non-empty, restricts to transactions with at least
 	// one posting on this account — the query data-model.md §4's balance
 	// formula needs.
 	AccountID string
-	// AsOf, when set, restricts to transactions booked on or before this
-	// date.
-	AsOf *domain.Date
+	// CategoryID, when non-empty, restricts to transactions with at least
+	// one posting whose category is this category or a descendant of it
+	// in the user's category tree. Subtree inclusion is not optional here
+	// (ADR-0009: "CategoryRefs includes the subtree by default... that is
+	// what users mean") — there is no separate flag to turn it off.
+	CategoryID string
+	// Kind, when non-empty, restricts to transactions of this kind
+	// (outflow, inflow, or transfer).
+	Kind ledger.TransactionKind
+	// FromDate, when set, restricts to transactions booked on or after
+	// this date (inclusive, ADR-0009).
+	FromDate *domain.Date
+	// ToDate, when set, restricts to transactions booked on or before
+	// this date (inclusive, ADR-0009). This replaces the field this port
+	// used to call AsOf — the same "on or before" semantics, renamed
+	// because a filter with a lower bound too needs a name that pairs
+	// with it.
+	ToDate *domain.Date
+	// Limit caps the number of rows returned. Limit <= 0 means no limit —
+	// this is a low-level port semantic (contrast with
+	// app.ListTransactionsQuery, which defaults Limit to a page size
+	// before it ever reaches here); AccountBalances, for one, deliberately
+	// leaves this zero because a balance computation needs every matching
+	// posting, not a page of them.
+	Limit int
+	// Offset skips this many matching rows, in the sort order below,
+	// before the first row returned. Used with Limit for M1's offset
+	// pagination (ADR-0009); cursor pagination is M2.
+	Offset int
 }
 
 // TransactionRepository persists Transactions and their Postings together,
@@ -36,8 +71,11 @@ type TransactionRepository interface {
 	Get(ctx context.Context, actorID, id string) (ledger.Transaction, []ledger.Tag, error)
 
 	// List returns every non-deleted transaction actorID owns matching
-	// filter, ordered by booked date then id. It does not load tags —
-	// callers that need them call Get.
+	// filter, sorted (booked_date DESC, created_at DESC, id DESC) — fully
+	// specified, deliberately, because a non-deterministic tiebreak would
+	// make offset pagination (and any test asserting exact order)
+	// unreliable (ADR-0009). It does not load tags — callers that need
+	// them call Get.
 	List(ctx context.Context, actorID string, filter TransactionFilter) ([]ledger.Transaction, error)
 
 	// Update replaces the stored state of the transaction identified by

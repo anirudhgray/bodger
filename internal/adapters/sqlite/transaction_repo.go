@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/domain/money"
@@ -63,7 +64,7 @@ func (r *TransactionRepository) Get(ctx context.Context, actorID, id string) (le
 
 	row := r.db.read.QueryRowContext(ctx, `
 		SELECT id, user_id, kind, booked_date, posted_date, description, notes,
-		       import_record_id, external_id, related_transaction_id
+		       import_record_id, external_id, related_transaction_id, created_at
 		FROM transactions
 		WHERE id = ? AND user_id = ? AND deleted_at IS NULL
 	`, id, actorID)
@@ -100,33 +101,85 @@ func (r *TransactionRepository) List(ctx context.Context, actorID string, filter
 		return nil, err
 	}
 
-	query := `
+	// filter.CategoryID resolves against a recursive CTE walking the
+	// category tree downward (children of children, ...) from the given
+	// root — the same recursive shape checkNoCycle uses to walk upward,
+	// but in the opposite direction: subtree inclusion (ADR-0009), not
+	// cycle detection. Its placeholders come first in the finished query
+	// text, so its args are prepended to args below, ahead of every WHERE
+	// placeholder.
+	var cte string
+	var cteArgs []any
+	if filter.CategoryID != "" {
+		cte = `
+			WITH RECURSIVE category_subtree(id) AS (
+				SELECT id FROM categories WHERE id = ? AND user_id = ?
+				UNION ALL
+				SELECT c.id FROM categories c JOIN category_subtree cs ON c.parent_id = cs.id
+			)
+		`
+		cteArgs = []any{filter.CategoryID, actorID}
+	}
+
+	query := cte + `
 		SELECT DISTINCT t.id, t.user_id, t.kind, t.booked_date, t.posted_date, t.description, t.notes,
-		       t.import_record_id, t.external_id, t.related_transaction_id
+		       t.import_record_id, t.external_id, t.related_transaction_id, t.created_at
 		FROM transactions t
 	`
-	args := []any{}
+
 	where := []string{"t.user_id = ?", "t.deleted_at IS NULL"}
-	args = append(args, actorID)
+	whereArgs := []any{actorID}
 
-	if filter.AccountID != "" {
+	if filter.AccountID != "" || filter.CategoryID != "" {
 		query += " JOIN postings p ON p.transaction_id = t.id"
-		where = append(where, "p.account_id = ?")
-		args = append(args, filter.AccountID)
 	}
-	if filter.AsOf != nil {
+	if filter.AccountID != "" {
+		where = append(where, "p.account_id = ?")
+		whereArgs = append(whereArgs, filter.AccountID)
+	}
+	if filter.CategoryID != "" {
+		where = append(where, "p.category_id IN (SELECT id FROM category_subtree)")
+	}
+	if filter.Kind != "" {
+		where = append(where, "t.kind = ?")
+		whereArgs = append(whereArgs, string(filter.Kind))
+	}
+	if filter.FromDate != nil {
+		where = append(where, "t.booked_date >= ?")
+		whereArgs = append(whereArgs, formatDate(*filter.FromDate))
+	}
+	if filter.ToDate != nil {
 		where = append(where, "t.booked_date <= ?")
-		args = append(args, formatDate(*filter.AsOf))
+		whereArgs = append(whereArgs, formatDate(*filter.ToDate))
 	}
 
-	query += " WHERE "
-	for i, w := range where {
-		if i > 0 {
-			query += " AND "
-		}
-		query += w
+	query += " WHERE " + strings.Join(where, " AND ")
+
+	// The fully-specified sort ADR-0009 requires: a non-deterministic
+	// tiebreak would make offset pagination (and any test asserting exact
+	// order) unreliable.
+	query += " ORDER BY t.booked_date DESC, t.created_at DESC, t.id DESC"
+
+	var limitArgs []any
+	switch {
+	case filter.Limit > 0 && filter.Offset > 0:
+		query += " LIMIT ? OFFSET ?"
+		limitArgs = []any{filter.Limit, filter.Offset}
+	case filter.Limit > 0:
+		query += " LIMIT ?"
+		limitArgs = []any{filter.Limit}
+	case filter.Offset > 0:
+		// SQLite-specific: LIMIT -1 means "no limit", which is what lets
+		// OFFSET apply on its own when the caller wants a page of
+		// everything past a point without also capping page size.
+		query += " LIMIT -1 OFFSET ?"
+		limitArgs = []any{filter.Offset}
 	}
-	query += " ORDER BY t.booked_date, t.id"
+
+	args := make([]any, 0, len(cteArgs)+len(whereArgs)+len(limitArgs))
+	args = append(args, cteArgs...)
+	args = append(args, whereArgs...)
+	args = append(args, limitArgs...)
 
 	rows, err := r.db.read.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -153,6 +206,9 @@ func (r *TransactionRepository) List(ctx context.Context, actorID string, filter
 		return nil, errs.New(errs.Internal).Wrap(err)
 	}
 
+	// txnRows is already in the query's final sort order; preserve it
+	// rather than iterating postingsByTxn (a map, unordered) or re-deriving
+	// order from ids.
 	txns := make([]ledger.Transaction, 0, len(txnRows))
 	for _, tr := range txnRows {
 		txn, err := buildTransaction(tr, postingsByTxn[tr.id])
@@ -340,12 +396,17 @@ type transactionRow struct {
 	importRecordID       sql.NullString
 	externalID           sql.NullString
 	relatedTransactionID sql.NullString
+	// createdAt is scanned only to appear in List's SQL-level ORDER BY
+	// (booked_date DESC, created_at DESC, id DESC — ADR-0009); it never
+	// reaches the domain Transaction, which has no CreatedAt accessor
+	// (created_at is audit-only, data-model.md §9).
+	createdAt string
 }
 
 func scanTransactionRow(row rowScanner) (transactionRow, error) {
 	var tr transactionRow
 	err := row.Scan(&tr.id, &tr.userID, &tr.kind, &tr.bookedDate, &tr.postedDate, &tr.description, &tr.notes,
-		&tr.importRecordID, &tr.externalID, &tr.relatedTransactionID)
+		&tr.importRecordID, &tr.externalID, &tr.relatedTransactionID, &tr.createdAt)
 	return tr, err
 }
 
@@ -458,7 +519,7 @@ func buildTransaction(tr transactionRow, postings []ledger.Posting) (ledger.Tran
 func loadCurrentForRevision(ctx context.Context, tx execer, actorID, id string) (ledger.Transaction, []ledger.Tag, *errs.Error) {
 	row := tx.QueryRowContext(ctx, `
 		SELECT id, user_id, kind, booked_date, posted_date, description, notes,
-		       import_record_id, external_id, related_transaction_id
+		       import_record_id, external_id, related_transaction_id, created_at
 		FROM transactions
 		WHERE id = ? AND user_id = ? AND deleted_at IS NULL
 	`, id, actorID)

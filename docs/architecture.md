@@ -268,6 +268,15 @@ Delivered so far in M1:
   the `cmd/bodger` root command bootstraps config, the database,
   migrations, and the container, with no subcommands registered yet
   (issue #5).
+- `internal/app`'s use-case methods: account and category CRUD (create,
+  rename, archive, list — plus reparent for categories), `RecordOutflow`,
+  `RecordInflow`, `RecordTransfer`, edit and soft-delete a transaction
+  (writing a `transaction_revision` row per data-model.md §7),
+  `ListTransactions` with the reduced M1 filter (date range, account,
+  category subtree, kind), offset pagination, and a fully deterministic
+  sort, and `AccountBalances(asOf)` computed from postings per ADR-0002
+  (issue #6). No surface calls these yet — issues #7 and #8 add the CLI
+  and REST API next, in parallel.
 
 Not yet built: everything else in §2.
 
