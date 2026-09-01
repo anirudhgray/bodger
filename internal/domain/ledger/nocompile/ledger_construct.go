@@ -20,7 +20,7 @@
 //     every field referenced below.
 //  4. Restore the "//go:build ignore" line.
 //
-// Last manually verified: 2026-08-31, confirmed the build fails with
+// Last manually verified: 2026-09-01, confirmed the build fails with
 // "cannot refer to unexported field" errors for every field referenced
 // below, then restored the tag.
 //
@@ -33,8 +33,8 @@ import "github.com/anirudhgray/bodger/internal/domain/ledger"
 // None of these struct literals must compile: every referenced field is
 // unexported outside the ledger package.
 var (
-	_ = ledger.Account{id: "a", userID: "u", name: "n", kind: ledger.AccountKindBank, archived: false}
-	_ = ledger.Category{id: "c", userID: "u", name: "n", kind: ledger.CategoryKindExpense, archived: false}
+	_ = ledger.Account{id: "a", userID: "u", name: "n", kind: ledger.AccountKindBank, archivedAt: nil}
+	_ = ledger.Category{id: "c", userID: "u", name: "n", kind: ledger.CategoryKindExpense, archivedAt: nil}
 	_ = ledger.Tag{value: "x"}
 	_ = ledger.Posting{id: "p", accountID: "a", sortOrder: 0}
 	_ = ledger.Transaction{id: "t", userID: "u", description: "d"}

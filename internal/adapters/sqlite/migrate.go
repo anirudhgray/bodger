@@ -73,6 +73,23 @@ func (db *DB) migrateUpTo(ctx context.Context, version int64) error {
 	return nil
 }
 
+// migrateDownTo rolls back migrations to and including everything after
+// version, landing the database at exactly version. Like migrateUpTo, it
+// exists so tests can exercise a specific migration's Down step (and the
+// schema/data it leaves behind) in isolation — production code never
+// calls this.
+func (db *DB) migrateDownTo(ctx context.Context, version int64) error {
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.write, migrationsSub())
+	if err != nil {
+		return fmt.Errorf("sqlite: create migration provider: %w", err)
+	}
+
+	if _, err := provider.DownTo(ctx, version); err != nil {
+		return fmt.Errorf("sqlite: migrate down to %d: %w", version, err)
+	}
+	return nil
+}
+
 // MigrateDownToZero rolls back every applied migration, in reverse order.
 // It exists for the up→down→up cycle CI and tests run on every migration
 // (ADR-0007) — production code never calls this.

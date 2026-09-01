@@ -249,7 +249,9 @@ Delivered so far in M1:
   generation, structured logging, shared error registry (issue #4).
 - `internal/domain/ledger` — `Account`, `Category`, `Tag`, `Transaction`,
   and `Posting`, with the invariants from data-model.md §14 and a pure
-  `Balance` function (issue #2).
+  `Balance` function (issue #2). `Account` and `Category` carry the full
+  data-model.md §4/§6 field set — `Institution`, `SortOrder`, and
+  `ArchivedAt` — persisted through the SQLite adapter below (issue #22).
 - `internal/ports` — `AccountRepository`, `CategoryRepository`,
   `TransactionRepository`, and `TagRepository` interfaces, and
   `internal/adapters/sqlite` — their `modernc.org/sqlite` implementation:

@@ -23,6 +23,11 @@ var (
 	// an empty name.
 	ErrAccountEmptyName = errors.New("ledger: account name must not be empty")
 
+	// ErrAccountEmptyInstitution is returned when an account's institution
+	// pointer is non-nil but points at an empty string. Pass nil to mean
+	// "no institution recorded" instead.
+	ErrAccountEmptyInstitution = errors.New("ledger: account institution must not be empty when set")
+
 	// ErrCategoryInvalidKind is returned when a category's kind isn't
 	// expense or income.
 	ErrCategoryInvalidKind = errors.New("ledger: invalid category kind")

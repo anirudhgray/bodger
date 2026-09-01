@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anirudhgray/bodger/internal/domain"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/domain/money"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
@@ -23,7 +24,7 @@ func mustMoney(t *testing.T, minor int64, currency string) money.Money {
 
 func mustAccount(t *testing.T, id, userID, name string) ledger.Account {
 	t.Helper()
-	a, err := ledger.NewAccount(id, userID, name, ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, false)
+	a, err := ledger.NewAccount(id, userID, name, ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, nil, 0, nil)
 	if err != nil {
 		t.Fatalf("ledger.NewAccount: %v", err)
 	}
@@ -160,7 +161,12 @@ func TestAccountRepository_Update(t *testing.T) {
 	}
 
 	clk.Advance(time.Minute)
-	renamed, err := ledger.NewAccount("acc-1", ports.SeededUserID, "Renamed", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, true)
+	archivedOn, err := domain.NewDate(2026, time.January, 15)
+	if err != nil {
+		t.Fatalf("domain.NewDate: %v", err)
+	}
+	institution := "HDFC Bank"
+	renamed, err := ledger.NewAccount("acc-1", ports.SeededUserID, "Renamed", ledger.AccountKindBank, mustMoney(t, 0, "USD"), nil, &institution, 4, &archivedOn)
 	if err != nil {
 		t.Fatalf("NewAccount: %v", err)
 	}
@@ -172,8 +178,12 @@ func TestAccountRepository_Update(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.Name() != "Renamed" || !got.Archived() {
-		t.Errorf("Get after Update = %+v, want Renamed/archived", got)
+	gotInstitution, hasInstitution := got.Institution()
+	gotArchivedAt, isArchived := got.ArchivedAt()
+	if got.Name() != "Renamed" || !got.Archived() || !hasInstitution || gotInstitution != institution ||
+		!isArchived || !gotArchivedAt.Equal(archivedOn) || got.SortOrder() != 4 {
+		t.Errorf("Get after Update = %+v (institution=%q/%v, archivedAt=%s/%v, sortOrder=%d), want Renamed/archived/HDFC Bank/2026-01-15/sortOrder=4",
+			got, gotInstitution, hasInstitution, gotArchivedAt, isArchived, got.SortOrder())
 	}
 }
 

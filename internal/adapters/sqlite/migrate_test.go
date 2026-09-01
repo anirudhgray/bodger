@@ -14,8 +14,8 @@ import (
 )
 
 // latestMigrationVersion is the highest numeric prefix under migrations/.
-// Update this alongside adding a ninth migration.
-const latestMigrationVersion = 8
+// Update this alongside adding a new migration.
+const latestMigrationVersion = 9
 
 func TestMigrateUp_SeedsUser(t *testing.T) {
 	db, _ := newTestDB(t)
@@ -234,5 +234,115 @@ func TestCurrencies_MatchDomainSeed(t *testing.T) {
 		if gotExp != exp {
 			t.Errorf("currency %q minor_unit_exponent = %d, want %d", code, gotExp, exp)
 		}
+	}
+}
+
+// TestMigrate00009_ArchivedAtRoundTrip exercises the 00009 migration's
+// create-copy-drop-rename dance in both directions: an archived and an
+// active row of each table, taken down to the pre-00009 (archived bool)
+// shape and back up to the archived_at shape, must preserve the
+// archived/active *state* — the down migration collapses archived_at to a
+// bool, so the up migration re-expanding it can't recover the original
+// instant, only that the row was (or wasn't) archived.
+func TestMigrate00009_ArchivedAtRoundTrip(t *testing.T) {
+	db, clk := newTestDB(t) // newTestDB already migrates all the way up
+	ctx := context.Background()
+
+	now := formatTime(clk.Now())
+
+	insertAccount := func(id string, archivedAt any) {
+		t.Helper()
+		_, err := db.write.ExecContext(ctx, `
+			INSERT INTO accounts (id, user_id, name, kind, currency, institution, opening_balance_minor, opening_balance_date, archived_at, sort_order, created_at, updated_at)
+			VALUES (?, ?, ?, 'bank', 'USD', ?, 0, NULL, ?, 7, ?, ?)
+		`, id, ports.SeededUserID, id+"-name", "Test Bank", archivedAt, now, now)
+		if err != nil {
+			t.Fatalf("insert account %q: %v", id, err)
+		}
+	}
+	insertCategory := func(id string, archivedAt any) {
+		t.Helper()
+		_, err := db.write.ExecContext(ctx, `
+			INSERT INTO categories (id, user_id, parent_id, name, kind, archived_at, sort_order, created_at, updated_at)
+			VALUES (?, ?, NULL, ?, 'expense', ?, 3, ?, ?)
+		`, id, ports.SeededUserID, id+"-name", archivedAt, now, now)
+		if err != nil {
+			t.Fatalf("insert category %q: %v", id, err)
+		}
+	}
+
+	insertAccount("acc-archived", now)
+	insertAccount("acc-active", nil)
+	insertCategory("cat-archived", now)
+	insertCategory("cat-active", nil)
+
+	if err := db.migrateDownTo(ctx, 8); err != nil {
+		t.Fatalf("migrateDownTo(8): %v", err)
+	}
+
+	// The pre-00009 schema has no institution/sort_order columns at all —
+	// confirming that, not just that `archived` holds the right value,
+	// is what proves the table was actually rebuilt rather than just
+	// having a column renamed.
+	for _, table := range []string{"accounts", "categories"} {
+		var count int
+		err := db.write.QueryRowContext(ctx, fmt.Sprintf(
+			`SELECT count(*) FROM pragma_table_info('%s') WHERE name IN ('institution', 'sort_order', 'archived_at')`, table,
+		)).Scan(&count)
+		if err != nil {
+			t.Fatalf("inspect %s columns: %v", table, err)
+		}
+		if count != 0 {
+			t.Errorf("%s still has a 00009 column after migrating down to 8", table)
+		}
+	}
+
+	checkArchivedBool := func(table, id string, want int) {
+		t.Helper()
+		var got int
+		err := db.write.QueryRowContext(ctx, fmt.Sprintf(`SELECT archived FROM %s WHERE id = ?`, table), id).Scan(&got)
+		if err != nil {
+			t.Fatalf("query %s.archived for %q: %v", table, id, err)
+		}
+		if got != want {
+			t.Errorf("%s %q archived = %d, want %d", table, id, got, want)
+		}
+	}
+	checkArchivedBool("accounts", "acc-archived", 1)
+	checkArchivedBool("accounts", "acc-active", 0)
+	checkArchivedBool("categories", "cat-archived", 1)
+	checkArchivedBool("categories", "cat-active", 0)
+
+	if err := db.migrateUpTo(ctx, 9); err != nil {
+		t.Fatalf("migrateUpTo(9): %v", err)
+	}
+
+	checkArchivedAt := func(table, id string, wantArchived bool) {
+		t.Helper()
+		var archivedAt sql.NullString
+		err := db.write.QueryRowContext(ctx, fmt.Sprintf(`SELECT archived_at FROM %s WHERE id = ?`, table), id).Scan(&archivedAt)
+		if err != nil {
+			t.Fatalf("query %s.archived_at for %q: %v", table, id, err)
+		}
+		if archivedAt.Valid != wantArchived {
+			t.Errorf("%s %q archived_at valid = %v, want %v", table, id, archivedAt.Valid, wantArchived)
+		}
+	}
+	checkArchivedAt("accounts", "acc-archived", true)
+	checkArchivedAt("accounts", "acc-active", false)
+	checkArchivedAt("categories", "cat-archived", true)
+	checkArchivedAt("categories", "cat-active", false)
+
+	// institution and sort_order round-trip through the down migration by
+	// definition (the pre-00009 schema can't hold them at all), so the
+	// re-upped row necessarily reverts to NULL/0 rather than the values
+	// it was inserted with — documented, not a bug, since 00009's Down is
+	// a genuine schema rollback, not a lossless snapshot.
+	var institution sql.NullString
+	if err := db.write.QueryRowContext(ctx, `SELECT institution FROM accounts WHERE id = ?`, "acc-archived").Scan(&institution); err != nil {
+		t.Fatalf("query accounts.institution: %v", err)
+	}
+	if institution.Valid {
+		t.Errorf("accounts.institution = %q after up-down-up, want NULL (not preserved across the Down rollback)", institution.String)
 	}
 }
