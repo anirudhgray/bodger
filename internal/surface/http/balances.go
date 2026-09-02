@@ -11,7 +11,7 @@ import (
 // resolved to — the application layer decided that, not this handler),
 // and every account's balance as of that date.
 type balancesView struct {
-	AsOf     string        `json:"as_of"`
+	AsOf     string        `json:"as_of" doc:"The date every balance below is computed as of." format:"date"`
 	Balances []balanceView `json:"balances"`
 }
 
