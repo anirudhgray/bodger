@@ -198,8 +198,8 @@ Single currency per account; a cross-currency transfer is rejected with a clear 
 
 Two surfaces ship together deliberately: the conformance suite needs two surfaces to compare, and the normalise-once contract is far cheaper to establish now than to retrofit across four.
 
-### M2 — Web UI and authentication
-Fast transaction entry, transaction list with filters, account balances, settings. Session-cookie auth for the browser, hashed API tokens for CLI/MCP. Docker image and Compose file. This is the milestone where a non-technical person can use the product.
+### M2 · The Shire — Web UI and authentication
+Fast transaction entry, transaction list with filters, account balances, settings. Session-cookie auth for the browser, hashed API tokens for CLI/MCP. Docker image and Compose file. This is the milestone where a non-technical person can use the product — ordinary folk, no accountants, which is the Shire's whole character in the Arda (M1) world.
 
 ### M3 — Multi-currency and FX
 Cross-currency transfers enabled. FX provider abstraction, rate storage, explicit conversion policies, reporting currency. Every converted figure carries its rate, date, source, and policy ([ADR-0004](decisions/0004-multi-currency-and-fx.md)).
@@ -224,14 +224,14 @@ Rules, scheduled occurrences, materialisation, forecasting. Occurrences never to
 ## 9. Status
 
 **M1 · Arda shipped as [v0.1.0](https://github.com/anirudhgray/bodger/releases/tag/v0.1.0).**
-No milestone is currently in progress — M2's scope hasn't been decided yet
-(see [§8](#8-milestones)).
+M2 · The Shire is scoped — see the [M2 milestone](https://github.com/anirudhgray/bodger/milestone/2)
+for its issues — but no work has landed yet.
 
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
 | M1 · Arda — Ledger core, CLI, REST API | ✅ Complete (v0.1.0) |
-| M2 — Web UI and authentication | ⬜ Not started |
+| M2 · The Shire — Web UI and authentication | ⬜ Not started |
 | M3 — Multi-currency and FX | ⬜ Not started |
 | M4 — Analytics and charts | ⬜ Not started |
 | M5 — Import and export | ⬜ Not started |
