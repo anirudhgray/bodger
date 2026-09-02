@@ -45,10 +45,9 @@ var distFS embed.FS
 var placeholderFS embed.FS
 
 // Dist returns what `bodger serve` should serve for the web UI: the real
-// build output rooted at dist/ if `make build-web` has run (detected by
-// dist/index.html actually existing — .gitkeep alone doesn't count), or
-// the placeholder page otherwise. Either way the caller sees "index.html"
-// and "assets/..." paths, never a "dist/" or "placeholder/" prefix.
+// build output rooted at dist/ if `make build-web` has run, or the
+// placeholder page otherwise. Either way the caller sees "index.html" and
+// "assets/..." paths, never a "dist/" or "placeholder/" prefix.
 func Dist() fs.FS {
 	dist, err := fs.Sub(distFS, "dist")
 	if err != nil {
@@ -58,14 +57,22 @@ func Dist() fs.FS {
 		// a runtime one.
 		panic("internal/platform/webui: " + err.Error())
 	}
-	if _, err := fs.Stat(dist, "index.html"); err == nil {
-		return dist
-	}
-
 	placeholder, err := fs.Sub(placeholderFS, "placeholder")
 	if err != nil {
 		// Unreachable, same reasoning as above for "placeholder".
 		panic("internal/platform/webui: " + err.Error())
+	}
+	return chooseFS(dist, placeholder)
+}
+
+// chooseFS picks dist if a real `make build-web` has run — detected by
+// dist/index.html actually existing, since .gitkeep alone doesn't count —
+// or placeholder otherwise. Split out from Dist so this decision is
+// testable against fake filesystems (webui_test.go) rather than only
+// against whatever this package happens to have embedded at build time.
+func chooseFS(dist, placeholder fs.FS) fs.FS {
+	if _, err := fs.Stat(dist, "index.html"); err == nil {
+		return dist
 	}
 	return placeholder
 }

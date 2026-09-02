@@ -100,12 +100,13 @@ func validateResponse(t *testing.T, req *http.Request, resp *http.Response, body
 	}
 }
 
-// newTestServer builds a real *httptest.Server serving
-// httpsurface.NewMux(svc, nil), with svc wired to the real SQLite adapter
+// newTestService builds an *app.Service wired to the real SQLite adapter
 // against a fresh, fully-migrated temp-file database — the HTTP-surface
 // equivalent of internal/app/sqlite_integration_test.go's
-// newSQLiteTestService.
-func newTestServer(t *testing.T, frozenAt time.Time, tz string) *httptest.Server {
+// newSQLiteTestService. Split out from newTestServer so a test can build
+// a handler other than NewMux (webui_handler_test.go's NewServerHandler
+// case) from the same real service without duplicating this setup.
+func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -136,7 +137,15 @@ func newTestServer(t *testing.T, frozenAt time.Time, tz string) *httptest.Server
 	if err != nil {
 		t.Fatalf("app.NewService: %v", err)
 	}
+	return svc
+}
 
+// newTestServer builds a real *httptest.Server serving
+// httpsurface.NewMux(svc, nil) over a newTestService.
+func newTestServer(t *testing.T, frozenAt time.Time, tz string) *httptest.Server {
+	t.Helper()
+
+	svc := newTestService(t, frozenAt, tz)
 	srv := httptest.NewServer(httpsurface.NewMux(svc, nil))
 	t.Cleanup(srv.Close)
 	return srv
