@@ -41,17 +41,18 @@ bump:
 | `feat!:` / `BREAKING CHANGE:` footer | minor (semver allows this pre-1.0) | major |
 | anything else (`docs:`, `chore:`, `test:`, `refactor:`, …) | no release on its own | no release on its own |
 
-**A milestone completing is not automatically a version bump rule** — it's
-a judgment call made at release time, informed by what actually shipped
-since the last tag. In practice: **M1 (Arda) ships as `v1.0.0`** — the
-first release, and the point at which bodger is genuinely usable
-end-to-end (domain model, CLI, REST API, derived balances), which is what
-"1.0" should mean regardless of the pre-1.0 table above. Later milestones
-each get their own release when they're done; whether that's a minor or
-major bump depends on whether anything in it breaks a documented contract
-(the REST API's request/response shapes, the CLI's flags and output, the
-export format) — check the actual diff, don't assume from the milestone
-number.
+**A milestone completing is not automatically a version bump rule, and
+isn't automatically the 0.x → 1.0.0 transition either** — both are
+judgment calls made at release time, not read off a milestone number.
+bodger starts, and stays, pre-1.0 (`0.x.y`) until there's an actual
+commitment to hold something stable — the REST API's request/response
+shapes, the CLI's flags and output, the export format — across releases.
+Crossing to `1.0.0` is a deliberate decision to make that commitment,
+made when it's true, not a label attached to whichever milestone happens
+to finish first. Each milestone still gets its own release when it's
+done; whether that's a minor or major (pre- or post-1.0) bump depends on
+whether anything in it breaks a documented contract — check the actual
+diff, don't assume from the milestone number.
 
 A milestone can also span more than one release, or a release can land
 mid-milestone for something worth shipping early — the tag doesn't have to
@@ -60,16 +61,16 @@ its title (below) when it *is* the release that completes one.
 
 ## Release title and the milestone name
 
-A bare semver tag (`v1.0.0`) doesn't carry the milestone name
-(`M1 Arda`) — GoReleaser can't infer that from the tag string alone, and
-[`architecture.md` §8](architecture.md#8-milestones) is explicit that a
-release should take its milestone's name rather than inventing a second
+A bare semver tag (e.g. `v0.4.0`) doesn't carry a milestone's name (e.g.
+`M<n> <Name>`) — GoReleaser can't infer that from the tag string alone,
+and [`architecture.md` §8](architecture.md#8-milestones) is explicit that
+a release should take its milestone's name rather than inventing a second
 vocabulary. So the name travels with the **tag object itself**: create an
-**annotated** tag whose message is the milestone name, and
-`release.yaml` reads it back to build the title
-(`v1.0.0 — M1 Arda`) before invoking GoReleaser. A tag with no message (or
-a release that doesn't complete a milestone) falls back to the bare tag
-name as the title — see the exact commands below.
+**annotated** tag whose message is the milestone name, and `release.yaml`
+reads it back to build the title (`vX.Y.Z — M<n> <Name>`) before invoking
+GoReleaser. A tag with no message (or a release that doesn't complete a
+milestone) falls back to the bare tag name as the title — see the exact
+commands below.
 
 This was a deliberate choice over passing the name as a manual workflow
 input: encoding it in the tag means the same annotated tag, run locally
@@ -107,7 +108,7 @@ version heading added on top — to the top of the repo's
 [`CHANGELOG.md`](../CHANGELOG.md):
 
 ```markdown
-## v1.0.0 — 2026-09-15
+## vX.Y.Z — 2026-09-15
 
 ### Features
 ...
@@ -131,8 +132,8 @@ commit, not a branch tip, in the first place.
 
 ```sh
 git checkout main && git pull
-git tag -a v1.0.0 -m "M1 Arda"   # omit -m, or use a plain description, for a non-milestone release
-git push origin v1.0.0
+git tag -a vX.Y.Z -m "M<n> <Name>"   # omit -m, or use a plain description, for a non-milestone release
+git push origin vX.Y.Z
 ```
 
 Use `git tag -s` instead of `-a` if you want the tag GPG-signed (a signing
