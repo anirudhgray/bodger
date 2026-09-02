@@ -118,6 +118,7 @@ Full rationale in [ADR-0001](decisions/0001-technology-stack.md). Summary:
 | Migrations | **goose**, SQL files embedded with `embed.FS` |
 | HTTP routing | **stdlib `net/http.ServeMux`** — method+pattern routing since Go 1.22; no framework |
 | CLI framework | **cobra** |
+| OpenAPI generation/validation | **`github.com/getkin/kin-openapi`** — generates `internal/surface/http/openapi.json` from the REST API's own DTOs and route table, and validates real e2e-test responses against it (issue #36) |
 | MCP | **`github.com/modelcontextprotocol/go-sdk`** (official) |
 | Web UI | **React + TypeScript + Vite**, built to static assets embedded in the Go binary |
 | Auth | Session cookies for the browser, hashed API tokens for CLI/MCP/scripts; see [ADR-0006](decisions/0006-authentication-and-multi-user-path.md) |
@@ -162,6 +163,7 @@ Conventions that live only in a document decay. These are checked by `make check
 - **No environment reads outside config** — `os.Getenv` outside `internal/platform/config` fails the build.
 - **Surface conformance suite** — one table of raw inputs driven through the CLI, the REST API, and MCP, asserting all three produce identical normalised command structs. This is the test that catches normalise-once erosion, and it is why the API is in milestone 1 alongside the CLI rather than after it.
 - **Vocabulary** — [`ux-principles.md` §2](ux-principles.md#2-vocabulary)'s banned-term table is checked against the error registry's default messages and every cobra help and flag usage string. Conformance checks that surfaces *behave* alike; this checks that they *speak* alike. See [`contributing.md`](contributing.md#the-vocabulary-check).
+- **OpenAPI document freshness and response validation** — `internal/surface/http/openapi.json` is generated from the REST API's own DTOs and route table (issue #36); one test re-runs the generator and fails the build on any drift from a forgotten `go generate`, and the package's end-to-end tests validate every real response against that same document, so a handler whose response doesn't match its own declared schema fails too.
 - **`TZ=UTC` in CI** — so a test that accidentally depends on the host timezone fails on the machine that matters.
 
 ---
@@ -293,11 +295,16 @@ Delivered so far in M1:
   transactions (including cursor-paginated listing), transfers, and
   balances, plus `/healthz`; `GetAccount`, `GetCategory`, and
   `GetTransaction` were added to `internal/app` alongside it so a single
-  resource's `GET /{id}` route has one application method to call. Ships
-  with a hand-written OpenAPI 3 description
-  (`internal/surface/http/openapi.json`) checked against the registered
-  routes by a Go test, not by review. `internal/platform/config` gained
-  `HTTPBindAddr` (default `127.0.0.1:8080`) and refuses to load a
+  resource's `GET /{id}` route has one application method to call.
+  Ships with an OpenAPI 3 description (`internal/surface/http/openapi.json`)
+  generated, not hand-written, from `routeTable` and this surface's own
+  request/response DTOs via [`kin-openapi`](https://github.com/getkin/kin-openapi)'s
+  `openapi3gen` (issue #36) — a CI test regenerates it and fails the
+  build on any drift from a forgotten `go generate`, and the package's
+  end-to-end tests validate every real response against the same
+  document via `openapi3filter`, so a handler whose response doesn't
+  match its own declared schema fails CI too. `internal/platform/config`
+  gained `HTTPBindAddr` (default `127.0.0.1:8080`) and refuses to load a
   configuration that binds anywhere but loopback, since there is no
   authentication yet (issue #8, ADR-0006).
 

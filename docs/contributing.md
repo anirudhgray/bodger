@@ -31,6 +31,7 @@ The [`Makefile`](../Makefile) is the build contract. **CI runs `make check` and 
 | `make check` | `fmt-check` + `vet` + `lint` + `test`. Run before every push |
 | `make test` | Go tests with `-race`, plus web tests |
 | `make fmt` | Format everything in place |
+| `make generate` | Regenerate generated files (e.g. `internal/surface/http/openapi.json`) |
 | `make build` | Build the web UI, then the binary, into `bin/bodger` |
 | `make run` | Run the server locally |
 | `make test-cover` | Tests with a coverage profile |
@@ -143,3 +144,15 @@ Write one when a decision is expensive to reverse, constrains more than one part
 ### Adding a migration
 
 Sequential numeric prefix, embedded SQL, with a **tested** `-- +goose Down`. CI runs up→down→up. Migration files are a known parallel-work conflict point — see [ADR-0007](decisions/0007-persistence-and-migrations.md) for why sequential numbering was chosen anyway.
+
+### Regenerating the OpenAPI document
+
+`internal/surface/http/openapi.json` is generated, not hand-written (issue #36): `internal/surface/http/openapi_gen.go`'s `GenerateOpenAPIDocument` builds it by reflecting over that package's own request/response DTOs (`dto.go`, `accounts.go`, …) and walking `routeTable` (`router.go`), using [`kin-openapi`](https://github.com/getkin/kin-openapi)'s `openapi3gen`. After changing a DTO's fields or JSON tags, or adding/changing a route in `routeTable`, run:
+
+```sh
+make generate    # or: go generate ./...
+```
+
+and commit the result alongside the code change. `openapigen_test.go`'s `TestOpenAPIDocumentMatchesGenerator` fails CI (`make check`) if `openapi.json` on disk doesn't match a fresh run of the generator, so a forgotten `go generate` is caught in CI rather than shipping a stale document — and the same package's `http_test.go` end-to-end tests validate every real response against that same document (`openapi3filter`), so a handler whose response doesn't actually match its declared schema fails there too.
+
+A DTO field's `enum`, `doc`, and `format` struct tags (see `dto.go`'s doc comment) are how the generator learns what a plain Go string actually means on the wire — a closed set of values, prose a type can't carry, or that it's a money amount or a calendar date. Add or adjust these when a new field needs the same treatment, rather than hand-editing `openapi.json` afterwards.

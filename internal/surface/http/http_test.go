@@ -6,6 +6,12 @@
 // prove decoding and encoding"; this stays in that spirit by asserting on
 // HTTP status and JSON shape rather than re-testing use-case behaviour
 // internal/app's own tests already cover.
+//
+// Every response the do helper receives is additionally validated
+// against openapi.json itself (issue #36), via openapi3filter — the
+// piece static generation alone can't catch: a handler whose actual
+// response doesn't match the schema its own route declares. See
+// openAPIRouter and validateResponse below.
 package http_test
 
 import (
@@ -13,11 +19,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/getkin/kin-openapi/openapi3filter"
+	"github.com/getkin/kin-openapi/routers"
+	legacyrouter "github.com/getkin/kin-openapi/routers/legacy"
 
 	"github.com/anirudhgray/bodger/internal/adapters/sqlite"
 	"github.com/anirudhgray/bodger/internal/app"
@@ -26,6 +39,66 @@ import (
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
 	httpsurface "github.com/anirudhgray/bodger/internal/surface/http"
 )
+
+// openAPIRouter matches a request to the operation openapi.json declares
+// for it — built once, from the embedded document itself
+// (httpsurface.OpenAPIDocument), so these tests validate against exactly
+// what ships, not a separately-loaded copy that could drift from it.
+var openAPIRouter routers.Router
+
+func init() {
+	doc, err := openapi3.NewLoader().LoadFromData(httpsurface.OpenAPIDocument())
+	if err != nil {
+		panic(fmt.Sprintf("http_test: load embedded openapi.json: %v", err))
+	}
+	if err := doc.Validate(context.Background()); err != nil {
+		panic(fmt.Sprintf("http_test: embedded openapi.json is invalid: %v", err))
+	}
+	openAPIRouter, err = legacyrouter.NewRouter(doc)
+	if err != nil {
+		panic(fmt.Sprintf("http_test: build openapi router: %v", err))
+	}
+}
+
+// validateResponse checks that resp's status, headers, and body actually
+// match what openapi.json declares for req's route — the response-side
+// half of issue #36's contract test; decodeJSON/respond.go's own
+// encoding is what request-side validation would otherwise duplicate, so
+// only the response is checked here. It reports failures via t.Errorf,
+// not t.Fatalf: a schema mismatch is worth surfacing without aborting
+// whatever assertions the calling test still wants to make on the same
+// response.
+func validateResponse(t *testing.T, req *http.Request, resp *http.Response, body []byte) {
+	t.Helper()
+
+	// openapi.json's one server is the relative URL "/" (no scheme or
+	// host: this surface never claims to know its own base URL — see
+	// openapi_gen.go). The legacy router's server matching only strips a
+	// server prefix off a request URL that's already relative, so it's
+	// given routeReq — req's method and path, with srv's scheme and host
+	// stripped off — rather than req itself.
+	routeReq := &http.Request{Method: req.Method, URL: &url.URL{Path: req.URL.Path, RawQuery: req.URL.RawQuery}}
+	route, pathParams, err := openAPIRouter.FindRoute(routeReq)
+	if err != nil {
+		t.Errorf("%s %s: not described in openapi.json: %v", req.Method, req.URL.Path, err)
+		return
+	}
+
+	input := &openapi3filter.ResponseValidationInput{
+		RequestValidationInput: &openapi3filter.RequestValidationInput{
+			Request:    req,
+			PathParams: pathParams,
+			Route:      route,
+		},
+		Status: resp.StatusCode,
+		Header: resp.Header,
+	}
+	input.SetBodyBytes(body)
+
+	if err := openapi3filter.ValidateResponse(req.Context(), input); err != nil {
+		t.Errorf("%s %s -> %d: response doesn't match its declared OpenAPI schema: %v", req.Method, req.URL.Path, resp.StatusCode, err)
+	}
+}
 
 // newTestServer builds a real *httptest.Server serving
 // httpsurface.NewMux(svc), with svc wired to the real SQLite adapter
@@ -74,7 +147,10 @@ func newTestServer(t *testing.T, frozenAt time.Time, tz string) *httptest.Server
 // {"data": ...} on success or {"error": {...}} on failure, per
 // respond.go. t fails the test outright on any transport or JSON-decode
 // failure, since those would mean this package's own encoding broke, not
-// that a test case is exercising expected-failure behaviour.
+// that a test case is exercising expected-failure behaviour. Every
+// response also goes through validateResponse before returning, so every
+// caller gets openapi3filter's schema check for free (issue #36) without
+// asking for it.
 func do(t *testing.T, srv *httptest.Server, method, path string, body any) (int, map[string]any) {
 	t.Helper()
 
@@ -103,10 +179,17 @@ func do(t *testing.T, srv *httptest.Server, method, path string, body any) (int,
 	}
 	defer resp.Body.Close()
 
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("%s %s: read response body: %v", method, path, err)
+	}
 	var decoded map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+	if err := json.Unmarshal(respBody, &decoded); err != nil {
 		t.Fatalf("%s %s: decode response body: %v", method, path, err)
 	}
+
+	validateResponse(t, req, resp, respBody)
+
 	return resp.StatusCode, decoded
 }
 
@@ -489,11 +572,16 @@ func TestMalformedRequestBody(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want 422", resp.StatusCode)
 	}
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body: %v", err)
+	}
 	var decoded map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+	if err := json.Unmarshal(respBody, &decoded); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if code := errorCodeOf(t, decoded); code != "invalid_input" {
 		t.Errorf("error code = %q, want invalid_input", code)
 	}
+	validateResponse(t, req, resp, respBody)
 }

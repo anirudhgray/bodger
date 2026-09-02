@@ -12,10 +12,10 @@ import (
 // layer resolves the to-account leg's currency itself and rejects a
 // cross-currency transfer, per M1's single-currency-per-account scope.
 type createTransferRequest struct {
-	FromAccount string   `json:"from_account"`
-	ToAccount   string   `json:"to_account"`
-	Amount      string   `json:"amount"`
-	Date        string   `json:"date,omitempty"`
+	FromAccount string   `json:"from_account" doc:"An account's ID or unique name: the account the money leaves."`
+	ToAccount   string   `json:"to_account" doc:"An account's ID or unique name: the account the money arrives in."`
+	Amount      string   `json:"amount" doc:"Always positive, in the from-account's own currency." format:"money"`
+	Date        string   `json:"date,omitempty" doc:"Omit to book the transfer to today in the account owner's own timezone." format:"date"`
 	Description string   `json:"description"`
 	Notes       string   `json:"notes,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
