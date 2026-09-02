@@ -63,6 +63,7 @@ func Register(root *cobra.Command, factory ServiceFactory) {
 	root.AddCommand(newReceiveCmd(factory))
 	root.AddCommand(newMoveCmd(factory))
 	root.AddCommand(newBalanceCmd(factory))
+	root.AddCommand(newTransactionsCmd(factory))
 	root.AddCommand(newAccountsCmd(factory))
 	root.AddCommand(newCategoriesCmd(factory))
 }
@@ -125,9 +126,17 @@ func closeQuietly(cmd *cobra.Command, closeDB func() error) {
 // *errs.Error (the shared validation/domain error type issue #4 built,
 // see internal/platform/errs), this prints its safe, user-facing message
 // — as JSON when jsonMode is set — and returns its registered CLI exit
-// code. Anything else (a cobra usage error: an unknown command, a missing
-// required flag) is printed as-is with exit code 1, since those never
-// carry a registered code to report instead.
+// code.
+//
+// Anything else is printed as-is with exit code 1. In practice that's
+// only ever a cobra usage error (an unknown command, a missing required
+// flag) — every other error reaching this far is already a *errs.Error:
+// internal/app returns nothing else (internal/lint's check, issue #12),
+// adapters return nothing else (the ports contract), and main.go's own
+// bootstrap wraps its failures the same way (issue #39). Cobra's usage
+// errors are safe to print verbatim by construction, which is what this
+// fallback exists for — it is not a place a raw internal error is
+// expected to end up.
 func RenderError(w io.Writer, err error, jsonMode bool) int {
 	var e *errs.Error
 	if errors.As(err, &e) {

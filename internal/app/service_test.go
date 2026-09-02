@@ -1,7 +1,10 @@
 package app_test
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +13,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/clock"
 	"github.com/anirudhgray/bodger/internal/platform/config"
+	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
 	"github.com/anirudhgray/bodger/internal/ports"
 )
@@ -56,6 +60,13 @@ type fakeTags struct{}
 
 func (fakeTags) List(context.Context, string) ([]ledger.Tag, error) { return nil, nil }
 
+// TestNewService_RejectsMissingDependencies checks both halves of
+// ADR-0011's safe/internal split for a mis-wired container: the caller gets
+// an *errs.Error coded Internal (so a surface has an exit code and a
+// status), and the name of the dependency that was nil reaches the log
+// rather than the message. wantCause is therefore asserted against the
+// logged cause chain, not against err.Error() — the same detail as before,
+// on the side of the split that is allowed to carry it.
 func TestNewService_RejectsMissingDependencies(t *testing.T) {
 	clk := clock.NewFrozen(time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC))
 	cfg := config.Defaults
@@ -69,7 +80,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 		categories   ports.CategoryRepository
 		transactions ports.TransactionRepository
 		tags         ports.TagRepository
-		wantErr      string
+		wantCause    string
 	}{
 		{
 			name:         "nil clock",
@@ -79,7 +90,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			categories:   fakeCategories{},
 			transactions: fakeTransactions{},
 			tags:         fakeTags{},
-			wantErr:      "clock",
+			wantCause:    "clock",
 		},
 		{
 			name:         "nil id generator",
@@ -89,7 +100,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			categories:   fakeCategories{},
 			transactions: fakeTransactions{},
 			tags:         fakeTags{},
-			wantErr:      "id generator",
+			wantCause:    "id generator",
 		},
 		{
 			name:         "nil account repository",
@@ -99,7 +110,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			categories:   fakeCategories{},
 			transactions: fakeTransactions{},
 			tags:         fakeTags{},
-			wantErr:      "account repository",
+			wantCause:    "account repository",
 		},
 		{
 			name:         "nil category repository",
@@ -109,7 +120,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			categories:   nil,
 			transactions: fakeTransactions{},
 			tags:         fakeTags{},
-			wantErr:      "category repository",
+			wantCause:    "category repository",
 		},
 		{
 			name:         "nil transaction repository",
@@ -119,7 +130,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			categories:   fakeCategories{},
 			transactions: nil,
 			tags:         fakeTags{},
-			wantErr:      "transaction repository",
+			wantCause:    "transaction repository",
 		},
 		{
 			name:         "nil tag repository",
@@ -129,7 +140,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			categories:   fakeCategories{},
 			transactions: fakeTransactions{},
 			tags:         nil,
-			wantErr:      "tag repository",
+			wantCause:    "tag repository",
 		},
 	}
 
@@ -137,10 +148,24 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := app.NewService(tt.clk, cfg, tt.ids, tt.accounts, tt.categories, tt.transactions, tt.tags)
 			if err == nil {
-				t.Fatalf("NewService(...) returned no error, want one mentioning %q", tt.wantErr)
+				t.Fatalf("NewService(...) returned no error, want one caused by a nil %s", tt.wantCause)
 			}
-			if !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("NewService(...) error = %q, want it to contain %q", err.Error(), tt.wantErr)
+
+			var e *errs.Error
+			if !errors.As(err, &e) {
+				t.Fatalf("NewService(...) error = %T (%v), want an *errs.Error", err, err)
+			}
+			if e.Code != errs.Internal {
+				t.Errorf("NewService(...) error code = %q, want %q — a nil dependency is a wiring bug, not the user's fault", e.Code, errs.Internal)
+			}
+			if strings.Contains(e.CLIMessage(), tt.wantCause) {
+				t.Errorf("NewService(...) user-facing message names the internal dependency %q: %q", tt.wantCause, e.CLIMessage())
+			}
+
+			var buf bytes.Buffer
+			slog.New(slog.NewJSONHandler(&buf, nil)).Error("service construction failed", "error", err)
+			if !strings.Contains(buf.String(), tt.wantCause) {
+				t.Errorf("log record is missing the cause detail %q\ngot: %s", tt.wantCause, buf.String())
 			}
 		})
 	}

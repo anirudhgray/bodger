@@ -161,6 +161,7 @@ Conventions that live only in a document decay. These are checked by `make check
 - **Layer boundaries** — an import-graph check fails the build if `domain` imports anything project-local, if a surface imports `domain` or an adapter, or if an adapter imports `app`.
 - **No wall clock outside the clock** — `time.Now()` anywhere but `internal/platform/clock` fails the build. Time is injected, which also makes date-boundary tests deterministic.
 - **No environment reads outside config** — `os.Getenv` outside `internal/platform/config` fails the build.
+- **No unclassified errors out of the app layer** — a `fmt.Errorf` or `errors.New` in `internal/app` that isn't wrapped as an `*errs.Error`'s cause fails the build, so every failure a surface receives arrives with a code ([ADR-0011](decisions/0011-error-model.md)). `internal/domain` and the adapters are unaffected: their errors are meant to be plain, or to *become* that cause.
 - **Surface conformance suite** — one table of raw inputs driven through the CLI, the REST API, and MCP, asserting all three produce identical normalised command structs. This is the test that catches normalise-once erosion, and it is why the API is in milestone 1 alongside the CLI rather than after it.
 - **Vocabulary** — [`ux-principles.md` §2](ux-principles.md#2-vocabulary)'s banned-term table is checked against the error registry's default messages and every cobra help and flag usage string. Conformance checks that surfaces *behave* alike; this checks that they *speak* alike. See [`contributing.md`](contributing.md#the-vocabulary-check).
 - **OpenAPI document freshness and response validation** — `internal/surface/http/openapi.json` is generated from the REST API's own DTOs and route table (issue #36); one test re-runs the generator and fails the build on any drift from a forgotten `go generate`, and the package's end-to-end tests validate every real response against that same document, so a handler whose response doesn't match its own declared schema fails too.
@@ -280,13 +281,16 @@ Delivered so far in M1:
   sort, and `AccountBalances(asOf)` computed from postings per ADR-0002
   (issue #6).
 - `internal/surface/cli` — `spend`, `receive`, `move`, `balance`,
-  `accounts` (list/add/archive/set-opening-balance), and `categories`
-  (list/add/rename/archive), registered onto `cmd/bodger`'s root command.
-  Every command decodes flags into a command struct and calls exactly one
-  application method; `--json` gives stable machine-readable output on
-  every data-returning command (issue #7). Transaction listing/editing/
-  deletion and account renaming/category reparenting aren't wired to a
-  command yet — tracked as issue #30.
+  `transactions` (list/edit/delete), `accounts`
+  (list/add/rename/archive/set-opening-balance), and `categories`
+  (list/tree/add/rename/reparent/archive), registered onto `cmd/bodger`'s
+  root command. Every command decodes flags into a command struct and
+  calls exactly one application method; `--json` gives stable
+  machine-readable output on every data-returning command (issues #7 and
+  #30). Every use case `internal/app` exposes now has a command; the CLI
+  speaks one vocabulary throughout, so a transaction is filtered and
+  described with the verb that recorded it (`spend`/`receive`/`move`)
+  rather than the application layer's own kind names.
 - `internal/surface/http` — bodger's REST API, on stdlib
   `net/http.ServeMux`, registered as `bodger serve` onto the same root
   command. Every handler decodes JSON into a command or query struct,
@@ -307,6 +311,13 @@ Delivered so far in M1:
   gained `HTTPBindAddr` (default `127.0.0.1:8080`) and refuses to load a
   configuration that binds anywhere but loopback, since there is no
   authentication yet (issue #8, ADR-0006).
+
+- `internal/lint` — the mechanical guard ADR-0011 names but didn't have:
+  a parse of `internal/app` that fails `make check` on any `fmt.Errorf` or
+  `errors.New` not nested inside a `Wrap(...)` call, so no error can reach
+  a surface without a code. `NewService`'s nil-dependency checks, the one
+  existing violation, now return `errs.Internal` with the dependency name
+  in the logged cause (issue #12).
 
 Not yet built: everything else in §2.
 

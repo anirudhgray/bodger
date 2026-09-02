@@ -50,9 +50,13 @@ type entryView struct {
 	Currency    string   `json:"currency"`
 }
 
+// The three verbs this CLI describes a transaction with, wherever one is
+// rendered — spend and receive here, move in move.go, and all three in
+// transactions.go, which renders transactions it didn't record itself.
 const (
 	entryTypeSpend   = "spend"
 	entryTypeReceive = "receive"
+	entryTypeMove    = "move"
 )
 
 // entryViewFrom builds an entryView from a RecordOutflow/RecordInflow
@@ -92,6 +96,8 @@ func entryVerb(entryType string) string {
 		return "Spent"
 	case entryTypeReceive:
 		return "Received"
+	case entryTypeMove:
+		return "Moved"
 	default:
 		return entryType
 	}

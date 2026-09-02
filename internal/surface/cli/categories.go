@@ -66,12 +66,48 @@ func printCategoryTable(w io.Writer, views []categoryView) {
 	_ = tw.Flush()
 }
 
-// newCategoriesCmd builds the "categories" command group: list, add,
-// rename, and archive, matching issue #7's scope exactly. ReparentCategory
-// and ListCategoryTree exist at the application layer
-// (internal/app/categories.go) but aren't wired to commands here, for the
-// same reason accounts.go's newAccountsCmd doesn't expose RenameAccount —
-// the issue's worked command list doesn't call for them.
+// categoryTreeView is one category plus whatever sits under it. It embeds
+// categoryView rather than repeating its fields, so a node in the tree
+// carries exactly the fields a flat listing does (embedding inlines them
+// into the JSON object) and the two can't drift apart.
+type categoryTreeView struct {
+	categoryView
+	Children []categoryTreeView `json:"children,omitempty"`
+}
+
+func categoryTreeViewFrom(n app.CategoryNode) categoryTreeView {
+	v := categoryTreeView{categoryView: categoryViewFrom(app.CategoryResult{Category: n.Category})}
+	for _, child := range n.Children {
+		v.Children = append(v.Children, categoryTreeViewFrom(child))
+	}
+	return v
+}
+
+// printCategoryTree indents each level by two spaces. It recurses to
+// whatever depth the data actually has rather than assuming two levels,
+// matching the application layer's own tree building — nothing stops a
+// category sitting three deep.
+func printCategoryTree(w io.Writer, roots []categoryTreeView, depth int) {
+	for _, v := range roots {
+		archived := ""
+		if v.Archived {
+			archived = " — archived"
+		}
+		_, _ = fmt.Fprintf(w, "%*s%s (%s)%s\n", depth*2, "", v.Name, v.Type, archived)
+		printCategoryTree(w, v.Children, depth+1)
+	}
+}
+
+// newCategoriesCmd builds the "categories" command group: list, tree, add,
+// rename, reparent, and archive — one subcommand per use case
+// internal/app/categories.go exposes.
+//
+// tree is its own subcommand rather than a --tree flag on list, because
+// the two answer different questions and return different shapes: list is
+// the flat roll of everything (and what a script filtering by name wants),
+// tree is the shape of the hierarchy. Folding one into the other would
+// mean a single command whose --json output changes structure depending on
+// a flag, which is worse for exactly the callers --json exists for.
 func newCategoriesCmd(factory ServiceFactory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "categories",
@@ -79,8 +115,10 @@ func newCategoriesCmd(factory ServiceFactory) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newCategoriesListCmd(factory),
+		newCategoriesTreeCmd(factory),
 		newCategoriesAddCmd(factory),
 		newCategoriesRenameCmd(factory),
+		newCategoriesReparentCmd(factory),
 		newCategoriesArchiveCmd(factory),
 	)
 	return cmd
@@ -108,6 +146,38 @@ func newCategoriesListCmd(factory ServiceFactory) *cobra.Command {
 				views[i] = categoryViewFrom(app.CategoryResult{Category: c})
 			}
 			return render(cmd, views, func(w io.Writer) { printCategoryTable(w, views) })
+		},
+	}
+}
+
+func newCategoriesTreeCmd(factory ServiceFactory) *cobra.Command {
+	return &cobra.Command{
+		Use:   "tree",
+		Short: "Show your categories with what sits under what",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+			svc, closeDB, err := factory(ctx)
+			if err != nil {
+				return err
+			}
+			defer closeQuietly(cmd, closeDB)
+
+			result, err := svc.ListCategoryTree(ctx, app.ListCategoryTreeQuery{ActorID: ports.SeededUserID})
+			if err != nil {
+				return err
+			}
+			views := make([]categoryTreeView, 0, len(result.Roots))
+			for _, root := range result.Roots {
+				views = append(views, categoryTreeViewFrom(root))
+			}
+			return render(cmd, views, func(w io.Writer) {
+				if len(views) == 0 {
+					_, _ = fmt.Fprintln(w, "No categories yet. Add one with `bodger categories add`.")
+					return
+				}
+				printCategoryTree(w, views, 0)
+			})
 		},
 	}
 }
@@ -180,6 +250,47 @@ func newCategoriesRenameCmd(factory ServiceFactory) *cobra.Command {
 			})
 		},
 	}
+}
+
+// newCategoriesReparentCmd builds "categories reparent". --parent is
+// optional and omitting it moves the category to the top level: that's
+// what an empty parent already means to the application layer (and to
+// `categories add --parent`), so there's no separate flag for it and no
+// second way to say the same thing.
+func newCategoriesReparentCmd(factory ServiceFactory) *cobra.Command {
+	var parent string
+	cmd := &cobra.Command{
+		Use:   "reparent <category>",
+		Short: "Move a category under a different one",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			svc, closeDB, err := factory(ctx)
+			if err != nil {
+				return err
+			}
+			defer closeQuietly(cmd, closeDB)
+
+			result, err := svc.ReparentCategory(ctx, app.ReparentCategoryCommand{
+				ActorID:     ports.SeededUserID,
+				CategoryRef: args[0],
+				ParentRef:   parent,
+			})
+			if err != nil {
+				return err
+			}
+			view := categoryViewFrom(result)
+			return render(cmd, view, func(w io.Writer) {
+				if view.ParentID == "" {
+					_, _ = fmt.Fprintf(w, "Moved %q to the top level.\n", view.Name)
+					return
+				}
+				_, _ = fmt.Fprintf(w, "Moved %q under %s.\n", view.Name, parent)
+			})
+		},
+	}
+	cmd.Flags().StringVar(&parent, "parent", "", "the category this should sit under (omit to move it to the top level)")
+	return cmd
 }
 
 func newCategoriesArchiveCmd(factory ServiceFactory) *cobra.Command {
