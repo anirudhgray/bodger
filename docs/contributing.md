@@ -86,7 +86,7 @@ A fourth rule, from [ADR-0011](decisions/0011-error-model.md) rather than ADR-00
 
 It is a parse, not a type-checking pass, so it matches on the method name `Wrap` and can't see through a dot-import of `fmt`. That's a deliberate trade — see the doc comments in `internal/lint/errwrap.go`.
 
-The **conformance suite** (`internal/surface/conformance`) drives the same raw input through the CLI, REST API, and MCP and asserts all three produce identical commands, under a frozen clock at an instant deliberately chosen to expose timezone bugs. **Adding a user-facing operation means adding a row to that table.**
+The **conformance suite** (`internal/surface/conformance`) drives the same raw input through the CLI and REST API's real entry points — MCP joins in M7 — and asserts both produce an identical *observable result*: the same stored transaction fields, or the same error code and field, under a frozen clock at an instant deliberately chosen to expose timezone bugs (`2026-07-31T18:45:00Z`, already the next calendar day in the actor's timezone). It asserts on results, not on the internal command struct each surface builds — comparing structs would mean giving each surface a decode step callable outside its own transport, purely for the test's benefit. **Adding a user-facing operation means adding a row to that table.**
 
 ### The vocabulary check
 

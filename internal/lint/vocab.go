@@ -406,25 +406,3 @@ func relativeTo(root, path string) string {
 	}
 	return filepath.ToSlash(rel)
 }
-
-// vocabRepoRoot returns the repository root by walking up from the working
-// directory to the go.mod. It is named for this check rather than
-// generically because internal/lint is shared with the other build checks
-// (issue #12), and a bare repoRoot would be the obvious name for all of
-// them.
-func vocabRepoRoot() (string, error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("no go.mod found above the working directory")
-		}
-		dir = parent
-	}
-}
