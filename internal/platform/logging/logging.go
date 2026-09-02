@@ -17,12 +17,35 @@
 package logging
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 )
 
 // New constructs a structured JSON logger writing to w at the given
 // minimum level.
 func New(w io.Writer, level slog.Level) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level}))
+}
+
+// ParseLevel converts one of the level names
+// internal/platform/config.Config.LogLevel validates at load time
+// ("debug", "info", "warn", "error", case-insensitive; "warning" is
+// accepted as a synonym for "warn") into the corresponding slog.Level for
+// New's level parameter. cmd/bodger is the one caller: it resolves config
+// once, then calls this to build the process's single logger.
+func ParseLevel(name string) (slog.Level, error) {
+	switch strings.ToLower(name) {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn", "warning":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return 0, fmt.Errorf("logging: %q is not a recognised level (want debug, info, warn, or error)", name)
+	}
 }

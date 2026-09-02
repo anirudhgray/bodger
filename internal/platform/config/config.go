@@ -44,6 +44,16 @@ type Config struct {
 	// there is no code path that can start a server with a bad bind
 	// address (see validateHTTPBindAddr).
 	HTTPBindAddr string
+	// LogLevel is the minimum level internal/platform/logging.New's
+	// *slog.Logger emits records at: "debug", "info", "warn", or "error"
+	// (case-insensitive). cmd/bodger constructs exactly one logger, shared
+	// by the CLI and `bodger serve`, from this value (issue #43) — both
+	// default to "info" rather than picking different levels, since today
+	// the only thing either surface actually logs through it is an
+	// *errs.Error's cause chain at Error level (ADR-0011), which a "warn"
+	// or "debug" default wouldn't change; revisit if either surface grows
+	// its own Info/Debug logging that should differ by default.
+	LogLevel string
 }
 
 // Defaults are the values bodger ships with when the operator sets no
@@ -56,6 +66,7 @@ var Defaults = Config{
 	UserTimezone:    "UTC",
 	DBPath:          "bodger.db",
 	HTTPBindAddr:    "127.0.0.1:8080",
+	LogLevel:        "info",
 }
 
 const (
@@ -67,6 +78,8 @@ const (
 	EnvDBPath = "BODGER_DB_PATH"
 	// EnvHTTPBindAddr, when set, overrides Defaults.HTTPBindAddr.
 	EnvHTTPBindAddr = "BODGER_HTTP_BIND_ADDR"
+	// EnvLogLevel, when set, overrides Defaults.LogLevel.
+	EnvLogLevel = "BODGER_LOG_LEVEL"
 )
 
 // currencyPattern is a structural check only — three uppercase ASCII
@@ -74,6 +87,19 @@ const (
 // check the code is a real, known currency: that table belongs to the
 // domain layer (ADR-0004), which this platform package does not depend on.
 var currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
+
+// logLevels is the closed set of level names LogLevel accepts,
+// case-insensitively. Kept as this package's own list rather than
+// importing internal/platform/logging to check against it — the same
+// reason currencyPattern doesn't import the domain currency table: this
+// package validates structure only, and internal/platform/logging.ParseLevel
+// is what actually turns a validated value into a slog.Level.
+var logLevels = map[string]bool{
+	"debug": true,
+	"info":  true,
+	"warn":  true,
+	"error": true,
+}
 
 // Load resolves Config by layering the process environment over Defaults:
 // a non-empty environment variable wins, otherwise the instance default
@@ -104,6 +130,9 @@ func load(lookup lookupFunc) (Config, error) {
 	if v, ok := lookup(EnvHTTPBindAddr); ok && v != "" {
 		cfg.HTTPBindAddr = v
 	}
+	if v, ok := lookup(EnvLogLevel); ok && v != "" {
+		cfg.LogLevel = v
+	}
 
 	if !currencyPattern.MatchString(cfg.DefaultCurrency) {
 		return Config{}, fmt.Errorf("config: %s=%q is not a three-letter currency code", EnvDefaultCurrency, cfg.DefaultCurrency)
@@ -113,6 +142,9 @@ func load(lookup lookupFunc) (Config, error) {
 	}
 	if err := validateHTTPBindAddr(cfg.HTTPBindAddr); err != nil {
 		return Config{}, err
+	}
+	if !logLevels[strings.ToLower(cfg.LogLevel)] {
+		return Config{}, fmt.Errorf("config: %s=%q is not a recognised log level (want debug, info, warn, or error)", EnvLogLevel, cfg.LogLevel)
 	}
 
 	return cfg, nil

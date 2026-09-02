@@ -67,3 +67,39 @@ func TestNew_RendersErrsErrorViaLogValue(t *testing.T) {
 		t.Errorf("log output is missing the error code: %s", out)
 	}
 }
+
+func TestParseLevel(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		want    slog.Level
+		wantErr bool
+	}{
+		{name: "debug", in: "debug", want: slog.LevelDebug},
+		{name: "info", in: "info", want: slog.LevelInfo},
+		{name: "warn", in: "warn", want: slog.LevelWarn},
+		{name: "warning synonym", in: "warning", want: slog.LevelWarn},
+		{name: "error", in: "error", want: slog.LevelError},
+		{name: "case-insensitive", in: "ERROR", want: slog.LevelError},
+		{name: "unrecognised", in: "verbose", wantErr: true},
+		{name: "empty", in: "", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := logging.ParseLevel(tt.in)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("ParseLevel(%q) returned no error, want one", tt.in)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseLevel(%q) unexpected error: %v", tt.in, err)
+			}
+			if got != tt.want {
+				t.Errorf("ParseLevel(%q) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
