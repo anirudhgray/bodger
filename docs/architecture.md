@@ -16,34 +16,33 @@ The CLI, the REST API, the web UI, and the MCP server are **peers**. None of the
 
 ## 2. Layers
 
-```
-   CLI            REST API          MCP server              Web UI
-    │                 │                  │                    │
-    │                 │                  │            (browser; HTTP only)
-    │                 │                  │                    │
-    │                 └──────────────────┴────────────────────┘
-    │                                    │
-    └────────────────┬───────────────────┘
-                     │            surfaces: transport decode only
-        ─────────────▼─────────────────────────────────────────
-                 Application layer
-        commands & queries · normalisation · currency precedence
-        · "now" resolution · authorisation · orchestration · tx boundaries
-        ───────────────────────────┬───────────────────────────
-                                   │  (depends only on ports)
-        ┌──────────────────────────┼──────────────────────────┐
-        │                          │                          │
-   ─────▼─────            ─────────▼─────────           ──────▼──────
-     Domain                    Ports                     Platform
-   pure logic,           repository & provider          clock, config,
-   no I/O, no time        interfaces (owned             id generation,
-   no database             by the app layer)              logging
-                                   │
-                          ┌────────┴────────┐
-                          │                 │
-                     ─────▼─────      ──────▼──────
-                       SQLite          FX provider
-                      adapter            adapter
+```mermaid
+flowchart TD
+    CLI["CLI"]
+    API["REST API"]
+    MCP["MCP server"]
+    Web["Web UI<br/>(browser; HTTP only)"]
+
+    APP["Application layer<br/>commands &amp; queries · normalisation · currency precedence<br/>· #quot;now#quot; resolution · authorisation · orchestration · tx boundaries"]
+
+    Domain["Domain<br/>pure logic,<br/>no I/O, no time,<br/>no database"]
+    Ports["Ports<br/>repository &amp; provider<br/>interfaces (owned<br/>by the app layer)"]
+    Platform["Platform<br/>clock, config,<br/>id generation,<br/>logging"]
+
+    SQLite["SQLite<br/>adapter"]
+    FX["FX provider<br/>adapter"]
+
+    CLI -- "transport decode only" --> APP
+    API -- "transport decode only" --> APP
+    MCP -- "transport decode only" --> APP
+    Web -- "HTTP" --> API
+
+    APP --> Domain
+    APP -. "depends only on ports" .-> Ports
+    APP --> Platform
+
+    Ports --> SQLite
+    Ports --> FX
 ```
 
 Dependencies point inward. `domain` imports nothing from the project. `app` imports `domain` and `ports`. Adapters import `ports`. Surfaces import `app`. A surface importing `domain` directly, or an adapter importing `app`, is a CI failure, not a code-review opinion (§6).

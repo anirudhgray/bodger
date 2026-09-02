@@ -14,9 +14,11 @@ The constraint that makes this hard is [ADR-0010](0010-personal-finance-not-acco
 
 ### A transaction has one or more postings; a posting has an account, a signed amount, and optionally a category
 
-```
-Transaction(id, kind, booked_date, description, …)
-  └── Posting(account_id, amount_minor, currency, category_id?)   × 1..n
+```mermaid
+flowchart LR
+    T["Transaction(id, kind, booked_date, description, …)"]
+    P["Posting(account_id, amount_minor, currency, category_id?)"]
+    T -- "1..n" --> P
 ```
 
 `kind ∈ {outflow, inflow, transfer}` is stored and validated against the posting shape, so reports can filter on it without re-deriving it.

@@ -23,22 +23,22 @@ A document saying "don't do that" does not prevent it. This ADR specifies a cont
 
 ### One application layer, four thin adapters
 
-```
-   CLI          REST API        MCP server         Web UI
-    │               │                │                │
-    │               │                │      (browser — HTTP only)
-    │               │                │                │
-    │               └────────────────┴────────────────┘
-    │                                │
-    └───────────────┬────────────────┘
-                    │   decode transport → command struct. Nothing else.
-      ──────────────▼──────────────────────────────────
-                 internal/app
-       normalisation · defaults · currency precedence
-       · "now" · timezone · authorisation · transactions
-      ──────────────┬──────────────────────────────────
-                    │
-              internal/domain
+```mermaid
+flowchart TD
+    CLI["CLI"]
+    API["REST API"]
+    MCP["MCP server"]
+    Web["Web UI<br/>(browser — HTTP only)"]
+
+    APP["internal/app<br/>normalisation · defaults · currency precedence<br/>· #quot;now#quot; · timezone · authorisation · transactions"]
+    Domain["internal/domain"]
+
+    CLI -- "decode transport →<br/>command struct.<br/>Nothing else." --> APP
+    API -- "decode transport →<br/>command struct.<br/>Nothing else." --> APP
+    MCP -- "decode transport →<br/>command struct.<br/>Nothing else." --> APP
+    Web -- "HTTP" --> API
+
+    APP --> Domain
 ```
 
 `internal/app` exposes one method per user intent. Each takes a **command or query struct** and returns a **result struct**. There are no loose parameters, so adding a field is a compile-time event at every call site rather than a silent default somewhere.
