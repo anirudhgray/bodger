@@ -74,6 +74,18 @@ That last one is why command struct fields hold **raw strings** rather than pars
 
 Domain types (`Money`, `Date`, `Tag`) still have unexported fields and validating constructors, so an invalid one can't exist anywhere in the codebase. That's separate from the command boundary and applies everywhere.
 
+### Errors leave the app layer with a code
+
+A fourth rule, from [ADR-0011](decisions/0011-error-model.md) rather than ADR-0005, and enforced the same way. **Every error an `internal/app` method returns is an `*errs.Error`** — `errs.New(errs.NotFound).Explain("No account called %q.", ref)` — so that a surface has a status, an exit code, and a message it can show without deciding anything.
+
+`internal/lint` fails `make check` on any `fmt.Errorf` or `errors.New` under `internal/app` that isn't nested inside a `Wrap(...)` call. The boundary it draws:
+
+- **Allowed:** `errs.New(errs.Internal).Wrap(fmt.Errorf("app: %w", err))`, and `.Wrap(err)` generally. A driver error becoming an `*errs.Error`'s cause is the whole point — it's logged in full and never serialised.
+- **Not allowed:** the same `fmt.Errorf` returned on its own. That reaches a surface with no code, so no HTTP status and no exit code, and quite possibly a SQL fragment in the text.
+- **Not checked:** `internal/domain`, where a pure helper may return a plain error wrapping its own sentinel, and the adapters, whose errors are *meant* to become a cause. The check only reads what it is pointed at, and it is pointed only at `internal/app`.
+
+It is a parse, not a type-checking pass, so it matches on the method name `Wrap` and can't see through a dot-import of `fmt`. That's a deliberate trade — see the doc comments in `internal/lint/errwrap.go`.
+
 The **conformance suite** (`internal/surface/conformance`) drives the same raw input through the CLI, REST API, and MCP and asserts all three produce identical commands, under a frozen clock at an instant deliberately chosen to expose timezone bugs. **Adding a user-facing operation means adding a row to that table.**
 
 ---
@@ -110,7 +122,7 @@ The conventions in [`CLAUDE.md`](../CLAUDE.md) apply to humans too. The ones tha
 - **Track deferred work as GitHub issues**, not as a paragraph in a doc. Reference issue numbers in commits and PRs.
 - **No ADR numbers or internal paths in user-facing strings** — CLI help, UI labels, prompts. Errors should be specific and detailed about *what* failed, but they don't cite internal documents either.
 - **Anything a user reads is held to [`ux-principles.md`](ux-principles.md)** — vocabulary, defaults, error phrasing. §2's banned-term table has no automated check yet, so it's a review responsibility.
-- **Return errors from the registry, never `fmt.Errorf`, from an exported app-layer method.** Pick the coarse code, add an explanation if the default isn't specific enough, and `Wrap` the cause so it's logged but never shown. [ADR-0011](decisions/0011-error-model.md) has the codes, the promotion rule, and the safe/internal split. This has no automated check yet either.
+- **Return errors from the registry, never `fmt.Errorf`, from an exported app-layer method.** Pick the coarse code, add an explanation if the default isn't specific enough, and `Wrap` the cause so it's logged but never shown. [ADR-0011](decisions/0011-error-model.md) has the codes and the safe/internal split; [Errors leave the app layer with a code](#errors-leave-the-app-layer-with-a-code) has the check that enforces it.
 
 Session notes live in `agents/design-docs/` (gitignored, ephemeral). Anything durable graduates into `docs/`.
 
