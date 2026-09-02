@@ -63,6 +63,7 @@ func Register(root *cobra.Command, factory ServiceFactory) {
 	root.AddCommand(newReceiveCmd(factory))
 	root.AddCommand(newMoveCmd(factory))
 	root.AddCommand(newBalanceCmd(factory))
+	root.AddCommand(newTransactionsCmd(factory))
 	root.AddCommand(newAccountsCmd(factory))
 	root.AddCommand(newCategoriesCmd(factory))
 }

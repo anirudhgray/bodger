@@ -48,6 +48,8 @@ That makes `spend` / `receive` / `move` the CLI verbs. See §7.
 
 **"Ledger core" and similar are fine internally** — milestone names, package names, this repo's docs. They are not user-facing.
 
+**Prefer the same word across surfaces for the same concept, but a surface may earn a different one.** A REST client benefits from stable, typed enum values the same way `internal/domain` does internally; a person at a terminal benefits from the verb they'd say out loud. When two surfaces diverge on purpose, say so at the point of divergence (a doc comment, not a paragraph here) — the failure this exists to catch is *silent, accidental* drift from two surfaces built independently, not a deliberate, reasoned choice. [ADR-0005](decisions/0005-shared-application-layer.md)'s conformance suite already guarantees the two mean the same thing and produce the same result; nothing checks that they're *spelled* the same, and this stays a review discipline like the rest of this section rather than an automated one.
+
 ---
 
 ## 3. Fast entry

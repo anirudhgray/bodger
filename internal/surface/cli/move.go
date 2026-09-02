@@ -40,7 +40,7 @@ type moveView struct {
 func moveViewFrom(fromLabel, toLabel string, r app.TransactionResult) moveView {
 	v := moveView{
 		ID:          r.Transaction.ID(),
-		Type:        "move",
+		Type:        entryTypeMove,
 		Date:        r.Transaction.BookedDate().String(),
 		Description: r.Transaction.Description(),
 		Notes:       r.Transaction.Notes(),

@@ -73,12 +73,9 @@ func printAccountTable(w io.Writer, views []accountView) {
 	_ = tw.Flush()
 }
 
-// newAccountsCmd builds the "accounts" command group: list, add, archive,
-// and set-opening-balance, matching issue #7's scope exactly. RenameAccount
-// exists at the application layer (internal/app/accounts.go) but isn't
-// wired to a command here — the issue's own worked command list doesn't
-// include an accounts rename subcommand, so exposing one is left to a
-// future issue rather than assumed.
+// newAccountsCmd builds the "accounts" command group: list, add, rename,
+// archive, and set-opening-balance — one subcommand per use case
+// internal/app/accounts.go exposes.
 func newAccountsCmd(factory ServiceFactory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "accounts",
@@ -87,6 +84,7 @@ func newAccountsCmd(factory ServiceFactory) *cobra.Command {
 	cmd.AddCommand(
 		newAccountsListCmd(factory),
 		newAccountsAddCmd(factory),
+		newAccountsRenameCmd(factory),
 		newAccountsArchiveCmd(factory),
 		newAccountsSetOpeningBalanceCmd(factory),
 	)
@@ -167,6 +165,40 @@ func newAccountsAddCmd(factory ServiceFactory) *cobra.Command {
 	cmd.Flags().IntVar(&f.sortOrder, "sort-order", 0, "where this account sorts in lists")
 	_ = cmd.MarkFlagRequired("type")
 	return cmd
+}
+
+// newAccountsRenameCmd builds "accounts rename", the exact counterpart of
+// categories rename (categories.go) — same argument order, same result
+// shape — since they're the same action on the two things a user names.
+// Renaming changes only the name: every transaction that already used the
+// account keeps using it.
+func newAccountsRenameCmd(factory ServiceFactory) *cobra.Command {
+	return &cobra.Command{
+		Use:   "rename <account> <new-name>",
+		Short: "Rename an account",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			svc, closeDB, err := factory(ctx)
+			if err != nil {
+				return err
+			}
+			defer closeQuietly(cmd, closeDB)
+
+			result, err := svc.RenameAccount(ctx, app.RenameAccountCommand{
+				ActorID:    ports.SeededUserID,
+				AccountRef: args[0],
+				Name:       args[1],
+			})
+			if err != nil {
+				return err
+			}
+			view := accountViewFrom(result)
+			return render(cmd, view, func(w io.Writer) {
+				_, _ = fmt.Fprintf(w, "Renamed account to %q.\n", view.Name)
+			})
+		},
+	}
 }
 
 func newAccountsArchiveCmd(factory ServiceFactory) *cobra.Command {
