@@ -21,32 +21,26 @@ Four constraints shape everything below.
 
 ## 2. Entity overview
 
-```
-Instance ──┬── User ──┬── Account ───────┐
-           │          │      │           │
-           │          │      └── (opening balance)
-           │          │                  │
-           │          ├── Category ──┐   │
-           │          │   (self-ref) │   │
-           │          │              │   │
-           │          ├── Tag ───┐   │   │
-           │          │          │   │   │
-           │          │      ┌───▼───▼───▼──────────┐
-           │          │      │     Transaction      │
-           │          │      │  (kind, booked_date) │
-           │          │      └───────────┬──────────┘
-           │          │                  │ 1..n
-           │          │          ┌───────▼────────┐
-           │          │          │    Posting     │
-           │          │          │ account, money,│
-           │          │          │    category    │
-           │          │          └────────────────┘
-           │          │
-           │          ├── Budget ──── BudgetLine
-           │          ├── RecurringRule ──── ScheduledOccurrence
-           │          └── ImportBatch ──── ImportRecord
-           │
-           └── Currency, FxRate  (instance-wide reference data)
+```mermaid
+flowchart TD
+    Instance --> User
+    Instance --> RefData["Currency, FxRate<br/>(instance-wide reference data)"]
+
+    User --> Account
+    Account --> Opening["(opening balance)"]
+
+    User --> Category["Category<br/>(self-ref)"]
+    User --> Tag
+
+    Account --> Transaction["Transaction<br/>(kind, booked_date)"]
+    Category --> Transaction
+    Tag --> Transaction
+
+    Transaction -- "1..n" --> Posting["Posting<br/>account, money,<br/>category"]
+
+    User --> Budget --> BudgetLine
+    User --> RecurringRule --> ScheduledOccurrence
+    User --> ImportBatch --> ImportRecord
 ```
 
 Everything user-owned carries a `user_id` from day one, even though the first deployments are single-user. See [ADR-0006](decisions/0006-authentication-and-multi-user-path.md) for why that column exists before the feature does.
