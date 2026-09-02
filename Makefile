@@ -10,6 +10,12 @@ BIN_DIR     := bin
 CMD         := ./cmd/bodger
 GO_PKGS     := ./...
 WEB_DIR     := web
+# Where web/vite.config.ts's build.outDir writes to, and what
+# internal/platform/webui go:embeds — see that package's doc comment.
+# Only WEB_EMBED_DIR/index.html is tracked (a placeholder, so a Go-only
+# build still compiles); everything else `make build-web` puts there is
+# generated and gitignored.
+WEB_EMBED_DIR := internal/platform/webui/dist
 COVERPROFILE:= coverage.out
 
 # Web targets no-op until the web UI exists (milestone 2). Everything stays
@@ -156,5 +162,6 @@ docker-up:
 clean:
 	rm -rf $(BIN_DIR) dist $(COVERPROFILE)
 ifneq ($(HAS_WEB),)
-	rm -rf $(WEB_DIR)/dist $(WEB_DIR)/node_modules/.vite
+	rm -rf $(WEB_DIR)/node_modules/.vite
+	find $(WEB_EMBED_DIR) -mindepth 1 ! -name index.html -exec rm -rf {} +
 endif

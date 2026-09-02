@@ -63,7 +63,7 @@ func runServe(cmd *cobra.Command, factory ServiceFactory, logger *slog.Logger) e
 		}
 	}()
 
-	server := &http.Server{Addr: svc.Config.HTTPBindAddr, Handler: NewMux(svc, logger)}
+	server := &http.Server{Addr: svc.Config.HTTPBindAddr, Handler: NewServerHandler(svc, logger)}
 
 	serveErr := make(chan error, 1)
 	go func() {
