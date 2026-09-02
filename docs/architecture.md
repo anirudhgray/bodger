@@ -225,13 +225,13 @@ Rules, scheduled occurrences, materialisation, forecasting. Occurrences never to
 
 **M1 · Arda shipped as [v0.1.0](https://github.com/anirudhgray/bodger/releases/tag/v0.1.0).**
 M2 · The Shire is scoped — see the [M2 milestone](https://github.com/anirudhgray/bodger/milestone/2)
-for its issues — but no work has landed yet.
+for its issues — and its first piece has landed.
 
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
 | M1 · Arda — Ledger core, CLI, REST API | ✅ Complete (v0.1.0) |
-| M2 · The Shire — Web UI and authentication | ⬜ Not started |
+| M2 · The Shire — Web UI and authentication | 🟨 In progress |
 | M3 — Multi-currency and FX | ⬜ Not started |
 | M4 — Analytics and charts | ⬜ Not started |
 | M5 — Import and export | ⬜ Not started |
@@ -338,6 +338,21 @@ Delivered so far in M1:
   promised is now built and mechanically enforced.
 
 Not yet built: everything else in §2.
+
+Delivered so far in M2:
+
+- **Structured logging is actually wired up.** `internal/platform/logging.New`
+  (constructed in M1, issue #4) was never called anywhere in the running
+  binary — `cmd/bodger` now constructs one `*slog.Logger` in `main`, shared
+  by the CLI and `bodger serve`, writing JSON to stderr. `internal/surface/cli.RenderError`
+  and `internal/surface/http`'s `respondError` both log an `*errs.Error`'s
+  full cause chain through it (via `LogValue`) before rendering the safe
+  message, closing the gap ADR-0011 left open: an `Internal`-coded error's
+  driver detail was previously discarded, not logged. `internal/platform/config`
+  gained `LogLevel` (`BODGER_LOG_LEVEL`; default `"info"`, shared by both
+  surfaces — see [`contributing.md`](contributing.md#logging) for why). A
+  rotating log file was considered and deliberately deferred rather than
+  adding a dependency unilaterally (issue #43).
 
 This section is updated **in the same PR** as the work it describes, per CLAUDE.md — not in a later docs pass.
 
