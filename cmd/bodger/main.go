@@ -21,6 +21,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/app"
 	"github.com/anirudhgray/bodger/internal/platform/clock"
 	"github.com/anirudhgray/bodger/internal/platform/config"
+	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
 	clisurface "github.com/anirudhgray/bodger/internal/surface/cli"
 	httpsurface "github.com/anirudhgray/bodger/internal/surface/http"
@@ -80,22 +81,33 @@ func newRootCmd() *cobra.Command {
 // migrations, and construct the application-layer Service container. It
 // returns a close function the caller must invoke once the database is no
 // longer needed.
+//
+// Every failure here becomes a *errs.Error before it's returned, the same
+// way internal/app's own construction failures do (missingDependency in
+// internal/app/service.go) — this package sits outside internal/app, so
+// internal/lint's bare-error check (issue #12) doesn't reach it, but a
+// config path, a database file path, or a driver's migration error is
+// exactly the kind of internal detail that must not print to the
+// terminal unfiltered. RenderError's fallback branch (internal/surface/cli/cli.go)
+// still prints a non-*errs.Error as-is, but only cobra's own usage errors
+// (an unknown command, a missing required flag) reach it now — those are
+// already user-safe by construction, which bootstrapError isn't.
 func bootstrap(ctx context.Context) (*app.Service, func() error, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		return nil, nil, fmt.Errorf("bodger: load config: %w", err)
+		return nil, nil, bootstrapError("bodger couldn't load its configuration.", err)
 	}
 
 	clk := clock.New()
 
 	db, err := sqlite.Open(clk, cfg.DBPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("bodger: open database %q: %w", cfg.DBPath, err)
+		return nil, nil, bootstrapError("bodger couldn't open its database.", err)
 	}
 
 	if err := db.MigrateUp(ctx); err != nil {
 		_ = db.Close()
-		return nil, nil, fmt.Errorf("bodger: apply migrations: %w", err)
+		return nil, nil, bootstrapError("bodger couldn't prepare its database.", err)
 	}
 
 	svc, err := app.NewService(
@@ -109,8 +121,17 @@ func bootstrap(ctx context.Context) (*app.Service, func() error, error) {
 	)
 	if err != nil {
 		_ = db.Close()
-		return nil, nil, fmt.Errorf("bodger: build service container: %w", err)
+		return nil, nil, err
 	}
 
 	return svc, db.Close, nil
+}
+
+// bootstrapError renders a bootstrap failure the way every other internal
+// failure in this codebase is rendered (ADR-0011): a safe, generic
+// message a surface can show, with cause wrapped for the log rather than
+// printed. Internal, not a more specific code, because nothing about a
+// bootstrap failure is something the user did wrong.
+func bootstrapError(message string, cause error) error {
+	return errs.New(errs.Internal).Explain("%s Check the log for what went wrong.", message).Wrap(cause)
 }
