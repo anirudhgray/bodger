@@ -4,7 +4,7 @@ A personal finance application you actually host yourself. Record what you spend
 
 `bodger` is built around one idea: **one financial core, several thin interfaces over it.** A command line, a REST API, a web UI, and a local MCP server for AI agents all call the same code, so they can never disagree about what your money did.
 
-> **Status: pre-alpha.** The domain model, persistence layer, CLI, and REST API are built and tested; the web UI and MCP server are not yet. See [Status](docs/architecture.md#9-status) for the milestone breakdown. You can build the binary today (`make build`) and use the CLI or run `bodger serve` against a local SQLite file — see the [user guide](docs/user-guide.md) — but there's no web UI and no packaged release yet.
+> **Status: pre-alpha.** The domain model, persistence layer, CLI, and REST API are built and tested; the web UI and MCP server are not yet. See [Status](docs/architecture.md#9-status) for the milestone breakdown. Prebuilt binaries are on the [Releases page](https://github.com/anirudhgray/bodger/releases), or build from source with `make build`; use the CLI or run `bodger serve` against a local SQLite file — see the [user guide](docs/user-guide.md) — but there's no web UI yet.
 
 ---
 

@@ -223,12 +223,14 @@ Rules, scheduled occurrences, materialisation, forecasting. Occurrences never to
 
 ## 9. Status
 
-**Current milestone: M1 · Arda — Ledger core, CLI, and REST API.** In progress.
+**M1 · Arda shipped as [v0.1.0](https://github.com/anirudhgray/bodger/releases/tag/v0.1.0).**
+No milestone is currently in progress — M2's scope hasn't been decided yet
+(see [§8](#8-milestones)).
 
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
-| M1 · Arda — Ledger core, CLI, REST API | 🔧 In progress |
+| M1 · Arda — Ledger core, CLI, REST API | ✅ Complete (v0.1.0) |
 | M2 — Web UI and authentication | ⬜ Not started |
 | M3 — Multi-currency and FX | ⬜ Not started |
 | M4 — Analytics and charts | ⬜ Not started |

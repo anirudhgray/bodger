@@ -180,6 +180,21 @@ here if it was somehow missed.
 
 Open the PR, get it reviewed, squash-merge it per the usual convention.
 
+If this release completes a milestone, also close its **native GitHub
+Milestone** (separate from any issue — milestones don't close themselves
+just because their last issue did):
+
+```sh
+gh api repos/anirudhgray/bodger/milestones/<number> -X PATCH -f state=closed
+```
+
+`gh` has no dedicated `milestone` subcommand for this — `gh api` against
+the milestone's number (`gh api repos/anirudhgray/bodger/milestones --jq
+'.[] | {number,title,open_issues}'` finds it) is the only way. Do this
+once the PR above has merged, not before — the milestone's issues being
+done is necessary but the release actually shipping is what the closed
+state should reflect.
+
 ### 3. Tag the merge commit
 
 Once merged, tag the resulting commit on `main` — **not** the pre-merge
@@ -209,7 +224,8 @@ GitHub Release with the title read from the tag message.
 
 Check the [Releases page](https://github.com/anirudhgray/bodger/releases)
 for the new release, its title, its changelog, and that all four archives
-attached.
+attached. If a milestone was closed above, confirm it shows closed on the
+[Milestones page](https://github.com/anirudhgray/bodger/milestones) too.
 
 ## Local dry runs
 
