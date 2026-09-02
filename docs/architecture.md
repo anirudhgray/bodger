@@ -347,12 +347,18 @@ Delivered so far in M2:
   `/healthz` to a locally running `bodger serve` so frontend iteration
   doesn't need a production build each time. `make build-web` builds
   straight into `internal/platform/webui/dist`, which that package
-  `go:embed`s (a committed placeholder `index.html` there keeps a Go-only
-  `go build`/`go test`/`go vet` working even before `npm run build` has
-  ever run); `internal/surface/http.NewServerHandler` serves it alongside
-  the REST API, falling back to `index.html` for any path that isn't a
-  real static asset so a hard refresh on a client-side route still
-  resolves. Holds no financial logic and imports no domain type, per §3.
+  `go:embed`s; nothing under `dist/` is tracked except an empty
+  `.gitkeep` (so `go build`/`go test`/`go vet` keep working on a Go-only
+  checkout before `npm run build` has ever run), and a real build is free
+  to empty and rewrite the directory without ever touching a tracked file
+  — `internal/platform/webui`'s own placeholder page lives in a sibling
+  `placeholder/` directory outside Vite's output path instead, and is
+  served in `dist/index.html`'s place until a real build exists.
+  `internal/surface/http.NewServerHandler` serves whichever one `Dist()`
+  returns alongside the REST API, falling back to `index.html` for any
+  path that isn't a real static asset so a hard refresh on a client-side
+  route still resolves. Holds no financial logic and imports no domain
+  type, per §3.
 - `internal/platform/auth` — pure, no-I/O Argon2id password hashing
   (`golang.org/x/crypto/argon2`) behind a hand-rolled, self-describing
   PHC-string encode/decode, with default parameters starting from

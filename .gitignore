@@ -8,12 +8,14 @@ coverage.out
 web/node_modules/
 
 # Vite's build output (web/vite.config.ts's build.outDir): embedded by
-# internal/platform/webui via go:embed. Only its committed placeholder
-# index.html — go:embed needs the pattern to match something even before
-# `make build-web` ever runs — stays tracked; a real `npm run build`
-# overwrites it locally, untracked, along with everything else here.
+# internal/platform/webui via go:embed. Nothing `npm run build` produces
+# here is tracked — its placeholder fallback page lives outside this
+# directory entirely (internal/platform/webui/placeholder/), specifically
+# so a real local build never dirties a tracked file. .gitkeep only
+# exists so `//go:embed all:dist` has something to match on a fresh
+# checkout that hasn't run `make build-web` yet.
 internal/platform/webui/dist/*
-!internal/platform/webui/dist/index.html
+!internal/platform/webui/dist/.gitkeep
 
 # Agent-managed worktrees (git worktree add .claude/worktrees/...)
 .claude/worktrees/

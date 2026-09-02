@@ -12,9 +12,9 @@ GO_PKGS     := ./...
 WEB_DIR     := web
 # Where web/vite.config.ts's build.outDir writes to, and what
 # internal/platform/webui go:embeds — see that package's doc comment.
-# Only WEB_EMBED_DIR/index.html is tracked (a placeholder, so a Go-only
-# build still compiles); everything else `make build-web` puts there is
-# generated and gitignored.
+# Only WEB_EMBED_DIR/.gitkeep is tracked (an empty marker, so a Go-only
+# build still compiles before the web UI has ever been built); everything
+# else `make build-web` puts there is generated and gitignored.
 WEB_EMBED_DIR := internal/platform/webui/dist
 COVERPROFILE:= coverage.out
 
@@ -135,6 +135,7 @@ endif
 .PHONY: build-web
 build-web:
 ifneq ($(HAS_WEB),)
+	find $(WEB_EMBED_DIR) -mindepth 1 ! -name .gitkeep -exec rm -rf {} +
 	cd $(WEB_DIR) && npm run build
 endif
 
@@ -163,5 +164,5 @@ clean:
 	rm -rf $(BIN_DIR) dist $(COVERPROFILE)
 ifneq ($(HAS_WEB),)
 	rm -rf $(WEB_DIR)/node_modules/.vite
-	find $(WEB_EMBED_DIR) -mindepth 1 ! -name index.html -exec rm -rf {} +
+	find $(WEB_EMBED_DIR) -mindepth 1 ! -name .gitkeep -exec rm -rf {} +
 endif

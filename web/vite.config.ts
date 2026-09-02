@@ -30,10 +30,15 @@ export default defineConfig({
     // `make build-web` (issue #58) needs its output where
     // internal/platform/webui's go:embed directive can find it — see that
     // package's doc comment. Vite refuses to write outside its project
-    // root (`web/`) without this explicit opt-in, since it empties the
-    // directory first.
+    // root (`web/`) without this explicit opt-in.
     outDir: '../internal/platform/webui/dist',
-    emptyOutDir: true,
+    // false, deliberately: Vite's default empties outDir before every
+    // build, which would also delete dist/.gitkeep — the tracked marker
+    // that keeps internal/platform/webui's go:embed directive compiling
+    // on a checkout that has never built the web UI. The Makefile's
+    // build-web target does that same cleanup itself, excluding
+    // .gitkeep, before invoking this build.
+    emptyOutDir: false,
   },
   test: {
     environment: 'jsdom',
