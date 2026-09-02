@@ -23,6 +23,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/platform/config"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
+	"github.com/anirudhgray/bodger/internal/platform/version"
 	clisurface "github.com/anirudhgray/bodger/internal/surface/cli"
 	httpsurface "github.com/anirudhgray/bodger/internal/surface/http"
 )
@@ -52,6 +53,7 @@ func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "bodger",
 		Short:         "Track where your money goes and what you have left.",
+		Version:       version.String(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {

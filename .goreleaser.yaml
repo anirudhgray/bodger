@@ -1,0 +1,102 @@
+# GoReleaser config — see docs/releasing.md for the release procedure this
+# drives, and docs/contributing.md for the semver policy it assumes.
+#
+# Local dry run (no publish, no tag required): `goreleaser release --snapshot --clean --skip=publish`
+version: 2
+
+project_name: bodger
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: bodger
+    main: ./cmd/bodger
+    binary: bodger
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    # Mirrors the reproducibility intent of `make build` (see Makefile),
+    # plus build metadata for internal/platform/version.
+    ldflags:
+      - -s -w
+      - -X github.com/anirudhgray/bodger/internal/platform/version.Version={{.Version}}
+      - -X github.com/anirudhgray/bodger/internal/platform/version.Commit={{.ShortCommit}}
+      - -X github.com/anirudhgray/bodger/internal/platform/version.Date={{.Date}}
+
+archives:
+  - id: bodger
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: "checksums.txt"
+
+# Read from the same conventional-commit history the squash-merge PR
+# titles already enforce (CLAUDE.md) — no separate changelog tool. The
+# checked-in CHANGELOG.md is generated with this exact config, in
+# changelog-only/snapshot mode, so the file and the eventual GitHub
+# release notes are never two independently-maintained texts. See
+# docs/releasing.md.
+#
+# Group titles are Keep a Changelog's categories, not conventional
+# commits' own type names — feat -> Added, fix -> Fixed, refactor/perf ->
+# Changed. Deprecated and Removed have no reliable commit-type mapping
+# (a fix or a feat can just as easily do either), so they're not
+# auto-populated — add them by hand in the routine release PR when one
+# applies. Internal-only commit types (docs, chore, test, ci, style,
+# build) are filtered out entirely rather than dumped in a catch-all
+# group: Keep a Changelog is for notable changes, and none of those
+# affect what a user of the released binary experiences.
+changelog:
+  sort: asc
+  use: github
+  abbrev: 8
+  format: "{{ .SHA }}: {{ .Message }}"
+  groups:
+    - title: "Added"
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: "Changed"
+      regexp: '^.*?(refactor|perf)(\(.+\))??!?:.+$'
+      order: 1
+    - title: "Fixed"
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 2
+    - title: "Security"
+      regexp: '^.*?\(security\)!?:.+$'
+      order: 3
+  filters:
+    exclude:
+      - "^Merge pull request"
+      - "^Merge branch"
+      - '^.*?docs(\(.+\))??!?:.+$'
+      - '^.*?chore(\(.+\))??!?:.+$'
+      - '^.*?test(\(.+\))??!?:.+$'
+      - '^.*?ci(\(.+\))??!?:.+$'
+      - '^.*?style(\(.+\))??!?:.+$'
+      - '^.*?build(\(.+\))??!?:.+$'
+
+# The release title defaults to the bare tag. For a milestone-completing
+# release, release.yaml reads the annotated tag's own message (set with
+# `git tag -a vX.Y.Z -m "M<n> <Name>"`, per docs/releasing.md) and exports
+# it as RELEASE_TITLE before invoking GoReleaser — the milestone name
+# travels with the tag object itself rather than needing a separate input
+# at release time. header does the same for freeform release-note content:
+# an optional second paragraph in the same tag message (RELEASE_NOTES_HEADER,
+# also exported by release.yaml) is prepended above the generated
+# changelog. Both are empty-safe — GoReleaser renders an empty template to
+# nothing, not an error.
+release:
+  name_template: >-
+    {{ if .Env.RELEASE_TITLE }}{{ .Env.RELEASE_TITLE }}{{ else }}{{ .Tag }}{{ end }}
+  header: '{{ .Env.RELEASE_NOTES_HEADER }}'

@@ -1,0 +1,78 @@
+name: Release
+
+# Fires on a pushed tag only — see docs/releasing.md for the full
+# tag-and-release procedure this triggers. Never runs on a branch push.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: goreleaser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      # A tag matching v*.*.* triggers this workflow regardless of which
+      # branch its commit lives on — tags are refs, not branch-scoped, and
+      # GitHub reads the workflow file from the tag's own commit rather
+      # than main. docs/releasing.md's procedure is to tag the post-merge
+      # commit on main, but nothing enforces that by construction, so
+      # enforce it here: refuse to release a commit main hasn't reached.
+      - name: Verify tag is reachable from main
+        run: |
+          if ! git merge-base --is-ancestor "${{ github.sha }}" origin/main; then
+            echo "::error::${{ github.ref_name }} (${{ github.sha }}) is not on main — refusing to release a commit main hasn't reached."
+            exit 1
+          fi
+
+      - name: Read toolchain versions
+        id: tools
+        run: |
+          echo "go=$(awk '/^golang /{print $2}' .tool-versions)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ steps.tools.outputs.go }}
+          cache: true
+
+      # The release title includes the milestone name for a
+      # milestone-completing release (docs/releasing.md): the tag's own
+      # annotation message carries it (`git tag -a vX.Y.Z -m "M<n> <Name>"`),
+      # so it travels with the pushed tag rather than needing a separate
+      # input here. A tag with no message (or a lightweight tag) falls
+      # back to the bare tag name. A second, optional paragraph in the same
+      # tag message (subject + blank line + body, same convention as a
+      # commit message) becomes freeform release-note content, prepended
+      # above the generated changelog — see docs/releasing.md.
+      - name: Read release title and notes from tag annotation
+        run: |
+          MSG=$(git for-each-ref "refs/tags/${{ github.ref_name }}" --format='%(contents:subject)')
+          if [ -n "$MSG" ]; then
+            echo "RELEASE_TITLE=${{ github.ref_name }} — $MSG" >> "$GITHUB_ENV"
+          else
+            echo "RELEASE_TITLE=${{ github.ref_name }}" >> "$GITHUB_ENV"
+          fi
+
+          {
+            echo "RELEASE_NOTES_HEADER<<RELEASE_NOTES_HEADER_EOF"
+            git for-each-ref "refs/tags/${{ github.ref_name }}" --format='%(contents:body)'
+            echo "RELEASE_NOTES_HEADER_EOF"
+          } >> "$GITHUB_ENV"
+
+      # Pinned, not `latest` — same rationale as golangci-lint-action in
+      # ci.yml: an unrelated release shouldn't break on an upstream bump.
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> 2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

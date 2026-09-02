@@ -149,6 +149,8 @@ The conventions in [`CLAUDE.md`](../CLAUDE.md) apply to humans too. The ones tha
 
 Session notes live in `agents/design-docs/` (gitignored, ephemeral). Anything durable graduates into `docs/`.
 
+Cutting an actual release (tagging, the changelog, GoReleaser) is [`docs/releasing.md`](releasing.md) — a separate concern from day-to-day contribution.
+
 ### Adding a decision record
 
 Write one when a decision is expensive to reverse, constrains more than one part of the system, or has a defensible alternative a future reader will ask about. Format and index: [`docs/decisions/README.md`](decisions/README.md). Consequences must include the bad ones.
