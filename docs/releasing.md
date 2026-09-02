@@ -124,7 +124,10 @@ Open the PR, get it reviewed, squash-merge it per the usual convention.
 ### 3. Tag the merge commit
 
 Once merged, tag the resulting commit on `main` — **not** the pre-merge
-branch tip, since squash-merge gives it a new SHA:
+branch tip, since squash-merge gives it a new SHA. `release.yaml` checks
+this itself and refuses to run against a commit `main` hasn't reached, but
+that check only saves you from the mistake after the fact — tag the merge
+commit, not a branch tip, in the first place.
 
 ```sh
 git checkout main && git pull
