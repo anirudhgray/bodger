@@ -49,6 +49,16 @@ func transactionTypeFor(kind string) string {
 // vocabulary and the application layer's, the same way the REST surface
 // picks between RecordOutflow and RecordInflow on its own "type" field —
 // not a business rule this package is inventing.
+//
+// This is a deliberate divergence from the REST API's own --type
+// vocabulary (internal/surface/http/router.go's "type" query parameter
+// takes "outflow"/"inflow"/"transfer" directly), not an accidental one:
+// ux-principles.md §2 asks for the same word across surfaces by default,
+// but a human at a terminal and a script calling the wire API have
+// different reasons to want different words here, and this is the
+// surface-earns-a-different-one case that same paragraph carves out.
+// Accepting the REST spelling too, as an alias, is tracked separately
+// (issue #41) rather than folded in here.
 func transactionKindFor(txnType string) (string, error) {
 	switch txnType {
 	case "":
