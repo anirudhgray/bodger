@@ -48,8 +48,11 @@ jobs:
       # annotation message carries it (`git tag -a vX.Y.Z -m "M<n> <Name>"`),
       # so it travels with the pushed tag rather than needing a separate
       # input here. A tag with no message (or a lightweight tag) falls
-      # back to the bare tag name.
-      - name: Read release title from tag annotation
+      # back to the bare tag name. A second, optional paragraph in the same
+      # tag message (subject + blank line + body, same convention as a
+      # commit message) becomes freeform release-note content, prepended
+      # above the generated changelog — see docs/releasing.md.
+      - name: Read release title and notes from tag annotation
         run: |
           MSG=$(git for-each-ref "refs/tags/${{ github.ref_name }}" --format='%(contents:subject)')
           if [ -n "$MSG" ]; then
@@ -57,6 +60,12 @@ jobs:
           else
             echo "RELEASE_TITLE=${{ github.ref_name }}" >> "$GITHUB_ENV"
           fi
+
+          {
+            echo "RELEASE_NOTES_HEADER<<RELEASE_NOTES_HEADER_EOF"
+            git for-each-ref "refs/tags/${{ github.ref_name }}" --format='%(contents:body)'
+            echo "RELEASE_NOTES_HEADER_EOF"
+          } >> "$GITHUB_ENV"
 
       # Pinned, not `latest` — same rationale as golangci-lint-action in
       # ci.yml: an unrelated release shouldn't break on an upstream bump.

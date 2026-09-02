@@ -91,7 +91,12 @@ changelog:
 # `git tag -a vX.Y.Z -m "M<n> <Name>"`, per docs/releasing.md) and exports
 # it as RELEASE_TITLE before invoking GoReleaser — the milestone name
 # travels with the tag object itself rather than needing a separate input
-# at release time.
+# at release time. header does the same for freeform release-note content:
+# an optional second paragraph in the same tag message (RELEASE_NOTES_HEADER,
+# also exported by release.yaml) is prepended above the generated
+# changelog. Both are empty-safe — GoReleaser renders an empty template to
+# nothing, not an error.
 release:
   name_template: >-
     {{ if .Env.RELEASE_TITLE }}{{ .Env.RELEASE_TITLE }}{{ else }}{{ .Tag }}{{ end }}
+  header: '{{ .Env.RELEASE_NOTES_HEADER }}'

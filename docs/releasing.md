@@ -102,6 +102,30 @@ input: encoding it in the tag means the same annotated tag, run locally
 with `goreleaser release --skip=publish`, produces an identical title to
 what CI will publish — one source of truth, no separate step to remember.
 
+## Adding freeform notes to a release
+
+Everything above the generated changelog on a release page can carry
+handwritten highlights too — the same tag annotation, extended. An
+annotated tag's message is subject + blank line + body, exactly like a
+commit: the subject is the milestone name (above); a second paragraph is
+freeform Markdown, prepended above the changelog as the release body's
+header (`release.header` in [`.goreleaser.yaml`](../.goreleaser.yaml),
+populated from `RELEASE_NOTES_HEADER`, which `release.yaml` exports the
+same way it exports `RELEASE_TITLE`).
+
+Both the title and the notes body are **entirely optional** — a plain
+`git tag vX.Y.Z && git push origin vX.Y.Z` with no annotation at all still
+works exactly as it would without either feature: the title falls back to
+the bare tag, and an empty notes body renders as nothing rather than an
+error.
+
+To add notes, pass a second `-m` (or write a full multi-line message with
+no `-m`, which opens `$EDITOR`):
+
+```sh
+git tag -a vX.Y.Z -m "M<n> <Name>" -m "Whatever's worth calling out by hand — this is genuinely optional."
+```
+
 ## Cutting a release: the routine PR, then the tag
 
 Releases are cut via a small, ordinary PR — not a bot, not a manual tag
@@ -169,6 +193,8 @@ git checkout main && git pull
 git tag -a vX.Y.Z -m "M<n> <Name>"   # omit -m, or use a plain description, for a non-milestone release
 git push origin vX.Y.Z
 ```
+
+Add a second `-m` here for freeform release notes — see [above](#adding-freeform-notes-to-a-release).
 
 Use `git tag -s` instead of `-a` if you want the tag GPG-signed (a signing
 key is already configured for this repository; it isn't required for
