@@ -20,6 +20,18 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      # actions/checkout, even with fetch-depth: 0, doesn't fully
+      # materialize the *triggering* tag's own annotation object on a
+      # tag-push event — git sees the ref and its commit, but
+      # %(contents:subject)/%(contents:body) silently fall back to the
+      # underlying commit's message instead of the tag's own (all other,
+      # older tags are unaffected). Confirmed cause:
+      # https://github.com/actions/checkout/issues/290, surfaced via
+      # https://github.com/goreleaser/goreleaser/issues/2919. A plain
+      # re-fetch of tags fixes it before anything reads tag content below.
+      - name: Re-fetch tags (actions/checkout#290 workaround)
+        run: git fetch --force --tags
+
       # A tag matching v*.*.* triggers this workflow regardless of which
       # branch its commit lives on — tags are refs, not branch-scoped, and
       # GitHub reads the workflow file from the tag's own commit rather
