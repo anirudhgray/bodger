@@ -8,6 +8,7 @@ package http_test
 // since it never sees NewMux's routeTable (issue #58).
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -48,6 +49,38 @@ func TestNewServerHandler_APIRoutesTakePrecedenceOverWebUI(t *testing.T) {
 		}
 		if ct := resp.Header.Get("Content-Type"); ct != "text/html; charset=utf-8" {
 			t.Errorf("Content-Type = %q, want text/html", ct)
+		}
+	})
+
+	// Regression coverage for a real bug: GET /api/v1/healthz (routeTable
+	// registers plain /healthz, not this) used to fall through to the web
+	// UI catch-all and return a 200 with an HTML body — a client hitting a
+	// slightly wrong API path got back a page it couldn't parse as JSON,
+	// with no indication anything was wrong.
+	t.Run("an unmatched path under /api/ gets a JSON 404, never the web UI", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/api/v1/healthz")
+		if err != nil {
+			t.Fatalf("GET /api/v1/healthz: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", resp.StatusCode)
+		}
+		if ct := resp.Header.Get("Content-Type"); ct != "application/json; charset=utf-8" {
+			t.Errorf("Content-Type = %q, want application/json", ct)
+		}
+
+		var decoded struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if decoded.Error.Code != "not_found" {
+			t.Errorf("error.code = %q, want \"not_found\"", decoded.Error.Code)
 		}
 	})
 }
