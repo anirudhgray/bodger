@@ -350,6 +350,18 @@ Delivered so far in M2:
   as a SHA-256 hash per ADR-0006's credential table. No repository,
   use-case, HTTP, or CLI code yet — this is the foundation the
   persistence, application, and surface auth issues build on (issue #53).
+- **Structured logging is actually wired up.** `internal/platform/logging.New`
+  (constructed in M1, issue #4) was never called anywhere in the running
+  binary — `cmd/bodger` now constructs one `*slog.Logger` in `main`, shared
+  by the CLI and `bodger serve`, writing JSON to stderr. `internal/surface/cli.RenderError`
+  and `internal/surface/http`'s `respondError` both log an `*errs.Error`'s
+  full cause chain through it (via `LogValue`) before rendering the safe
+  message, closing the gap ADR-0011 left open: an `Internal`-coded error's
+  driver detail was previously discarded, not logged. `internal/platform/config`
+  gained `LogLevel` (`BODGER_LOG_LEVEL`; default `"info"`, shared by both
+  surfaces — see [`contributing.md`](contributing.md#logging) for why). A
+  rotating log file was considered and deliberately deferred rather than
+  adding a dependency unilaterally (issue #43).
 
 This section is updated **in the same PR** as the work it describes, per CLAUDE.md — not in a later docs pass.
 

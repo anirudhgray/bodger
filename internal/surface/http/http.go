@@ -51,6 +51,7 @@ package http
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/anirudhgray/bodger/internal/app"
 )
@@ -64,9 +65,12 @@ import (
 type ServiceFactory func(ctx context.Context) (*app.Service, func() error, error)
 
 // handlers holds the single *app.Service every handler method in this
-// package calls into. There is no per-request state beyond the request
-// itself: the service, once built, is shared by every request the server
-// handles for its whole lifetime.
+// package calls into, and the logger respondError (respond.go) logs an
+// *errs.Error's cause chain through before rendering its safe message
+// (ADR-0011; issue #43). There is no per-request state beyond the
+// request itself: both, once built, are shared by every request the
+// server handles for its whole lifetime.
 type handlers struct {
-	svc *app.Service
+	svc    *app.Service
+	logger *slog.Logger
 }

@@ -24,13 +24,13 @@ type createTransferRequest struct {
 func (h *handlers) createTransfer(w http.ResponseWriter, r *http.Request) {
 	var body createTransferRequest
 	if err := decodeJSON(r, &body); err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 
 	tags, terr := decodeTags(body.Tags)
 	if terr != nil {
-		respondError(w, terr)
+		h.respondError(w, terr)
 		return
 	}
 
@@ -45,7 +45,7 @@ func (h *handlers) createTransfer(w http.ResponseWriter, r *http.Request) {
 		Tags:           tags,
 	})
 	if err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 	respond(w, http.StatusCreated, transactionViewFrom(result))

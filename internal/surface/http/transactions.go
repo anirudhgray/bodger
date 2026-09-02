@@ -36,13 +36,13 @@ type createTransactionRequest struct {
 func (h *handlers) createTransaction(w http.ResponseWriter, r *http.Request) {
 	var body createTransactionRequest
 	if err := decodeJSON(r, &body); err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 
 	tags, terr := decodeTags(body.Tags)
 	if terr != nil {
-		respondError(w, terr)
+		h.respondError(w, terr)
 		return
 	}
 
@@ -62,13 +62,13 @@ func (h *handlers) createTransaction(w http.ResponseWriter, r *http.Request) {
 			CategoryRef: body.Category, Date: body.Date, Description: body.Description, Notes: body.Notes, Tags: tags,
 		})
 	default:
-		respondError(w, errs.New(errs.InvalidInput).
+		h.respondError(w, errs.New(errs.InvalidInput).
 			Explain("%q isn't a valid transaction type. Use \"outflow\" or \"inflow\" here, or POST /api/v1/transfers for a transfer.", body.Type).
 			Field("type"))
 		return
 	}
 	if err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 	respond(w, http.StatusCreated, transactionViewFrom(result))
@@ -80,7 +80,7 @@ func (h *handlers) getTransaction(w http.ResponseWriter, r *http.Request) {
 		TransactionRef: r.PathValue("id"),
 	})
 	if err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 	respond(w, http.StatusOK, transactionViewFrom(result))
@@ -111,13 +111,13 @@ type editTransactionRequest struct {
 func (h *handlers) editTransaction(w http.ResponseWriter, r *http.Request) {
 	var body editTransactionRequest
 	if err := decodeJSON(r, &body); err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 
 	tags, terr := decodeTags(body.Tags)
 	if terr != nil {
-		respondError(w, terr)
+		h.respondError(w, terr)
 		return
 	}
 
@@ -136,7 +136,7 @@ func (h *handlers) editTransaction(w http.ResponseWriter, r *http.Request) {
 		Tags:           tags,
 	})
 	if err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 	respond(w, http.StatusOK, transactionViewFrom(result))
@@ -147,7 +147,7 @@ func (h *handlers) deleteTransaction(w http.ResponseWriter, r *http.Request) {
 		ActorID: actorID(), TransactionRef: r.PathValue("id"),
 	})
 	if err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 	respond(w, http.StatusOK, transactionViewFrom(result))
@@ -166,7 +166,7 @@ func (h *handlers) listTransactions(w http.ResponseWriter, r *http.Request) {
 
 	offset, cerr := decodeCursor(q.Get("cursor"))
 	if cerr != nil {
-		respondError(w, cerr)
+		h.respondError(w, cerr)
 		return
 	}
 
@@ -174,7 +174,7 @@ func (h *handlers) listTransactions(w http.ResponseWriter, r *http.Request) {
 	if raw := q.Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 0 {
-			respondError(w, errs.New(errs.InvalidInput).Explain("%q isn't a valid page size.", raw).Field("limit"))
+			h.respondError(w, errs.New(errs.InvalidInput).Explain("%q isn't a valid page size.", raw).Field("limit"))
 			return
 		}
 		limit = n
@@ -191,7 +191,7 @@ func (h *handlers) listTransactions(w http.ResponseWriter, r *http.Request) {
 		Offset:      offset,
 	})
 	if err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 

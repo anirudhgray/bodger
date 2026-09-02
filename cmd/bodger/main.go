@@ -13,6 +13,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -23,17 +24,50 @@ import (
 	"github.com/anirudhgray/bodger/internal/platform/config"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
+	"github.com/anirudhgray/bodger/internal/platform/logging"
 	"github.com/anirudhgray/bodger/internal/platform/version"
 	clisurface "github.com/anirudhgray/bodger/internal/surface/cli"
 	httpsurface "github.com/anirudhgray/bodger/internal/surface/http"
 )
 
 func main() {
-	root := newRootCmd()
+	logger := newLogger()
+
+	root := newRootCmd(logger)
 	if err := root.Execute(); err != nil {
 		jsonMode, _ := root.Flags().GetBool("json")
-		os.Exit(clisurface.RenderError(os.Stderr, err, jsonMode))
+		os.Exit(clisurface.RenderError(os.Stderr, err, jsonMode, logger))
 	}
+}
+
+// newLogger constructs the one structured logger the running binary
+// uses — for a CLI invocation and for `bodger serve` alike (issue #43).
+// It writes JSON to stderr: bodger is single-user and self-hosted
+// (ADR-0011's Context), the operator is the person reading both a
+// command's own output and its log on the same machine, and `bodger
+// serve`'s existing "listening on ..." line already goes to stderr, so a
+// log line landing there too costs the operator nothing new to look at.
+// A rotating log file was considered and deliberately deferred — see
+// docs/contributing.md's "Logging" section for why — rather than adding
+// a dependency unilaterally.
+//
+// This is called directly from main, before newRootCmd builds anything,
+// because RenderError needs a logger even when bootstrap never runs at
+// all: a cobra usage error (an unknown command, a missing required flag)
+// reaches Execute() without any subcommand's RunE — and therefore
+// bootstrap — ever executing. Loading config here to pick the level is
+// small and side-effect-free; bootstrap loads it again for the operational
+// Config it actually needs, and any load failure surfaces properly there,
+// as a logged *errs.Error, once a subcommand runs. A failure here just
+// falls back to the default level so a logger exists regardless.
+func newLogger() *slog.Logger {
+	level := slog.LevelInfo
+	if cfg, err := config.Load(); err == nil {
+		if lvl, perr := logging.ParseLevel(cfg.LogLevel); perr == nil {
+			level = lvl
+		}
+	}
+	return logging.New(os.Stderr, level)
 }
 
 // newRootCmd builds bodger's root cobra command and attaches every CLI
@@ -49,7 +83,7 @@ func main() {
 // internal/surface/cli.RenderError, which knows how to print an
 // *errs.Error's safe message and exit code rather than cobra's own
 // generic "Error: ..." formatting.
-func newRootCmd() *cobra.Command {
+func newRootCmd(logger *slog.Logger) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "bodger",
 		Short:         "Track where your money goes and what you have left.",
@@ -74,7 +108,7 @@ func newRootCmd() *cobra.Command {
 	}
 
 	clisurface.Register(root, bootstrap)
-	httpsurface.Register(root, bootstrap)
+	httpsurface.Register(root, bootstrap, logger)
 	return root
 }
 

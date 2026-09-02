@@ -26,7 +26,7 @@ type createAccountRequest struct {
 func (h *handlers) createAccount(w http.ResponseWriter, r *http.Request) {
 	var body createAccountRequest
 	if err := decodeJSON(r, &body); err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 
@@ -41,7 +41,7 @@ func (h *handlers) createAccount(w http.ResponseWriter, r *http.Request) {
 		SortOrder:          body.SortOrder,
 	})
 	if err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 	respond(w, http.StatusCreated, accountViewFrom(result))
@@ -50,7 +50,7 @@ func (h *handlers) createAccount(w http.ResponseWriter, r *http.Request) {
 func (h *handlers) listAccounts(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.ListAccounts(r.Context(), app.ListAccountsQuery{ActorID: actorID()})
 	if err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 	views := make([]accountView, 0, len(result.Accounts))
@@ -66,7 +66,7 @@ func (h *handlers) getAccount(w http.ResponseWriter, r *http.Request) {
 		AccountRef: r.PathValue("id"),
 	})
 	if err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 	respond(w, http.StatusOK, accountViewFrom(result))
@@ -87,7 +87,7 @@ type patchAccountRequest struct {
 func (h *handlers) patchAccount(w http.ResponseWriter, r *http.Request) {
 	var body patchAccountRequest
 	if err := decodeJSON(r, &body); err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 
@@ -98,7 +98,7 @@ func (h *handlers) patchAccount(w http.ResponseWriter, r *http.Request) {
 			ActorID: actorID(), AccountRef: id, Name: *body.Name,
 		})
 		if err != nil {
-			respondError(w, err)
+			h.respondError(w, err)
 			return
 		}
 		respond(w, http.StatusOK, accountViewFrom(result))
@@ -112,13 +112,13 @@ func (h *handlers) patchAccount(w http.ResponseWriter, r *http.Request) {
 			ActorID: actorID(), AccountRef: id, OpeningBalance: *body.OpeningBalance, OpeningBalanceDate: obDate,
 		})
 		if err != nil {
-			respondError(w, err)
+			h.respondError(w, err)
 			return
 		}
 		respond(w, http.StatusOK, accountViewFrom(result))
 
 	default:
-		respondError(w, errs.New(errs.InvalidInput).
+		h.respondError(w, errs.New(errs.InvalidInput).
 			Explain("A request must set exactly one of \"name\" or \"opening_balance\"."))
 	}
 }
@@ -128,7 +128,7 @@ func (h *handlers) archiveAccount(w http.ResponseWriter, r *http.Request) {
 		ActorID: actorID(), AccountRef: r.PathValue("id"),
 	})
 	if err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 	respond(w, http.StatusOK, accountViewFrom(result))

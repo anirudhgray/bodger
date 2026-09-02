@@ -1,6 +1,7 @@
 package http
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/anirudhgray/bodger/internal/app"
@@ -285,8 +286,13 @@ func intPtr(n int) *int { return &n }
 // listener, no goroutine — so tests can exercise it directly with
 // httptest.NewRecorder/httptest.NewServer without going through
 // ServeCommand at all.
-func NewMux(svc *app.Service) *http.ServeMux {
-	h := &handlers{svc: svc}
+//
+// logger is what respondError (respond.go) logs an *errs.Error's cause
+// chain through before rendering its safe message (ADR-0011; issue #43);
+// a nil logger is accepted (respondError checks) so existing callers that
+// don't care about logging can keep passing nil rather than wiring one up.
+func NewMux(svc *app.Service, logger *slog.Logger) *http.ServeMux {
+	h := &handlers{svc: svc, logger: logger}
 	mux := http.NewServeMux()
 	for _, rt := range routeTable {
 		mux.HandleFunc(rt.Method+" "+rt.Pattern, rt.Handler(h))

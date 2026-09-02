@@ -112,7 +112,7 @@ func newHarness(t *testing.T) *harness {
 		t.Fatalf("app.NewService: %v", err)
 	}
 
-	srv := httptest.NewServer(httpsurface.NewMux(svc))
+	srv := httptest.NewServer(httpsurface.NewMux(svc, nil))
 	t.Cleanup(srv.Close)
 
 	return &harness{t: t, svc: svc, srv: srv}
