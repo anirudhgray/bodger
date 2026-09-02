@@ -318,6 +318,23 @@ Delivered so far in M1:
   a surface without a code. `NewService`'s nil-dependency checks, the one
   existing violation, now return `errs.Internal` with the dependency name
   in the logged cause (issue #12).
+- `internal/lint`'s remaining two mechanical checks from §6: an
+  import-graph test enforcing the layer table in §2 (`domain` imports
+  nothing project-local outside its own subtree; `app` imports `domain`,
+  `ports`, `platform`; adapters import `ports`, `domain`, `platform`;
+  surfaces import `app`, `platform`, and `ports` — never `domain`, never
+  an adapter), and a banned-symbol check confining `time.Now()` to
+  `internal/platform/clock` and `os.Getenv` to `internal/platform/config`
+  across the whole tree, superseding `internal/surface/http`'s own
+  narrower stopgap for the latter. `internal/surface/conformance` drives
+  outflow, inflow, and transfer through the CLI and REST API's real entry
+  points under a frozen, deliberately hostile instant, asserting an
+  identical observable result — or an identical error code and field —
+  across date resolution, amount and currency parsing, account/category
+  resolution (exact, case-insensitive, ambiguous, not-found), Unicode
+  text normalisation, and tag normalisation (issue #9). This was M1's
+  last remaining item against the scope in §8: everything the milestone
+  promised is now built and mechanically enforced.
 
 Not yet built: everything else in §2.
 
