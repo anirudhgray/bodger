@@ -224,14 +224,14 @@ Rules, scheduled occurrences, materialisation, forecasting. Occurrences never to
 ## 9. Status
 
 **M1 · Arda shipped as [v0.1.0](https://github.com/anirudhgray/bodger/releases/tag/v0.1.0).**
-M2 · The Shire is scoped — see the [M2 milestone](https://github.com/anirudhgray/bodger/milestone/2)
-for its issues — but no work has landed yet.
+M2 · The Shire — see the [M2 milestone](https://github.com/anirudhgray/bodger/milestone/2)
+for its issues — is now underway.
 
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
 | M1 · Arda — Ledger core, CLI, REST API | ✅ Complete (v0.1.0) |
-| M2 · The Shire — Web UI and authentication | ⬜ Not started |
+| M2 · The Shire — Web UI and authentication | 🟨 In progress |
 | M3 — Multi-currency and FX | ⬜ Not started |
 | M4 — Analytics and charts | ⬜ Not started |
 | M5 — Import and export | ⬜ Not started |
@@ -338,6 +338,18 @@ Delivered so far in M1:
   promised is now built and mechanically enforced.
 
 Not yet built: everything else in §2.
+
+Delivered so far in M2:
+
+- `internal/platform/auth` — pure, no-I/O Argon2id password hashing
+  (`golang.org/x/crypto/argon2`) behind a hand-rolled, self-describing
+  PHC-string encode/decode, with default parameters starting from
+  RFC 9106 §4's small-memory recommended set per ADR-0006's "tuned for a
+  small server" line; opaque cryptographically random session-token
+  generation and hashing; and `bdg_`-prefixed API-token generation stored
+  as a SHA-256 hash per ADR-0006's credential table. No repository,
+  use-case, HTTP, or CLI code yet — this is the foundation the
+  persistence, application, and surface auth issues build on (issue #53).
 
 This section is updated **in the same PR** as the work it describes, per CLAUDE.md — not in a later docs pass.
 
