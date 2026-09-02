@@ -507,8 +507,38 @@ func TestTransactions_ListFilters(t *testing.T) {
 
 func TestTransactions_ListRejectsAnUnknownType(t *testing.T) {
 	factory := seedTransactions(t)
-	_, _, err := run(t, factory, "transactions", "list", "--type", "outflow")
+	_, _, err := run(t, factory, "transactions", "list", "--type", "wire")
 	wantErrCode(t, err, errs.InvalidInput)
+}
+
+func TestTransactions_ListAcceptsRESTVocabularyAsTypeAlias(t *testing.T) {
+	factory := seedTransactions(t)
+
+	spends := listTransactions(t, factory, "--type", "spend")
+	outflows := listTransactions(t, factory, "--type", "outflow")
+	if len(outflows.Transactions) != len(spends.Transactions) {
+		t.Errorf("--type outflow returned %d, want %d (same as --type spend)", len(outflows.Transactions), len(spends.Transactions))
+	}
+
+	receives := listTransactions(t, factory, "--type", "receive")
+	inflows := listTransactions(t, factory, "--type", "inflow")
+	if len(inflows.Transactions) != len(receives.Transactions) {
+		t.Errorf("--type inflow returned %d, want %d (same as --type receive)", len(inflows.Transactions), len(receives.Transactions))
+	}
+
+	moves := listTransactions(t, factory, "--type", "move")
+	transfers := listTransactions(t, factory, "--type", "transfer")
+	if len(transfers.Transactions) != len(moves.Transactions) {
+		t.Errorf("--type transfer returned %d, want %d (same as --type move)", len(transfers.Transactions), len(moves.Transactions))
+	}
+
+	// Output vocabulary doesn't change based on which spelling filtered a
+	// transaction in — it's still rendered with this CLI's own verb.
+	for _, txn := range outflows.Transactions {
+		if txn.Type != "spend" {
+			t.Errorf("transaction filtered by --type outflow rendered as %q, want %q", txn.Type, "spend")
+		}
+	}
 }
 
 func TestTransactions_ListPagesWithLimitAndOffset(t *testing.T) {
