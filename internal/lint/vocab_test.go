@@ -15,7 +15,7 @@ import (
 // phrasing, and everything else §2 asks for stay a review responsibility
 // (ux-principles.md §8 is honest that they are not mechanisable).
 func TestUserFacingVocabulary(t *testing.T) {
-	root, err := vocabRepoRoot()
+	root, err := repoRoot()
 	if err != nil {
 		t.Fatalf("locate repo root: %v", err)
 	}
@@ -213,7 +213,7 @@ func register(cmd *cobra.Command) {
 // the real file rather than a fixture — the point of the check is that it
 // tracks what actually ships.
 func TestVocabularyCheckReadsErrorRegistry(t *testing.T) {
-	root, err := vocabRepoRoot()
+	root, err := repoRoot()
 	if err != nil {
 		t.Fatalf("locate repo root: %v", err)
 	}
