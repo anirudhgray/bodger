@@ -22,7 +22,9 @@ in [`.goreleaser.yaml`](../.goreleaser.yaml):
   checked-in [`CHANGELOG.md`](../CHANGELOG.md) below, so the two are never
   independently-maintained texts.
 - Publishes a GitHub Release with the built archives, checksums, and that
-  changelog as the release body.
+  changelog as the release body — with a footer linking back to
+  [`CHANGELOG.md`](../CHANGELOG.md), since a single release's notes are
+  only ever one slice of the full history.
 
 `.github/workflows/release.yaml` runs this on every push of a tag matching
 `v*.*.*`. Pushing a tag is the only trigger — there is no manual dispatch
@@ -40,7 +42,19 @@ Fixed, Security) — not conventional commits' type names.
 Fixed, `refactor`/`perf` → Changed; internal-only commit types (`docs`,
 `chore`, `test`, `ci`, `style`, `build`) are excluded entirely rather than
 dumped into a catch-all, since Keep a Changelog is for changes a user of
-the released binary would actually notice.
+the released binary would actually notice. Each entry credits its author
+— GitHub handle when GoReleaser could resolve one (only possible via the
+GitHub API, which needs a previous tag to diff against — never true for
+the first release, and not guaranteed thereafter), otherwise the git
+author name, which is always available.
+
+Each version heading is a clickable link — `## [X.Y.Z] - YYYY-MM-DD`
+resolves via a same-named link reference at the bottom of the file
+(`[X.Y.Z]: https://github.com/anirudhgray/bodger/compare/vPREV...vX.Y.Z`,
+or straight to the release tag for the very first version, which has no
+predecessor to diff against). **Add one when you add the version
+section** — see step 2 below — the same way `[Unreleased]`'s own link
+target moves to point at the new latest tag.
 
 **Deprecated and Removed have no commit-type mapping** — a `fix` or a
 `feat` can just as easily do either — so GoReleaser never populates them.
@@ -159,6 +173,10 @@ On a feature branch, edit the repo's [`CHANGELOG.md`](../CHANGELOG.md):
   `## [X.Y.Z] - YYYY-MM-DD`.
 - Add a fresh, empty `## [Unreleased]` section above it, ready for the
   next release.
+- At the bottom of the file, add `[X.Y.Z]: .../compare/vPREV...vX.Y.Z`
+  (the previous release's tag to this one), and repoint `[Unreleased]`'s
+  own link at `.../compare/vX.Y.Z...HEAD` — see the exact form already in
+  the file from the last release.
 
 ```markdown
 ## [Unreleased]
@@ -170,6 +188,9 @@ On a feature branch, edit the repo's [`CHANGELOG.md`](../CHANGELOG.md):
 
 ### Fixed
 ...
+
+[Unreleased]: https://github.com/anirudhgray/bodger/compare/vX.Y.Z...HEAD
+[X.Y.Z]: https://github.com/anirudhgray/bodger/compare/vPREV...vX.Y.Z
 ```
 
 Same PR: confirm [`architecture.md` §9 Status](architecture.md#9-status)

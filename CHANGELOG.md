@@ -32,3 +32,6 @@ sync with each GitHub Release.
 * 57094ab5: fix(cli): stop bootstrap failures printing raw errors to the terminal (#42)
 * 5ae7d547: fix(infra): make lint fail loudly on an incompatible golangci-lint (#23)
 * c76bd7e7: fix(infra): pre-push hook executable bit, worktree hygiene (#14)
+
+[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/anirudhgray/bodger/releases/tag/v0.1.0

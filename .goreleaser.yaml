@@ -57,11 +57,18 @@ checksum:
 # build) are filtered out entirely rather than dumped in a catch-all
 # group: Keep a Changelog is for notable changes, and none of those
 # affect what a user of the released binary experiences.
+#
+# format's author fallback: .AuthorUsername only resolves via the GitHub
+# API (requires "use: github" AND a previous tag to diff against — the
+# very first release always falls back to git-only mode, and thereafter
+# it depends on GitHub API reachability), so relying on it alone would
+# render "(@)" for entries where the API never got consulted. .AuthorName
+# comes straight from git and is always populated, so it's the fallback.
 changelog:
   sort: asc
   use: github
   abbrev: 8
-  format: "{{ .SHA }}: {{ .Message }}"
+  format: "{{ .SHA }}: {{ .Message }} ({{ if .AuthorUsername }}@{{ .AuthorUsername }}{{ else }}{{ .AuthorName }}{{ end }})"
   groups:
     - title: "Added"
       regexp: '^.*?feat(\(.+\))??!?:.+$'
@@ -95,8 +102,15 @@ changelog:
 # an optional second paragraph in the same tag message (RELEASE_NOTES_HEADER,
 # also exported by release.yaml) is prepended above the generated
 # changelog. Both are empty-safe — GoReleaser renders an empty template to
-# nothing, not an error.
+# nothing, not an error. footer always renders, unconditionally: a link
+# back to the full CHANGELOG.md, since a single release's notes are only
+# ever a slice of it.
 release:
   name_template: >-
     {{ if .Env.RELEASE_TITLE }}{{ .Env.RELEASE_TITLE }}{{ else }}{{ .Tag }}{{ end }}
   header: '{{ .Env.RELEASE_NOTES_HEADER }}'
+  footer: >-
+    ---
+
+
+    Full history: [`CHANGELOG.md`](https://github.com/anirudhgray/bodger/blob/main/CHANGELOG.md)
