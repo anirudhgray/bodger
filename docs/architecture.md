@@ -23,7 +23,7 @@ flowchart TD
     MCP["MCP server"]
     Web["Web UI<br/>(browser; HTTP only)"]
 
-    APP["Application layer<br/>commands &amp; queries · normalisation · currency precedence<br/>· &quot;now&quot; resolution · authorisation · orchestration · tx boundaries"]
+    APP["Application layer<br/>commands &amp; queries · normalisation · currency precedence<br/>· #quot;now#quot; resolution · authorisation · orchestration · tx boundaries"]
 
     Domain["Domain<br/>pure logic,<br/>no I/O, no time,<br/>no database"]
     Ports["Ports<br/>repository &amp; provider<br/>interfaces (owned<br/>by the app layer)"]

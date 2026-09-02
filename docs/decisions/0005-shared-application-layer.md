@@ -30,7 +30,7 @@ flowchart TD
     MCP["MCP server"]
     Web["Web UI<br/>(browser — HTTP only)"]
 
-    APP["internal/app<br/>normalisation · defaults · currency precedence<br/>· &quot;now&quot; · timezone · authorisation · transactions"]
+    APP["internal/app<br/>normalisation · defaults · currency precedence<br/>· #quot;now#quot; · timezone · authorisation · transactions"]
     Domain["internal/domain"]
 
     CLI -- "decode transport →<br/>command struct.<br/>Nothing else." --> APP
