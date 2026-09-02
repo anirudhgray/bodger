@@ -101,7 +101,7 @@ func validateResponse(t *testing.T, req *http.Request, resp *http.Response, body
 }
 
 // newTestServer builds a real *httptest.Server serving
-// httpsurface.NewMux(svc), with svc wired to the real SQLite adapter
+// httpsurface.NewMux(svc, nil), with svc wired to the real SQLite adapter
 // against a fresh, fully-migrated temp-file database — the HTTP-surface
 // equivalent of internal/app/sqlite_integration_test.go's
 // newSQLiteTestService.
@@ -137,7 +137,7 @@ func newTestServer(t *testing.T, frozenAt time.Time, tz string) *httptest.Server
 		t.Fatalf("app.NewService: %v", err)
 	}
 
-	srv := httptest.NewServer(httpsurface.NewMux(svc))
+	srv := httptest.NewServer(httpsurface.NewMux(svc, nil))
 	t.Cleanup(srv.Close)
 	return srv
 }

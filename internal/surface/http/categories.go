@@ -21,7 +21,7 @@ type createCategoryRequest struct {
 func (h *handlers) createCategory(w http.ResponseWriter, r *http.Request) {
 	var body createCategoryRequest
 	if err := decodeJSON(r, &body); err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 
@@ -33,7 +33,7 @@ func (h *handlers) createCategory(w http.ResponseWriter, r *http.Request) {
 		SortOrder: body.SortOrder,
 	})
 	if err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 	respond(w, http.StatusCreated, categoryViewFrom(result))
@@ -42,7 +42,7 @@ func (h *handlers) createCategory(w http.ResponseWriter, r *http.Request) {
 func (h *handlers) listCategories(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.ListCategories(r.Context(), app.ListCategoriesQuery{ActorID: actorID()})
 	if err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 	views := make([]categoryView, 0, len(result.Categories))
@@ -58,7 +58,7 @@ func (h *handlers) getCategory(w http.ResponseWriter, r *http.Request) {
 		CategoryRef: r.PathValue("id"),
 	})
 	if err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 	respond(w, http.StatusOK, categoryViewFrom(result))
@@ -78,7 +78,7 @@ type patchCategoryRequest struct {
 func (h *handlers) patchCategory(w http.ResponseWriter, r *http.Request) {
 	var body patchCategoryRequest
 	if err := decodeJSON(r, &body); err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 
@@ -89,7 +89,7 @@ func (h *handlers) patchCategory(w http.ResponseWriter, r *http.Request) {
 			ActorID: actorID(), CategoryRef: id, Name: *body.Name,
 		})
 		if err != nil {
-			respondError(w, err)
+			h.respondError(w, err)
 			return
 		}
 		respond(w, http.StatusOK, categoryViewFrom(result))
@@ -99,13 +99,13 @@ func (h *handlers) patchCategory(w http.ResponseWriter, r *http.Request) {
 			ActorID: actorID(), CategoryRef: id, ParentRef: *body.Parent,
 		})
 		if err != nil {
-			respondError(w, err)
+			h.respondError(w, err)
 			return
 		}
 		respond(w, http.StatusOK, categoryViewFrom(result))
 
 	default:
-		respondError(w, errs.New(errs.InvalidInput).
+		h.respondError(w, errs.New(errs.InvalidInput).
 			Explain("A request must set exactly one of \"name\" or \"parent\"."))
 	}
 }
@@ -115,7 +115,7 @@ func (h *handlers) archiveCategory(w http.ResponseWriter, r *http.Request) {
 		ActorID: actorID(), CategoryRef: r.PathValue("id"),
 	})
 	if err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 	respond(w, http.StatusOK, categoryViewFrom(result))

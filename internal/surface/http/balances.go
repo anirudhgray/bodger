@@ -21,7 +21,7 @@ func (h *handlers) getBalances(w http.ResponseWriter, r *http.Request) {
 		AsOf:    r.URL.Query().Get("as_of"),
 	})
 	if err != nil {
-		respondError(w, err)
+		h.respondError(w, err)
 		return
 	}
 

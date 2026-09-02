@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -26,11 +27,16 @@ const shutdownGrace = 10 * time.Second
 // authentication — M1 has no authentication, so in practice always
 // loopback; see config.validateHTTPBindAddr) by the time this command
 // runs.
-func Register(root *cobra.Command, factory ServiceFactory) {
-	root.AddCommand(newServeCmd(factory))
+//
+// logger is threaded through to NewMux so every handler's respondError
+// (respond.go) logs an *errs.Error's cause chain before rendering its
+// safe response (ADR-0011; issue #43) — cmd/bodger constructs it once
+// and passes it here the same way it passes bootstrap.
+func Register(root *cobra.Command, factory ServiceFactory, logger *slog.Logger) {
+	root.AddCommand(newServeCmd(factory, logger))
 }
 
-func newServeCmd(factory ServiceFactory) *cobra.Command {
+func newServeCmd(factory ServiceFactory, logger *slog.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "serve",
 		Short: "Start the REST API server.",
@@ -38,12 +44,12 @@ func newServeCmd(factory ServiceFactory) *cobra.Command {
 			"clients use. Binds to a loopback address by default, and refuses to start " +
 			"bound anywhere else until authentication exists.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runServe(cmd, factory)
+			return runServe(cmd, factory, logger)
 		},
 	}
 }
 
-func runServe(cmd *cobra.Command, factory ServiceFactory) error {
+func runServe(cmd *cobra.Command, factory ServiceFactory, logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -57,7 +63,7 @@ func runServe(cmd *cobra.Command, factory ServiceFactory) error {
 		}
 	}()
 
-	server := &http.Server{Addr: svc.Config.HTTPBindAddr, Handler: NewMux(svc)}
+	server := &http.Server{Addr: svc.Config.HTTPBindAddr, Handler: NewMux(svc, logger)}
 
 	serveErr := make(chan error, 1)
 	go func() {
