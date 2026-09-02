@@ -1,0 +1,437 @@
+package conformance
+
+import (
+	"encoding/json"
+	"fmt"
+	"testing"
+
+	"github.com/anirudhgray/bodger/internal/platform/errs"
+)
+
+// kind is which of the three record verbs a case exercises.
+type kind string
+
+const (
+	outflow  kind = "outflow"
+	inflow   kind = "inflow"
+	transfer kind = "transfer"
+)
+
+// conformanceCase is one row of this suite's table: a raw input, driven
+// through both surfaces' real entry points, that must produce an
+// identical observable result — or, for a case with wantErrCode set, an
+// identical error.
+//
+// docs/contributing.md's "adding an operation means adding a row" applies
+// here: a fourth record verb, or a fifth field either surface accepts,
+// extends this struct and dispatch() below, not the harness.
+type conformanceCase struct {
+	name string
+	kind kind
+
+	amount   string
+	date     string
+	account  string // outflow, inflow
+	category string // outflow, inflow
+
+	fromAccount string // transfer
+	toAccount   string // transfer
+
+	notes string
+	tags  []string
+
+	// wantErrCode, when non-zero, is the *errs.Error code both surfaces
+	// must fail this case with. A case with wantErrCode set is not
+	// compared for a successful result at all; instead, both surfaces'
+	// error field path (the "field" JSON key CLI's --json and HTTP's
+	// error envelope both carry) must also agree with each other —
+	// asserted generically rather than against a value hardcoded per
+	// case, since which exact field path a shared application-layer
+	// error carries is that layer's decision, not this table's to
+	// predict.
+	wantErrCode errs.Code
+}
+
+// cases is the table itself. Coverage follows issue #9's list: empty
+// date, "today", "yesterday", an ISO date, a locale-format date, a
+// grouped amount, a currency symbol, absent currency (the precedence
+// ladder — both surfaces omit it here, since internal/surface/cli's
+// spend/receive/move have no --currency flag at all, so there is no
+// input shape in which a real CLI invocation could supply an entry-level
+// currency to conflict with this), account and category resolution by
+// name, an ambiguous name, a case difference, whitespace, Unicode
+// normalisation (in notes, which — unlike description — both surfaces
+// let a caller set directly), tags with and without "#", and
+// invalid-input error messages. See harness_test.go's seed for the
+// account/category fixtures these resolve against.
+var cases = []conformanceCase{
+	{
+		name:     "empty date resolves to today in the actor's timezone",
+		kind:     outflow,
+		amount:   "500",
+		date:     "",
+		account:  "HDFC Savings",
+		category: "groceries",
+	},
+	{
+		name:     "today resolves in the actor's timezone, not the process's",
+		kind:     outflow,
+		amount:   "500",
+		date:     "today",
+		account:  "HDFC Savings",
+		category: "groceries",
+	},
+	{
+		name:     "yesterday resolves in the actor's timezone, not the process's",
+		kind:     outflow,
+		amount:   "500",
+		date:     "yesterday",
+		account:  "HDFC Savings",
+		category: "groceries",
+	},
+	{
+		name:     "ISO date",
+		kind:     outflow,
+		amount:   "500",
+		date:     "2026-01-15",
+		account:  "HDFC Savings",
+		category: "groceries",
+	},
+	{
+		name:     "locale-format date (day/month/year)",
+		kind:     outflow,
+		amount:   "500",
+		date:     "15/01/2026",
+		account:  "HDFC Savings",
+		category: "groceries",
+	},
+	{
+		name:     "grouped amount with thousands separators",
+		kind:     outflow,
+		amount:   "1,800.50",
+		date:     "2026-01-15",
+		account:  "HDFC Savings",
+		category: "groceries",
+	},
+	{
+		name:     "amount carrying the resolved currency's own symbol",
+		kind:     outflow,
+		amount:   "₹1,800.50",
+		date:     "2026-01-15",
+		account:  "HDFC Savings", // INR account: the entry has no explicit currency, so it resolves to INR and ₹ is this amount's own symbol
+		category: "groceries",
+	},
+	{
+		name:     "account resolved by exact name",
+		kind:     outflow,
+		amount:   "500",
+		date:     "2026-01-15",
+		account:  "Cash",
+		category: "groceries",
+	},
+	{
+		name:     "account resolved case-insensitively",
+		kind:     outflow,
+		amount:   "500",
+		date:     "2026-01-15",
+		account:  "hdfc savings",
+		category: "groceries",
+	},
+	{
+		name:     "account resolved with leading/trailing whitespace trimmed",
+		kind:     outflow,
+		amount:   "500",
+		date:     "2026-01-15",
+		account:  "  HDFC Savings  ",
+		category: "groceries",
+	},
+	{
+		name:     "category resolved case-insensitively",
+		kind:     outflow,
+		amount:   "500",
+		date:     "2026-01-15",
+		account:  "Cash",
+		category: "GROCERIES",
+	},
+	{
+		name:     "note carrying combining-character Unicode normalises to NFC",
+		kind:     outflow,
+		amount:   "500",
+		date:     "2026-01-15",
+		account:  "Cash",
+		category: "groceries",
+		notes:    "Café receipt", // "e" + combining acute accent (U+0301)
+	},
+	{
+		name:     "tags with and without a leading #",
+		kind:     outflow,
+		amount:   "500",
+		date:     "2026-01-15",
+		account:  "Cash",
+		category: "groceries",
+		tags:     []string{"#Weekend Trip", "urgent"},
+	},
+	{
+		name:     "inflow (receive) resolves identically to outflow",
+		kind:     inflow,
+		amount:   "2500",
+		date:     "2026-01-15",
+		account:  "Cash",
+		category: "salary",
+	},
+	{
+		name:        "transfer between two accounts of the same currency",
+		kind:        transfer,
+		amount:      "1000",
+		date:        "2026-01-15",
+		fromAccount: "HDFC Savings",
+		toAccount:   "ICICI Checking",
+	},
+	{
+		name:        "ambiguous account name matches more than one candidate",
+		kind:        outflow,
+		amount:      "500",
+		date:        "2026-01-15",
+		account:     "wallet", // case-insensitively matches both seeded "Wallet" and "WALLET"
+		category:    "groceries",
+		wantErrCode: errs.InvalidInput,
+	},
+	{
+		name:        "unknown account name",
+		kind:        outflow,
+		amount:      "500",
+		date:        "2026-01-15",
+		account:     "Nonexistent Account",
+		category:    "groceries",
+		wantErrCode: errs.NotFound,
+	},
+	{
+		name:        "unrecognised date",
+		kind:        outflow,
+		amount:      "500",
+		date:        "not a date",
+		account:     "Cash",
+		category:    "groceries",
+		wantErrCode: errs.InvalidInput,
+	},
+	{
+		name:        "amount with more fractional digits than the currency allows",
+		kind:        outflow,
+		amount:      "10.999",
+		date:        "2026-01-15",
+		account:     "Cash",
+		category:    "groceries",
+		wantErrCode: errs.InvalidInput,
+	},
+	{
+		name:        "tag with no letters or digits normalises to nothing",
+		kind:        outflow,
+		amount:      "500",
+		date:        "2026-01-15",
+		account:     "Cash",
+		category:    "groceries",
+		tags:        []string{"!!!"},
+		wantErrCode: errs.InvalidInput,
+	},
+}
+
+// TestConformance runs every case in the table through both surfaces
+// against one shared, seeded database, and asserts they agree.
+//
+// Manually re-verified that this catches a surface resolving a date
+// itself instead of delegating to internal/app/normalize.DateOf (issue
+// #9's fourth "done when" demonstration, alongside
+// TestImportGraph_DetectsViolations and
+// TestBannedSymbols_DetectsViolations for the other three): temporarily
+// changed internal/surface/http/transactions.go's createTransaction to
+// pass a hardcoded Date instead of body.Date, ran this suite, and
+// confirmed every date-sensitive case failed — "today"/"yesterday"/empty
+// cases on a date mismatch, and the invalid-date case on HTTP silently
+// succeeding instead of rejecting "not a date" — then reverted the
+// change. Not left as a permanent fixture the way the import-graph and
+// banned-symbol violations are, because there is no way to break "a
+// surface resolves its own date" without editing a real surface's
+// production code, which would leave a real bug in the tree between test
+// runs rather than a self-contained fixture.
+//
+// Last manually verified: 2026-09-02, confirmed 4 of 19 cases failed
+// with exactly this shape, then restored internal/surface/http/transactions.go.
+func TestConformance(t *testing.T) {
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.seed()
+
+			cliOut, cliErr := h.runCLI(tc.cliArgs()...)
+			httpStatus, httpDecoded := h.runHTTP(tc.httpMethod(), tc.httpPath(), tc.httpBody())
+
+			if tc.wantErrCode != "" {
+				if cliErr == nil {
+					t.Fatalf("CLI: expected error code %s, got success (output: %s)", tc.wantErrCode, cliOut)
+				}
+				if httpStatus < 400 {
+					t.Fatalf("HTTP: expected an error status, got %d (body: %v)", httpStatus, httpDecoded)
+				}
+				gotCLI := h.cliErrorCode(cliErr)
+				gotHTTP := h.httpErrorCode(httpDecoded)
+				if gotCLI != tc.wantErrCode {
+					t.Errorf("CLI error code = %s, want %s", gotCLI, tc.wantErrCode)
+				}
+				if gotHTTP != tc.wantErrCode {
+					t.Errorf("HTTP error code = %s, want %s", gotHTTP, tc.wantErrCode)
+				}
+				cliField := h.cliErrorField(cliErr)
+				httpField := h.httpErrorField(httpDecoded)
+				if cliField != httpField {
+					t.Errorf("CLI and HTTP disagree on which field this error attaches to: CLI %q, HTTP %q", cliField, httpField)
+				}
+				return
+			}
+
+			if cliErr != nil {
+				t.Fatalf("CLI: unexpected error: %v (output: %s)", cliErr, cliOut)
+			}
+			if httpStatus >= 300 {
+				t.Fatalf("HTTP: unexpected error status %d: %v", httpStatus, httpDecoded)
+			}
+
+			cliData := decodeEnvelope(t, cliOut)
+			httpData := h.httpData(httpDecoded)
+
+			cliFields := comparableFields(cliData)
+			httpFields := comparableFields(httpData)
+
+			cliJSON, _ := json.MarshalIndent(cliFields, "", "  ")
+			httpJSON, _ := json.MarshalIndent(httpFields, "", "  ")
+			if string(cliJSON) != string(httpJSON) {
+				t.Errorf("CLI and HTTP disagree on the stored transaction:\nCLI:\n%s\nHTTP:\n%s", cliJSON, httpJSON)
+			}
+		})
+	}
+}
+
+// cliArgs builds the argv runCLI executes for c — the same command a
+// person would actually type, per docs/ux-principles.md §7.
+func (c conformanceCase) cliArgs() []string {
+	var args []string
+	switch c.kind {
+	case outflow:
+		args = []string{"spend", c.amount, c.category, "--account", c.account}
+	case inflow:
+		args = []string{"receive", c.amount, c.category, "--account", c.account}
+	case transfer:
+		args = []string{"move", c.amount, "--from", c.fromAccount, "--to", c.toAccount}
+	}
+	if c.date != "" {
+		args = append(args, "--on", c.date)
+	}
+	if c.notes != "" {
+		args = append(args, "--note", c.notes)
+	}
+	for _, tag := range c.tags {
+		args = append(args, "--tag", tag)
+	}
+	return args
+}
+
+// httpMethod, httpPath, and httpBody build runHTTP's request for c —
+// POST /api/v1/transactions for an outflow/inflow, POST
+// /api/v1/transfers for a transfer, per internal/surface/http's own
+// route table.
+func (c conformanceCase) httpMethod() string { return "POST" }
+
+func (c conformanceCase) httpPath() string {
+	if c.kind == transfer {
+		return "/api/v1/transfers"
+	}
+	return "/api/v1/transactions"
+}
+
+func (c conformanceCase) httpBody() any {
+	if c.kind == transfer {
+		return map[string]any{
+			"from_account": c.fromAccount,
+			"to_account":   c.toAccount,
+			"amount":       c.amount,
+			"date":         c.date,
+			// The same default internal/surface/cli/move.go's newMoveCmd
+			// builds, so description is never a point of divergence
+			// between the two surfaces' results — it isn't one of the
+			// fields comparableFields even looks at, but the application
+			// layer still requires it non-empty.
+			"description": fmt.Sprintf("Transfer from %s to %s", c.fromAccount, c.toAccount),
+			"notes":       c.notes,
+			"tags":        c.tags,
+		}
+	}
+	txType := transactionTypeOutflow
+	if c.kind == inflow {
+		txType = transactionTypeInflow
+	}
+	return map[string]any{
+		"type":     txType,
+		"account":  c.account,
+		"category": c.category,
+		"amount":   c.amount,
+		"date":     c.date,
+		// The same default internal/surface/cli/entries.go's
+		// runEntryCommand uses (the category positional does double duty
+		// as the description) — see httpBody's transfer branch above for
+		// why this is safe to hardcode rather than compare.
+		"description": c.category,
+		"notes":       c.notes,
+		"tags":        c.tags,
+	}
+}
+
+const (
+	transactionTypeOutflow = "outflow"
+	transactionTypeInflow  = "inflow"
+)
+
+// decodeEnvelope decodes runCLI's stdout — {"data": ...} on success, per
+// internal/surface/cli's own --json envelope — failing the test outright
+// if it isn't shaped like one.
+func decodeEnvelope(t *testing.T, output string) map[string]any {
+	t.Helper()
+	var envelope struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(output), &envelope); err != nil {
+		t.Fatalf("decode CLI --json output: %v (output: %s)", err, output)
+	}
+	if envelope.Data == nil {
+		t.Fatalf("CLI --json output has no \"data\": %s", output)
+	}
+	return envelope.Data
+}
+
+// comparableKeys is the subset of each surface's response shape that
+// records what was actually stored, independent of which surface stored
+// it: internal/surface/cli's entryView/moveView and
+// internal/surface/http's transactionView all use these same field
+// names for these same values (see their doc comments), so no
+// translation table is needed between the two — only ID, type-specific
+// label fields (CLI's "account"/"category"/"from"/"to", which echo back
+// the raw text a person typed rather than a resolved value), and
+// description (deliberately excluded — see conformanceCase.httpBody) are
+// asymmetric, and none of those describe what was normalised and stored.
+var comparableKeys = []string{
+	"date", "amount", "currency",
+	"account_id", "category_id", "from_account_id", "to_account_id",
+	"notes", "tags",
+}
+
+// comparableFields projects data down to comparableKeys, so a field only
+// one surface's view struct happens to also carry (or that one surface
+// omitted via omitempty and the other didn't) never causes a false
+// mismatch.
+func comparableFields(data map[string]any) map[string]any {
+	out := make(map[string]any, len(comparableKeys))
+	for _, k := range comparableKeys {
+		if v, ok := data[k]; ok {
+			out[k] = v
+		}
+	}
+	return out
+}
