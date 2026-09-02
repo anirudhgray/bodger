@@ -16,7 +16,7 @@ import {
   RouterProvider,
   type RouteObject,
 } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { routes, RouteError } from './routes'
 
@@ -68,6 +68,15 @@ describe('routes', () => {
   })
 
   it('renders RouteError instead of the default crash screen when a route throws', async () => {
+    // React and react-router-dom both log a thrown render error to
+    // console.error even once an errorElement catches it — expected here
+    // (that's exactly what this test deliberately triggers), but it would
+    // otherwise print a full stack trace on every `make test` run for a
+    // case that's supposed to pass. Silenced for just this case, and
+    // restored immediately after so a genuinely unexpected console.error
+    // from any other test still fails loudly.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
     function Throws(): never {
       throw new Error('boom')
     }
@@ -79,8 +88,12 @@ describe('routes', () => {
     })
     render(<RouterProvider router={router} />)
 
-    expect(
-      await screen.findByRole('heading', { name: 'Something went wrong' }),
-    ).toBeInTheDocument()
+    try {
+      expect(
+        await screen.findByRole('heading', { name: 'Something went wrong' }),
+      ).toBeInTheDocument()
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 })
