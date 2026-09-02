@@ -8,7 +8,8 @@
 // to the application layer as an empty string, and the application layer
 // (internal/app/normalize.DateOf) is what resolves it to "today" in the
 // actor's timezone. CI is meant to fail if this package ever reads the
-// wall clock directly itself — see TestNoWallClock in grep_test.go.
+// wall clock directly itself — see internal/lint's banned-symbol check
+// (issue #9), which now covers every surface, not just this one.
 //
 // This package never imports internal/domain or its subpackages
 // (internal/domain/ledger, internal/domain/money) — docs/architecture.md
