@@ -50,28 +50,29 @@ func transactionTypeFor(kind string) string {
 // picks between RecordOutflow and RecordInflow on its own "type" field —
 // not a business rule this package is inventing.
 //
-// This is a deliberate divergence from the REST API's own --type
-// vocabulary (internal/surface/http/router.go's "type" query parameter
-// takes "outflow"/"inflow"/"transfer" directly), not an accidental one:
+// This CLI's own vocabulary (spend/receive/move) is a deliberate divergence
+// from the REST API's own --type vocabulary (internal/surface/http/router.go's
+// "type" query parameter takes "outflow"/"inflow"/"transfer" directly):
 // ux-principles.md §2 asks for the same word across surfaces by default,
 // but a human at a terminal and a script calling the wire API have
 // different reasons to want different words here, and this is the
-// surface-earns-a-different-one case that same paragraph carves out.
-// Accepting the REST spelling too, as an alias, is tracked separately
-// (issue #41) rather than folded in here.
+// surface-earns-a-different-one case that same paragraph carves out. The
+// REST spelling is also accepted here, as an alias (issue #41), so a script
+// moving between the two surfaces doesn't hit an unannounced translation —
+// output still always uses this CLI's own verbs (transactionTypeFor).
 func transactionKindFor(txnType string) (string, error) {
 	switch txnType {
 	case "":
 		return "", nil
-	case entryTypeSpend:
+	case entryTypeSpend, kindOutflow:
 		return kindOutflow, nil
-	case entryTypeReceive:
+	case entryTypeReceive, kindInflow:
 		return kindInflow, nil
-	case entryTypeMove:
+	case entryTypeMove, kindTransfer:
 		return kindTransfer, nil
 	default:
 		return "", errs.New(errs.InvalidInput).
-			Explain("%q isn't something you can filter by. Use spend, receive, or move.", txnType).
+			Explain("%q isn't something you can filter by. Use spend, receive, or move (or outflow, inflow, transfer).", txnType).
 			Field("type")
 	}
 }
@@ -259,7 +260,7 @@ func newTransactionsListCmd(factory ServiceFactory) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&f.account, "account", "", "only transactions touching this account")
 	cmd.Flags().StringVar(&f.category, "category", "", "only transactions in this category, including anything under it")
-	cmd.Flags().StringVar(&f.txnType, "type", "", "only one type: spend, receive, or move")
+	cmd.Flags().StringVar(&f.txnType, "type", "", "only one type: spend, receive, or move (also accepts outflow, inflow, transfer)")
 	cmd.Flags().StringVar(&f.since, "since", "", "only transactions on or after this date")
 	cmd.Flags().StringVar(&f.until, "until", "", "only transactions on or before this date")
 	cmd.Flags().IntVar(&f.limit, "limit", 0, "how many to show at once")
