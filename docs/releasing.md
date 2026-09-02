@@ -18,9 +18,8 @@ in [`.goreleaser.yaml`](../.goreleaser.yaml):
   reports real build metadata on a released binary (`dev` on anything
   built locally with plain `go build` or `make build`).
 - Generates a changelog from conventional-commit history since the
-  previous tag, grouped into Features / Fixes / Documentation / Other —
-  this is the **same mechanism** used to update the checked-in
-  [`CHANGELOG.md`](../CHANGELOG.md) below, so the two are never
+  previous tag — this is the **same mechanism** used to update the
+  checked-in [`CHANGELOG.md`](../CHANGELOG.md) below, so the two are never
   independently-maintained texts.
 - Publishes a GitHub Release with the built archives, checksums, and that
   changelog as the release body.
@@ -28,6 +27,32 @@ in [`.goreleaser.yaml`](../.goreleaser.yaml):
 `.github/workflows/release.yaml` runs this on every push of a tag matching
 `v*.*.*`. Pushing a tag is the only trigger — there is no manual dispatch
 and no bot watching `main`.
+
+## Changelog format
+
+[`CHANGELOG.md`](../CHANGELOG.md) follows [Keep a
+Changelog](https://keepachangelog.com/en/1.1.0/): an `## [Unreleased]`
+section always sits at the top, and each release gets its own
+`## [X.Y.Z] - YYYY-MM-DD` section below it, with entries grouped under
+Keep a Changelog's own categories (Added, Changed, Deprecated, Removed,
+Fixed, Security) — not conventional commits' type names.
+`.goreleaser.yaml`'s `changelog.groups` maps `feat` → Added, `fix` →
+Fixed, `refactor`/`perf` → Changed; internal-only commit types (`docs`,
+`chore`, `test`, `ci`, `style`, `build`) are excluded entirely rather than
+dumped into a catch-all, since Keep a Changelog is for changes a user of
+the released binary would actually notice.
+
+**Deprecated and Removed have no commit-type mapping** — a `fix` or a
+`feat` can just as easily do either — so GoReleaser never populates them.
+Add either by hand, editing the generated content before it goes into the
+routine PR, when a release actually deprecates or removes something.
+
+One deliberate simplification versus purist Keep a Changelog practice:
+entries are generated in bulk at release-cut time from commit history,
+not hand-written incrementally in each contributing PR. `[Unreleased]`
+therefore stays empty between releases rather than accumulating entries
+as they land — it exists as the placeholder a release fills in and
+replaces, per the procedure below.
 
 ## Semver policy
 
@@ -103,14 +128,23 @@ checks, which don't apply to a local preview; nothing is published.)
 
 ### 2. Open the routine PR
 
-On a feature branch, prepend `dist/CHANGELOG.md`'s content — with a
-version heading added on top — to the top of the repo's
-[`CHANGELOG.md`](../CHANGELOG.md):
+On a feature branch, edit the repo's [`CHANGELOG.md`](../CHANGELOG.md):
+
+- Replace the empty `## [Unreleased]` section's body with
+  `dist/CHANGELOG.md`'s content, and rename that heading to
+  `## [X.Y.Z] - YYYY-MM-DD`.
+- Add a fresh, empty `## [Unreleased]` section above it, ready for the
+  next release.
 
 ```markdown
-## vX.Y.Z — 2026-09-15
+## [Unreleased]
 
-### Features
+## [X.Y.Z] - 2026-09-15
+
+### Added
+...
+
+### Fixed
 ...
 ```
 

@@ -47,27 +47,44 @@ checksum:
 # changelog-only/snapshot mode, so the file and the eventual GitHub
 # release notes are never two independently-maintained texts. See
 # docs/releasing.md.
+#
+# Group titles are Keep a Changelog's categories, not conventional
+# commits' own type names — feat -> Added, fix -> Fixed, refactor/perf ->
+# Changed. Deprecated and Removed have no reliable commit-type mapping
+# (a fix or a feat can just as easily do either), so they're not
+# auto-populated — add them by hand in the routine release PR when one
+# applies. Internal-only commit types (docs, chore, test, ci, style,
+# build) are filtered out entirely rather than dumped in a catch-all
+# group: Keep a Changelog is for notable changes, and none of those
+# affect what a user of the released binary experiences.
 changelog:
   sort: asc
   use: github
   abbrev: 8
   format: "{{ .SHA }}: {{ .Message }}"
   groups:
-    - title: "Features"
+    - title: "Added"
       regexp: '^.*?feat(\(.+\))??!?:.+$'
       order: 0
-    - title: "Fixes"
-      regexp: '^.*?fix(\(.+\))??!?:.+$'
+    - title: "Changed"
+      regexp: '^.*?(refactor|perf)(\(.+\))??!?:.+$'
       order: 1
-    - title: "Documentation"
-      regexp: '^.*?docs(\(.+\))??!?:.+$'
+    - title: "Fixed"
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
       order: 2
-    - title: "Other"
-      order: 999
+    - title: "Security"
+      regexp: '^.*?\(security\)!?:.+$'
+      order: 3
   filters:
     exclude:
-      - "Merge pull request"
-      - "Merge branch"
+      - "^Merge pull request"
+      - "^Merge branch"
+      - '^.*?docs(\(.+\))??!?:.+$'
+      - '^.*?chore(\(.+\))??!?:.+$'
+      - '^.*?test(\(.+\))??!?:.+$'
+      - '^.*?ci(\(.+\))??!?:.+$'
+      - '^.*?style(\(.+\))??!?:.+$'
+      - '^.*?build(\(.+\))??!?:.+$'
 
 # The release title defaults to the bare tag. For a milestone-completing
 # release, release.yaml reads the annotated tag's own message (set with
