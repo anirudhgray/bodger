@@ -57,12 +57,23 @@ func respond(w http.ResponseWriter, status int, data any) {
 // §2) and its safe, user-facing JSON body. Every error internal/app
 // returns is already an *errs.Error; the errors.As fallback exists only
 // for a genuinely unexpected error type reaching this far (a programming
-// mistake, not a user-facing case), which is rendered as an opaque 500
-// rather than leaking whatever it actually says.
-func respondError(w http.ResponseWriter, err error) {
+// mistake, not a user-facing case), which is wrapped as Internal rather
+// than leaking whatever it actually says.
+//
+// Before any of that, h.logger logs e's full cause chain — logger.Error
+// dispatches to (*errs.Error).LogValue on its own
+// (internal/platform/logging's doc comment) — so the detail this
+// function is about to discard from the response (a driver message, a
+// wrapped fmt.Errorf) is captured somewhere a self-hoster can find it
+// rather than lost the moment this function returns (ADR-0011; issue
+// #43).
+func (h *handlers) respondError(w http.ResponseWriter, err error) {
 	var e *errs.Error
 	if !errors.As(err, &e) {
 		e = errs.New(errs.Internal).Wrap(err)
+	}
+	if h.logger != nil {
+		h.logger.Error("request failed", "error", e)
 	}
 	writeJSON(w, e.HTTPStatus(), errorEnvelope{Error: e})
 }

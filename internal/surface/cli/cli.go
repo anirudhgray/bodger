@@ -36,6 +36,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -124,22 +125,31 @@ func closeQuietly(cmd *cobra.Command, closeDB func() error) {
 // RenderError renders err the way a CLI invocation should report it and
 // returns the process exit code main.go should use. When err is an
 // *errs.Error (the shared validation/domain error type issue #4 built,
-// see internal/platform/errs), this prints its safe, user-facing message
-// — as JSON when jsonMode is set — and returns its registered CLI exit
+// see internal/platform/errs), this logs its full cause chain through
+// logger before printing anything — logger.Error dispatches to
+// (*errs.Error).LogValue on its own (internal/platform/logging's doc
+// comment), so the SQL fragment, driver text, or wrapped fmt.Errorf that
+// caused an Internal error is captured somewhere a self-hoster can find
+// it (ADR-0011; issue #43) — then prints its safe, user-facing message —
+// as JSON when jsonMode is set — and returns its registered CLI exit
 // code.
 //
-// Anything else is printed as-is with exit code 1. In practice that's
-// only ever a cobra usage error (an unknown command, a missing required
-// flag) — every other error reaching this far is already a *errs.Error:
-// internal/app returns nothing else (internal/lint's check, issue #12),
-// adapters return nothing else (the ports contract), and main.go's own
-// bootstrap wraps its failures the same way (issue #39). Cobra's usage
-// errors are safe to print verbatim by construction, which is what this
-// fallback exists for — it is not a place a raw internal error is
+// Anything else is printed as-is with exit code 1, and not logged: in
+// practice that's only ever a cobra usage error (an unknown command, a
+// missing required flag) — every other error reaching this far is
+// already a *errs.Error: internal/app returns nothing else
+// (internal/lint's check, issue #12), adapters return nothing else (the
+// ports contract), and main.go's own bootstrap wraps its failures the
+// same way (issue #39). Cobra's usage errors are safe to print verbatim
+// by construction, and carry no cause chain worth logging, which is what
+// this fallback exists for — it is not a place a raw internal error is
 // expected to end up.
-func RenderError(w io.Writer, err error, jsonMode bool) int {
+func RenderError(w io.Writer, err error, jsonMode bool, logger *slog.Logger) int {
 	var e *errs.Error
 	if errors.As(err, &e) {
+		if logger != nil {
+			logger.Error("command failed", "error", e)
+		}
 		if jsonMode {
 			_ = writeJSONError(w, e)
 		} else {
