@@ -13,5 +13,5 @@ func (h *handlers) healthz(w http.ResponseWriter, _ *http.Request) {
 }
 
 type healthzView struct {
-	Status string `json:"status"`
+	Status string `json:"status" enum:"health_status"`
 }

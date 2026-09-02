@@ -13,9 +13,9 @@ import (
 // resolution happens entirely in the application layer.
 type createCategoryRequest struct {
 	Name      string `json:"name"`
-	Type      string `json:"type"`
-	Parent    string `json:"parent,omitempty"`
-	SortOrder int    `json:"sort_order,omitempty"`
+	Type      string `json:"type" enum:"category_kind"`
+	Parent    string `json:"parent,omitempty" doc:"A parent category's ID or unique name. Omit for a top-level category."`
+	SortOrder int    `json:"sort_order,omitempty" doc:"Where the category sorts in a list; lower comes first."`
 }
 
 func (h *handlers) createCategory(w http.ResponseWriter, r *http.Request) {
@@ -71,8 +71,8 @@ func (h *handlers) getCategory(w http.ResponseWriter, r *http.Request) {
 // top-level") and has to be distinguished from "not present in this
 // request at all".
 type patchCategoryRequest struct {
-	Name   *string `json:"name,omitempty"`
-	Parent *string `json:"parent,omitempty"`
+	Name   *string `json:"name,omitempty" doc:"The category's new name."`
+	Parent *string `json:"parent,omitempty" doc:"A parent category's ID or unique name. An empty string moves the category to the top level."`
 }
 
 func (h *handlers) patchCategory(w http.ResponseWriter, r *http.Request) {
