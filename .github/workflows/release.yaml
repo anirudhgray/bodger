@@ -20,6 +20,19 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      # A tag matching v*.*.* triggers this workflow regardless of which
+      # branch its commit lives on — tags are refs, not branch-scoped, and
+      # GitHub reads the workflow file from the tag's own commit rather
+      # than main. docs/releasing.md's procedure is to tag the post-merge
+      # commit on main, but nothing enforces that by construction, so
+      # enforce it here: refuse to release a commit main hasn't reached.
+      - name: Verify tag is reachable from main
+        run: |
+          if ! git merge-base --is-ancestor "${{ github.sha }}" origin/main; then
+            echo "::error::${{ github.ref_name }} (${{ github.sha }}) is not on main — refusing to release a commit main hasn't reached."
+            exit 1
+          fi
+
       - name: Read toolchain versions
         id: tools
         run: |
