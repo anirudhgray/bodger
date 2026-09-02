@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/platform/config"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
+	"github.com/anirudhgray/bodger/internal/platform/logging"
 	clisurface "github.com/anirudhgray/bodger/internal/surface/cli"
 )
 
@@ -821,7 +823,7 @@ func TestJSONError_UsesSharedEnvelope(t *testing.T) {
 	// the {"error": ...} envelope is main.go's job (via
 	// clisurface.RenderError), so exercise that explicitly here too.
 	var errBuf bytes.Buffer
-	code := clisurface.RenderError(&errBuf, err, true)
+	code := clisurface.RenderError(&errBuf, err, true, nil)
 	if code != errs.CLIExitCode(errs.NotFound) {
 		t.Errorf("exit code = %d, want %d", code, errs.CLIExitCode(errs.NotFound))
 	}
@@ -846,11 +848,47 @@ func TestJSONError_UsesSharedEnvelope(t *testing.T) {
 
 func TestRenderError_NonErrsErrorFallsBackToExitOne(t *testing.T) {
 	var buf bytes.Buffer
-	code := clisurface.RenderError(&buf, errors.New("boom"), false)
+	code := clisurface.RenderError(&buf, errors.New("boom"), false, nil)
 	if code != 1 {
 		t.Errorf("code = %d, want 1", code)
 	}
 	if !strings.Contains(buf.String(), "boom") {
 		t.Errorf("output = %q, want it to contain the underlying error", buf.String())
+	}
+}
+
+// TestRenderError_LogsInternalErrorCause proves the gap issue #43 closes:
+// an *errs.Error's wrapped cause — the detail ADR-0011 says must reach a
+// log and never a user — is actually logged before RenderError prints
+// its safe message, rather than silently discarded. The cause text here
+// ("sqlite: disk I/O error") stands in for exactly the kind of driver
+// detail that must never reach the user-facing message but must reach
+// the log in full.
+func TestRenderError_LogsInternalErrorCause(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger := logging.New(&logBuf, slog.LevelInfo)
+
+	cause := errors.New("sqlite: disk I/O error")
+	err := errs.New(errs.Internal).Explain("bodger couldn't save that.").Wrap(cause)
+
+	var out bytes.Buffer
+	code := clisurface.RenderError(&out, err, false, logger)
+
+	if code != errs.CLIExitCode(errs.Internal) {
+		t.Errorf("code = %d, want %d", code, errs.CLIExitCode(errs.Internal))
+	}
+	if strings.Contains(out.String(), "disk I/O error") {
+		t.Errorf("user-facing output leaked the internal cause: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "bodger couldn't save that.") {
+		t.Errorf("user-facing output = %q, want the safe explanation", out.String())
+	}
+
+	logged := logBuf.String()
+	if !strings.Contains(logged, "disk I/O error") {
+		t.Errorf("log output is missing the wrapped cause: %s", logged)
+	}
+	if !strings.Contains(logged, string(errs.Internal)) {
+		t.Errorf("log output is missing the error code: %s", logged)
 	}
 }
