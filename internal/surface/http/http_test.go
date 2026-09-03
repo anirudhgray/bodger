@@ -133,6 +133,7 @@ func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
 		clk, cfg, idgen.New(),
 		sqlite.NewAccountRepository(db), sqlite.NewCategoryRepository(db),
 		sqlite.NewTransactionRepository(db), sqlite.NewTagRepository(db),
+		sqlite.NewUserRepository(db), sqlite.NewSessionRepository(db), sqlite.NewAPITokenRepository(db),
 	)
 	if err != nil {
 		t.Fatalf("app.NewService: %v", err)

@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"sort"
+	"time"
 
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
@@ -315,3 +316,162 @@ func (m *memTags) List(_ context.Context, actorID string) ([]ledger.Tag, error) 
 }
 
 var _ ports.TagRepository = (*memTags)(nil)
+
+// memUsers, memSessions, and memAPITokens are issue #55's in-memory ports
+// implementations, mirroring the fakes above: enough to exercise real
+// Login/Logout/SetPassword/API-token behaviour, still enforcing the
+// actor-scoping contract the real internal/adapters/sqlite repositories
+// document (ADR-0006).
+
+type memUsers struct {
+	byID map[string]ports.User
+}
+
+func newMemUsers() *memUsers { return &memUsers{byID: map[string]ports.User{}} }
+
+// newMemUsersSeeded mirrors the real first migration's behaviour
+// (00001_create_users.sql): a fresh database always has exactly one user
+// row, ports.SeededUserID, with no password set yet. Auth use-case tests
+// build on this the same way a real fresh install does — SetPassword
+// before the first Login.
+func newMemUsersSeeded() *memUsers {
+	m := newMemUsers()
+	m.byID[ports.SeededUserID] = ports.User{ID: ports.SeededUserID}
+	return m
+}
+
+func (m *memUsers) GetByID(_ context.Context, id string) (ports.User, error) {
+	u, ok := m.byID[id]
+	if !ok {
+		return ports.User{}, errs.New(errs.NotFound).Explain("No user with ID %q.", id).Field("id")
+	}
+	return u, nil
+}
+
+func (m *memUsers) SetPasswordHash(_ context.Context, actorID, passwordHash string) error {
+	u, ok := m.byID[actorID]
+	if !ok {
+		return errs.New(errs.NotFound).Explain("No user with ID %q.", actorID).Field("id")
+	}
+	u.PasswordHash = &passwordHash
+	m.byID[actorID] = u
+	return nil
+}
+
+var _ ports.UserRepository = (*memUsers)(nil)
+
+type memSessions struct {
+	byID map[string]ports.Session
+}
+
+func newMemSessions() *memSessions { return &memSessions{byID: map[string]ports.Session{}} }
+
+func (m *memSessions) Create(_ context.Context, actorID string, session ports.Session) error {
+	if session.UserID != actorID {
+		return errs.New(errs.NotAllowed)
+	}
+	for _, existing := range m.byID {
+		if existing.TokenHash == session.TokenHash {
+			return errs.New(errs.Conflict).Explain("A session with this token already exists.")
+		}
+	}
+	m.byID[session.ID] = session
+	return nil
+}
+
+func (m *memSessions) GetByTokenHash(_ context.Context, tokenHash string) (ports.Session, error) {
+	for _, s := range m.byID {
+		if s.TokenHash == tokenHash {
+			return s, nil
+		}
+	}
+	return ports.Session{}, errs.New(errs.NotFound).Explain("No session found.")
+}
+
+func (m *memSessions) Touch(_ context.Context, actorID, id string, lastUsedAt, expiresAt time.Time) error {
+	s, ok := m.byID[id]
+	if !ok || s.UserID != actorID {
+		return errs.New(errs.NotFound).Explain("No session with ID %q.", id).Field("id")
+	}
+	s.LastUsedAt = lastUsedAt
+	s.ExpiresAt = expiresAt
+	m.byID[id] = s
+	return nil
+}
+
+func (m *memSessions) Delete(_ context.Context, actorID, id string) error {
+	s, ok := m.byID[id]
+	if !ok || s.UserID != actorID {
+		return errs.New(errs.NotFound).Explain("No session with ID %q.", id).Field("id")
+	}
+	delete(m.byID, id)
+	return nil
+}
+
+var _ ports.SessionRepository = (*memSessions)(nil)
+
+type memAPITokens struct {
+	byID map[string]ports.APIToken
+}
+
+func newMemAPITokens() *memAPITokens { return &memAPITokens{byID: map[string]ports.APIToken{}} }
+
+func (m *memAPITokens) Create(_ context.Context, actorID string, token ports.APIToken) error {
+	if token.UserID != actorID {
+		return errs.New(errs.NotAllowed)
+	}
+	for _, existing := range m.byID {
+		if existing.TokenHash == token.TokenHash {
+			return errs.New(errs.Conflict).Explain("A token with this value already exists.")
+		}
+	}
+	m.byID[token.ID] = token
+	return nil
+}
+
+func (m *memAPITokens) GetByTokenHash(_ context.Context, tokenHash string) (ports.APIToken, error) {
+	for _, t := range m.byID {
+		if t.TokenHash == tokenHash {
+			return t, nil
+		}
+	}
+	return ports.APIToken{}, errs.New(errs.NotFound).Explain("No API token found.")
+}
+
+func (m *memAPITokens) List(_ context.Context, actorID string) ([]ports.APIToken, error) {
+	var out []ports.APIToken
+	for _, t := range m.byID {
+		if t.UserID == actorID {
+			out = append(out, t)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].CreatedAt.After(out[j].CreatedAt)
+		}
+		return out[i].ID > out[j].ID
+	})
+	return out, nil
+}
+
+func (m *memAPITokens) Touch(_ context.Context, actorID, id string, lastUsedAt time.Time) error {
+	t, ok := m.byID[id]
+	if !ok || t.UserID != actorID {
+		return errs.New(errs.NotFound).Explain("No API token with ID %q.", id).Field("id")
+	}
+	t.LastUsedAt = &lastUsedAt
+	m.byID[id] = t
+	return nil
+}
+
+func (m *memAPITokens) Revoke(_ context.Context, actorID, id string, revokedAt time.Time) error {
+	t, ok := m.byID[id]
+	if !ok || t.UserID != actorID {
+		return errs.New(errs.NotFound).Explain("No API token with ID %q.", id).Field("id")
+	}
+	t.RevokedAt = &revokedAt
+	m.byID[id] = t
+	return nil
+}
+
+var _ ports.APITokenRepository = (*memAPITokens)(nil)
