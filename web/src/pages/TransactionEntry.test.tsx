@@ -31,13 +31,16 @@ const mockedRecordOutflow = vi.mocked(recordOutflow)
 const account = {
   id: 'acc-1',
   name: 'HDFC Savings',
-  type: 'checking',
+  type: 'bank' as const,
   currency: 'INR',
+  opening_balance: '0.00',
+  sort_order: 0,
   archived: false,
 }
 const groceries = {
   id: 'cat-1',
   name: 'Groceries',
+  sort_order: 0,
   type: 'expense' as const,
   archived: false,
 }

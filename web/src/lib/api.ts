@@ -103,24 +103,40 @@ export function getBalances(): Promise<Balances> {
   return apiFetch<Balances>('/api/v1/balances')
 }
 
-// --- issue #60: accounts/categories lookups and transaction recording ---
-// Added as new, self-contained functions rather than touching apiFetch or
-// anything above — several other issues (#61-#63) are adding their own
-// functions to this file at the same time, on sibling branches.
+// --- Accounts and categories (shared reference data) ----------------------
+// Three sibling issues (#60, #61, #62) each independently needed these
+// lookups; this is the single definition all three converged on after the
+// fact, matching internal/surface/http/dto.go's accountView/categoryView
+// exactly (field-for-field, including AccountKind/CategoryKind's real wire
+// values from internal/surface/http/openapi_gen.go's enum table) rather
+// than each screen's own narrower guess.
+
+export type AccountKind =
+  'bank' | 'cash' | 'credit_card' | 'wallet' | 'investment' | 'loan' | 'other'
 
 export type Account = {
   id: string
   name: string
-  type: string
+  type: AccountKind
   currency: string
+  opening_balance: string
+  opening_balance_date?: string
+  institution?: string
+  sort_order: number
   archived: boolean
+  archived_at?: string
 }
+
+export type CategoryKind = 'expense' | 'income'
 
 export type Category = {
   id: string
   name: string
-  type: 'expense' | 'income'
+  type: CategoryKind
+  parent_id?: string
+  sort_order: number
   archived: boolean
+  archived_at?: string
 }
 
 export function listAccounts(): Promise<Account[]> {
@@ -130,6 +146,8 @@ export function listAccounts(): Promise<Account[]> {
 export function listCategories(): Promise<Category[]> {
   return apiFetch<Category[]>('/api/v1/categories')
 }
+
+// --- issue #60: transaction recording --------------------------------
 
 // RecordTransactionInput/RecordTransferInput carry the amount, date, and
 // every other value the API normalises server-side (ADR-0005) as raw
