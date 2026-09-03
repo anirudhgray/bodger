@@ -239,9 +239,9 @@ bodger serve
 bodger: listening on 127.0.0.1:8080
 ```
 
-It binds `127.0.0.1` (loopback) by default, and there's no login yet, so it refuses to start bound to anything else — set `BODGER_HTTP_BIND_ADDR` if you need a different loopback address or port, but it will still refuse a non-loopback one until authentication exists. If you want it reachable from another machine in the meantime, put it behind something that handles authentication itself (a reverse proxy, a VPN) rather than exposing it directly.
+It binds `127.0.0.1` (loopback) by default. Set `BODGER_HTTP_BIND_ADDR` if you need a different loopback address or port; a non-loopback address is refused until you've set a password (see below) — if you want it reachable from another machine before that, put it behind something that handles authentication itself (a reverse proxy, a VPN) rather than exposing it directly.
 
-Every resource the CLI can touch has an equivalent under `/api/v1`: accounts, categories, transactions, transfers, and balances, plus `/healthz` to check the server is up. A request with no `date` field books to today the same way `spend`/`receive`/`move` do — resolved on the server, in your configured timezone, never by the client. Amounts are always sent and returned as plain decimal strings with a separate currency field, never as numbers.
+Every resource the CLI can touch has an equivalent under `/api/v1`: accounts, categories, transactions, transfers, and balances, plus `/healthz` to check the server is up and `/api/v1/auth/*` for the routes below. A request with no `date` field books to today the same way `spend`/`receive`/`move` do — resolved on the server, in your configured timezone, never by the client. Amounts are always sent and returned as plain decimal strings with a separate currency field, never as numbers.
 
 ```sh
 curl http://127.0.0.1:8080/api/v1/accounts
@@ -250,6 +250,38 @@ curl -X POST http://127.0.0.1:8080/api/v1/transactions \
 ```
 
 The full set of routes, request and response shapes, and error codes is described in the project's OpenAPI document (`internal/surface/http/openapi.json`) — point any OpenAPI-aware tool at that file for a browsable reference.
+
+### Signing in and API tokens
+
+Every route above requires a credential — first set a password with `bodger auth set-password` (run on the machine hosting `bodger.db`; see `bodger auth set-password --help`), then sign in:
+
+```sh
+curl -c cookies.txt -X POST http://127.0.0.1:8080/api/v1/auth/login \
+  -d '{"password":"your-password"}'
+```
+
+A successful login sets a session cookie (that's what `-c cookies.txt` saves) — the browser-based web UI uses exactly this. Send it back on later requests with `-b cookies.txt`. Any request that changes something (anything but a `GET`) also needs a `X-Bodger-CSRF` header alongside the cookie — its value doesn't matter, only its presence:
+
+```sh
+curl -b cookies.txt -X POST http://127.0.0.1:8080/api/v1/transactions \
+  -H 'X-Bodger-CSRF: 1' \
+  -d '{"type":"outflow","account":"HDFC Savings","category":"groceries","amount":"800","description":"Groceries"}'
+```
+
+`POST /api/v1/auth/logout` ends the current session; `POST /api/v1/auth/logout-all` ends every session you have open, on every device, in one call.
+
+For a script, a cron job, or any client that isn't a browser, an **API token** is usually easier than a cookie — it's a long-lived credential you send as `Authorization: Bearer <token>` and never needs the CSRF header:
+
+```sh
+curl -b cookies.txt -X POST http://127.0.0.1:8080/api/v1/auth/tokens \
+  -H 'X-Bodger-CSRF: 1' -d '{"name":"backup script"}'
+# {"data":{"id":"...","name":"backup script","created_at":"...","token":"bdg_..."}}
+
+curl http://127.0.0.1:8080/api/v1/accounts \
+  -H 'Authorization: Bearer bdg_...'
+```
+
+The `token` field is shown exactly once, in that create response — store it somewhere safe, since it can't be retrieved again. `GET /api/v1/auth/tokens` lists every token you've created (including expired and revoked ones, for history), and `DELETE /api/v1/auth/tokens/{id}` revokes one immediately. You can also manage API tokens from the command line with `bodger auth token create`/`list`/`revoke`.
 
 ---
 

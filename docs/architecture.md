@@ -423,6 +423,47 @@ Delivered so far in M2:
   surfaces — see [`contributing.md`](contributing.md#logging) for why). A
   rotating log file was considered and deliberately deferred rather than
   adding a dependency unilaterally (issue #43).
+- The REST API's auth surface (issue #56, ADR-0006), with issue #71
+  ("log out everywhere") folded into the same PR rather than shipping
+  separately. `internal/surface/http/auth_middleware.go`'s `requireAuth`
+  wraps every `routeTable` route but `/healthz` and
+  `POST /api/v1/auth/login` (the new `route.Public` field marks the two):
+  it resolves an `Authorization: Bearer` token or a `bodger_session`
+  cookie into a real `ActorID` via `Service.AuthenticateAPIToken`/
+  `AuthenticateSession`, replacing the M1 hardcoded
+  `ports.SeededUserID` everywhere — every handler now reads the actor via
+  `actorID(r)` (previously a niladic `actorID()`). The session cookie is
+  `HttpOnly`, `Secure`, `SameSite=Lax`, with sliding expiry reset on every
+  request. **CSRF**: a cookie-authenticated state-changing request
+  (anything but `GET`/`HEAD`) without an `X-Bodger-CSRF` header is
+  rejected with `not_allowed`; a bearer-token request is exempt, since a
+  page a browser is tricked into submitting can't be made to send an
+  `Authorization` header. New routes: `POST /api/v1/auth/login`,
+  `POST /api/v1/auth/logout`, `POST /api/v1/auth/logout-all` (issue #71),
+  and `POST/GET /api/v1/auth/tokens` plus
+  `DELETE /api/v1/auth/tokens/{id}`.
+
+  Issue #71's enumeration and bulk revoke landed on `ports.SessionRepository`
+  itself (`ListByUser`, `DeleteAllByUser`), implemented over SQLite, with
+  a `LogoutAllSessions` use case in `internal/app/auth.go` on top. One
+  design call the issue explicitly left open: `SetPassword` now also
+  calls `DeleteAllByUser`, revoking every session on a password change,
+  including whichever one made the change, if any — there's no
+  `CurrentSessionID` to exempt one, since nothing in this milestone calls
+  `SetPassword` from an authenticated web session yet (only the
+  session-less CLI); forcing re-authentication everywhere is the safer
+  default regardless.
+
+  ADR-0006's non-loopback refuse-to-start rule moved: it used to live
+  entirely in `internal/platform/config.validateHTTPBindAddr`, which
+  rejected any non-loopback bind outright, but "is authentication
+  configured" is now database state that package has no access to.
+  `validateHTTPBindAddr` still checks an address is structurally valid;
+  the new `config.IsLoopback` reports whether a host is loopback, and
+  `internal/surface/http/server.go`'s `checkBindAddr` — run once the
+  `*app.Service` exists — refuses a non-loopback bind unless
+  `Service.IsAuthConfigured` (a password has been set on the seeded
+  user) reports true.
 
 Not yet built: everything else in §2.
 
