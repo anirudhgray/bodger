@@ -335,6 +335,34 @@ Add `--expires <date>` to `token create` to give a token a fixed expiry instead 
 
 ---
 
+## Running with Docker
+
+If you'd rather not install Go and Node at all, `bodger` ships a `Dockerfile` and `docker-compose.yml` that build the whole thing — web UI included — into one image. From a clean checkout:
+
+```sh
+make docker-up
+```
+
+This is `docker compose up --build`: it builds the image and starts one container running `bodger serve`. There's no second container for a database — your SQLite file lives in a named Docker volume (`bodger-data`), so it survives `docker compose down` and a later `docker compose up`, the same way it'd survive restarting the binary directly. Upgrading is `docker compose pull && docker compose up -d` once images are published; for now, `docker compose up --build` picks up any change and re-migrates on start, same as always.
+
+Once it's up:
+
+```sh
+curl http://127.0.0.1:8080/healthz
+```
+
+**Why there's no `ports:` mapping.** `bodger` refuses to bind anything but a loopback address until authentication exists (see [above](#running-the-rest-api), [ADR-0006](decisions/0006-authentication-and-multi-user-path.md)) — and a process bound to loopback *inside a container's own network namespace* is never reachable through Docker's usual bridge-network port publishing, no matter what `ports:` says, because the forwarded traffic arrives on the container's other network interface, not its loopback one. Rather than have `ports:` sit there doing nothing, the compose file uses `network_mode: host`: the container shares the host's network stack directly, so `bodger`'s loopback bind *is* the host's loopback bind. The practical result is exactly what you'd get running `bodger serve` on the host without Docker at all — reachable at `127.0.0.1:8080` from that machine, not from anywhere else on your network. If you need it reachable from other devices before authentication lands, the same options apply as above: put it behind something that handles authentication itself.
+
+To change the port, set `BODGER_HTTP_BIND_ADDR` under `environment:` in `docker-compose.yml` (it must stay a loopback address) — there's no separate host-port setting to keep in sync, since host networking means there's only one port to change.
+
+You can also run one-off CLI commands against the same container's database instead of starting the server:
+
+```sh
+docker compose run --rm bodger accounts list
+```
+
+---
+
 ## Command reference
 
 All commands default to plain-text output; add `--json` to any of them for machine-readable output instead.

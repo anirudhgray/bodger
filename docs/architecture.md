@@ -619,6 +619,21 @@ Delivered so far in M2:
   display copy; the `<option>` elements keep the wire value as `value`
   and show the humanized label as text. The CLI has the identical gap and
   is deliberately not touched here (issue #90's own stated scope).
+- **`Dockerfile` and `docker-compose.yml`** (issue #64): a multi-stage
+  build (web UI, then the Go binary with it embedded, then a minimal
+  `distroless/static` runtime image) and a one-service Compose file — no
+  database container, no reverse proxy, per ADR-0001 and ADR-0007. A named
+  volume covers `BODGER_DB_PATH` so the SQLite file survives a container
+  recreate. `make docker-up` (already documented in
+  [`contributing.md`](contributing.md), now actually wired) runs it. The
+  Compose file publishes `8080:8080` and sets
+  `BODGER_HTTP_BIND_ADDR=0.0.0.0:8080` — now that auth (#56) has landed,
+  `checkBindAddr` allows a non-loopback bind once a password is set, so
+  the first `docker compose up` fails fast with an actionable error until
+  `docker compose run --rm bodger auth set-password` is run once against
+  the same named volume; see
+  [`user-guide.md`](user-guide.md#running-with-docker) for the full
+  first-run flow.
 
 Not yet built: everything else in §2.
 
