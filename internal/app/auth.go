@@ -23,6 +23,16 @@
 //   - Session sliding-expiry duration (sessionTTL) isn't specified by
 //     ADR-0006 beyond "sliding expiry" existing; 30 days is this package's
 //     default until a real deployment asks for it to be configurable.
+//   - SetPassword revokes every one of the actor's existing sessions,
+//     including whichever one is currently making the request, if any
+//     (issue #71's "natural trigger... on a password change" — decided
+//     here rather than left open). There is no CurrentSessionID field to
+//     exempt one: nothing in this milestone calls SetPassword from an
+//     authenticated web session (only the CLI, which is session-less by
+//     ADR-0006's design), so there's no "current session" to preserve yet,
+//     and forcing re-authentication everywhere a credential just changed
+//     is the safer default regardless. Revisit if a future in-app
+//     "change password" flow wants to keep its own session alive.
 package app
 
 import (
@@ -186,7 +196,43 @@ func (s *Service) SetPassword(ctx context.Context, cmd SetPasswordCommand) error
 	if err != nil {
 		return errs.New(errs.Internal).Wrap(err)
 	}
-	return s.Users.SetPasswordHash(ctx, cmd.ActorID, hash)
+	if err := s.Users.SetPasswordHash(ctx, cmd.ActorID, hash); err != nil {
+		return err
+	}
+	// A changed credential invalidates every existing session — see this
+	// file's doc comment for why there's no session to exempt yet.
+	return s.Sessions.DeleteAllByUser(ctx, cmd.ActorID)
+}
+
+// LogoutAllSessionsCommand revokes every session the actor owns.
+type LogoutAllSessionsCommand struct {
+	ActorID string
+}
+
+// LogoutAllSessions implements issue #71's "log out everywhere" use case:
+// unlike Logout, which revokes one named session, this revokes all of
+// them in one call — the bulk counterpart a user reaches for after, say,
+// noticing a session they don't recognise.
+func (s *Service) LogoutAllSessions(ctx context.Context, cmd LogoutAllSessionsCommand) error {
+	if err := requireActorID(cmd.ActorID); err != nil {
+		return err
+	}
+	return s.Sessions.DeleteAllByUser(ctx, cmd.ActorID)
+}
+
+// IsAuthConfigured reports whether the seeded user has ever had a password
+// set. This is what internal/surface/http's startup check (ADR-0006) uses
+// to decide whether a non-loopback HTTP bind is safe to allow: the rule
+// originally lived entirely in internal/platform/config, but "has
+// authentication been configured" now depends on database state that
+// package has no access to (it only reads the environment), so the
+// decision moved to the one layer that can actually answer it.
+func (s *Service) IsAuthConfigured(ctx context.Context) (bool, error) {
+	user, err := s.Users.GetByID(ctx, ports.SeededUserID)
+	if err != nil {
+		return false, err
+	}
+	return user.PasswordHash != nil, nil
 }
 
 // CreateAPITokenCommand issues a new named API token for the acting user.

@@ -350,6 +350,97 @@ func TestActorResolution_SessionFeedsExistingUseCase(t *testing.T) {
 	}
 }
 
+// TestLogoutAllSessions_RevokesEveryOne covers issue #71's "log out
+// everywhere": after LogoutAllSessions, every session the actor held —
+// not just the one that called it — stops authenticating.
+func TestLogoutAllSessions_RevokesEveryOne(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	if err := svc.SetPassword(ctx, app.SetPasswordCommand{ActorID: ports.SeededUserID, NewPassword: "correct-horse-battery"}); err != nil {
+		t.Fatalf("SetPassword: %v", err)
+	}
+	first, err := svc.Login(ctx, app.LoginCommand{Password: "correct-horse-battery"})
+	if err != nil {
+		t.Fatalf("Login (first): %v", err)
+	}
+	second, err := svc.Login(ctx, app.LoginCommand{Password: "correct-horse-battery"})
+	if err != nil {
+		t.Fatalf("Login (second): %v", err)
+	}
+
+	if err := svc.LogoutAllSessions(ctx, app.LogoutAllSessionsCommand{ActorID: ports.SeededUserID}); err != nil {
+		t.Fatalf("LogoutAllSessions: %v", err)
+	}
+
+	if _, err := svc.AuthenticateSession(ctx, first.Token); err == nil {
+		t.Error("first session still authenticates after LogoutAllSessions")
+	}
+	if _, err := svc.AuthenticateSession(ctx, second.Token); err == nil {
+		t.Error("second session still authenticates after LogoutAllSessions")
+	}
+}
+
+func TestLogoutAllSessions_RequiresActorID(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+
+	err := svc.LogoutAllSessions(context.Background(), app.LogoutAllSessionsCommand{})
+	wantErrCode(t, err, errs.InvalidInput)
+}
+
+// TestSetPassword_RevokesExistingSessions covers this file's documented
+// design decision for issue #71: a password change invalidates every
+// session that predates it, including the one that made the change.
+func TestSetPassword_RevokesExistingSessions(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	if err := svc.SetPassword(ctx, app.SetPasswordCommand{ActorID: ports.SeededUserID, NewPassword: "first-password-long"}); err != nil {
+		t.Fatalf("SetPassword (first): %v", err)
+	}
+	login, err := svc.Login(ctx, app.LoginCommand{Password: "first-password-long"})
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+
+	if err := svc.SetPassword(ctx, app.SetPasswordCommand{ActorID: ports.SeededUserID, NewPassword: "second-password-long"}); err != nil {
+		t.Fatalf("SetPassword (second): %v", err)
+	}
+
+	if _, err := svc.AuthenticateSession(ctx, login.Token); err == nil {
+		t.Error("pre-existing session still authenticates after SetPassword")
+	}
+}
+
+// TestIsAuthConfigured covers the signal internal/surface/http's startup
+// check (ADR-0006) uses to decide whether a non-loopback bind is safe: it
+// starts false on a fresh install and flips true once a password has been
+// set.
+func TestIsAuthConfigured(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	configured, err := svc.IsAuthConfigured(ctx)
+	if err != nil {
+		t.Fatalf("IsAuthConfigured (before): %v", err)
+	}
+	if configured {
+		t.Error("IsAuthConfigured = true before any password is set, want false")
+	}
+
+	if err := svc.SetPassword(ctx, app.SetPasswordCommand{ActorID: ports.SeededUserID, NewPassword: "correct-horse-battery"}); err != nil {
+		t.Fatalf("SetPassword: %v", err)
+	}
+
+	configured, err = svc.IsAuthConfigured(ctx)
+	if err != nil {
+		t.Fatalf("IsAuthConfigured (after): %v", err)
+	}
+	if !configured {
+		t.Error("IsAuthConfigured = false after SetPassword, want true")
+	}
+}
+
 // advanceTestClock advances svc's injected clock, failing the test if svc
 // wasn't built on a *clock.Frozen — every newTestService-built Service in
 // this package is, so this is a small helper rather than a type assertion
