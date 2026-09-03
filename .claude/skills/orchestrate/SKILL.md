@@ -120,6 +120,17 @@ Every agent prompt (fork or fresh) should include:
 
 - Exact scope: what's in, what's already being handled elsewhere (name
   the other in-flight issues/branches so it doesn't duplicate work).
+- Branch from local `main`, not `origin/main` - i.e. `git checkout -b
+  <branch> main` after fetching, never `git checkout -b <branch>
+  origin/main`. The latter looks equivalent but isn't: git auto-sets
+  that branch's upstream tracking to `origin/main` itself, so a later
+  `git push -u origin <branch>` silently resolves to pushing into
+  `main` - exactly what the repo's push-to-main guards exist to catch,
+  and did catch once already (a `feat/app-auth-usecases` agent branch
+  hit this and needed `git branch --unset-upstream` before it could be
+  pushed to its own name). Branching from local `main` doesn't trigger
+  this, because autoSetupMerge only fires when the start-point is
+  itself a remote-tracking ref.
 - Run `make check` (fmt-check, vet, lint, test) and `make build` clean
   before finishing - the same two commands CI runs, and the only ones.
 - Commit atomically, conventional commits, **no Claude co-author trailer**
@@ -134,6 +145,11 @@ An agent's self-report is a claim, not a fact. Before pushing anything:
 
 - `cd` into the worktree and independently run the same
   build/vet/fmt/test commands.
+- Before the first push of a new branch, check `git remote show origin`
+  (or `git config branch.<name>.merge`) for that branch's tracking - it
+  should be unset or already point at a same-named remote branch, never
+  `refs/heads/main`. See step 4's branching note for why this can happen
+  and how to fix it (`git branch --unset-upstream`) before pushing.
 - Merge (or rebase on) current `origin/main` into the branch before
   calling a PR ready - do this even if the branch seemed fine when the
   agent finished, and do it again if the branch sits open for a while
