@@ -368,6 +368,22 @@ Delivered so far in M2:
   as a SHA-256 hash per ADR-0006's credential table. No repository,
   use-case, HTTP, or CLI code yet — this is the foundation the
   persistence, application, and surface auth issues build on (issue #53).
+- The persistence half of M2 auth (issue #54, ADR-0006, ADR-0007):
+  migration `00010_add_auth_tables.sql` adds a nullable `password_hash`
+  column to `users`, a `sessions` table (hashed token, sliding-expiry
+  bookkeeping via `created_at`/`last_used_at`/`expires_at`), and an
+  `api_tokens` table (hashed token, user-supplied name, optional expiry,
+  soft revocation via `revoked_at`) — the exact shapes
+  `internal/platform/auth` (issue #53) already produces. `internal/ports`
+  gained `SessionRepository` and `APITokenRepository`, implemented over
+  SQLite by `internal/adapters/sqlite`'s `SessionRepository` and
+  `APITokenRepository`. Both `GetByTokenHash` methods skip the
+  actor-filtering convention every other repository method here
+  follows, because establishing who the actor is is exactly what that
+  lookup is for; a session is revoked with a hard `Delete` (ADR-0006),
+  an API token with a soft `Revoke` that keeps it listable. No use-case
+  or surface wiring yet — issue #55 builds login, logout, and token
+  issuance on top of these.
 - **Structured logging is actually wired up.** `internal/platform/logging.New`
   (constructed in M1, issue #4) was never called anywhere in the running
   binary — `cmd/bodger` now constructs one `*slog.Logger` in `main`, shared
