@@ -556,6 +556,27 @@ Delivered so far in M2:
   helpers alongside `apiFetch`. No client-side total or rollup over the
   filtered list (architecture.md §3) — this screen renders what the API
   returns and nothing it computes itself.
+- The settings screen (issue #62), replacing the `/settings` placeholder:
+  password change, API-token management, and accounts/categories CRUD, on
+  the same "one screen, exactly one existing application call per action"
+  discipline as the rest of the web UI. A new `POST /api/v1/auth/password`
+  route (`internal/surface/http/auth.go`'s `changePassword`) wires the
+  in-app case onto `app.SetPassword` (issue #55), distinct from #57's
+  CLI-only first-run/recovery `set-password` — the same use case, a
+  different surface. `SetPassword` already revokes every session on
+  change (#56/#71), including the one that made the request, so
+  `changePassword` clears the caller's own cookie too, and the web
+  client navigates to `/login` afterward rather than staying on a page
+  whose session is already dead. `web/src/lib/settings.ts` adds typed
+  wrappers for all of it — password change, API-token create/list/revoke,
+  and account/category create/rename/archive/reparent — over the existing
+  `apiFetch`, without touching `api.ts` itself. `web/src/pages/Settings.tsx`
+  renders the three sections; API-token creation shows the plaintext
+  value exactly once, in the creation response only, never in the list.
+  Category reparenting is a per-row "move to" `<select>` calling the
+  existing `PATCH /api/v1/categories/{id}` route's `parent` field.
+  Instance-level config (currency, timezone, bind address) stays out of
+  scope here — see deferred issue #32.
 
 - `internal/surface/cli`'s `auth` command group (issue #57): `set-password`
   (prompts for a new password with typed input hidden via `golang.org/x/term`,
