@@ -53,12 +53,12 @@ func (h *handlers) createTransaction(w http.ResponseWriter, r *http.Request) {
 	switch body.Type {
 	case transactionTypeOutflow:
 		result, err = h.svc.RecordOutflow(r.Context(), app.RecordOutflowCommand{
-			ActorID: actorID(), AccountRef: body.Account, Amount: body.Amount, Currency: body.Currency,
+			ActorID: actorID(r), AccountRef: body.Account, Amount: body.Amount, Currency: body.Currency,
 			CategoryRef: body.Category, Date: body.Date, Description: body.Description, Notes: body.Notes, Tags: tags,
 		})
 	case transactionTypeInflow:
 		result, err = h.svc.RecordInflow(r.Context(), app.RecordInflowCommand{
-			ActorID: actorID(), AccountRef: body.Account, Amount: body.Amount, Currency: body.Currency,
+			ActorID: actorID(r), AccountRef: body.Account, Amount: body.Amount, Currency: body.Currency,
 			CategoryRef: body.Category, Date: body.Date, Description: body.Description, Notes: body.Notes, Tags: tags,
 		})
 	default:
@@ -76,7 +76,7 @@ func (h *handlers) createTransaction(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) getTransaction(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.GetTransaction(r.Context(), app.GetTransactionQuery{
-		ActorID:        actorID(),
+		ActorID:        actorID(r),
 		TransactionRef: r.PathValue("id"),
 	})
 	if err != nil {
@@ -122,7 +122,7 @@ func (h *handlers) editTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.svc.EditTransaction(r.Context(), app.EditTransactionCommand{
-		ActorID:        actorID(),
+		ActorID:        actorID(r),
 		TransactionRef: r.PathValue("id"),
 		AccountRef:     body.Account,
 		Currency:       body.Currency,
@@ -144,7 +144,7 @@ func (h *handlers) editTransaction(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) deleteTransaction(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.DeleteTransaction(r.Context(), app.DeleteTransactionCommand{
-		ActorID: actorID(), TransactionRef: r.PathValue("id"),
+		ActorID: actorID(r), TransactionRef: r.PathValue("id"),
 	})
 	if err != nil {
 		h.respondError(w, err)
@@ -181,7 +181,7 @@ func (h *handlers) listTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.svc.ListTransactions(r.Context(), app.ListTransactionsQuery{
-		ActorID:     actorID(),
+		ActorID:     actorID(r),
 		AccountRef:  q.Get("account"),
 		CategoryRef: q.Get("category"),
 		Kind:        q.Get("type"),

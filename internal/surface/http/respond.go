@@ -7,17 +7,18 @@ import (
 
 	"github.com/anirudhgray/bodger/internal/app/normalize"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
-	"github.com/anirudhgray/bodger/internal/ports"
 )
 
-// actorID is every request's acting user. There is no authentication yet
-// (M1, ADR-0006): every request acts as the single seeded user, the same
-// way internal/surface/cli's commands do (see its resolveDefaultAccount).
-// A real credential replaces this call in M2 — nothing else in this
-// package needs to change when it does, since every handler already
-// threads ActorID through exactly this one place.
-func actorID() string {
-	return ports.SeededUserID
+// actorID is every request's acting user, resolved by requireAuth
+// (auth_middleware.go) from a session cookie or a bearer API token and
+// stashed on the request's context before a route's real handler ever
+// runs. Every handler in this package reaches the acting user only
+// through this one function, which is what let auth land (issue #56)
+// without touching every handler's own logic — only this function's body
+// changed, from M1's hardcoded ports.SeededUserID to a real lookup.
+func actorID(r *http.Request) string {
+	id, _ := r.Context().Value(actorIDContextKey).(string)
+	return id
 }
 
 // dataEnvelope is the one stable shape every successful JSON response in

@@ -26,7 +26,7 @@ func (h *handlers) createCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.svc.CreateCategory(r.Context(), app.CreateCategoryCommand{
-		ActorID:   actorID(),
+		ActorID:   actorID(r),
 		Name:      body.Name,
 		Kind:      body.Type,
 		ParentRef: body.Parent,
@@ -40,7 +40,7 @@ func (h *handlers) createCategory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) listCategories(w http.ResponseWriter, r *http.Request) {
-	result, err := h.svc.ListCategories(r.Context(), app.ListCategoriesQuery{ActorID: actorID()})
+	result, err := h.svc.ListCategories(r.Context(), app.ListCategoriesQuery{ActorID: actorID(r)})
 	if err != nil {
 		h.respondError(w, err)
 		return
@@ -54,7 +54,7 @@ func (h *handlers) listCategories(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) getCategory(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.GetCategory(r.Context(), app.GetCategoryQuery{
-		ActorID:     actorID(),
+		ActorID:     actorID(r),
 		CategoryRef: r.PathValue("id"),
 	})
 	if err != nil {
@@ -86,7 +86,7 @@ func (h *handlers) patchCategory(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case body.Name != nil && body.Parent == nil:
 		result, err := h.svc.RenameCategory(r.Context(), app.RenameCategoryCommand{
-			ActorID: actorID(), CategoryRef: id, Name: *body.Name,
+			ActorID: actorID(r), CategoryRef: id, Name: *body.Name,
 		})
 		if err != nil {
 			h.respondError(w, err)
@@ -96,7 +96,7 @@ func (h *handlers) patchCategory(w http.ResponseWriter, r *http.Request) {
 
 	case body.Parent != nil && body.Name == nil:
 		result, err := h.svc.ReparentCategory(r.Context(), app.ReparentCategoryCommand{
-			ActorID: actorID(), CategoryRef: id, ParentRef: *body.Parent,
+			ActorID: actorID(r), CategoryRef: id, ParentRef: *body.Parent,
 		})
 		if err != nil {
 			h.respondError(w, err)
@@ -112,7 +112,7 @@ func (h *handlers) patchCategory(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) archiveCategory(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.ArchiveCategory(r.Context(), app.ArchiveCategoryCommand{
-		ActorID: actorID(), CategoryRef: r.PathValue("id"),
+		ActorID: actorID(r), CategoryRef: r.PathValue("id"),
 	})
 	if err != nil {
 		h.respondError(w, err)

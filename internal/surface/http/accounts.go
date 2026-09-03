@@ -31,7 +31,7 @@ func (h *handlers) createAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.svc.CreateAccount(r.Context(), app.CreateAccountCommand{
-		ActorID:            actorID(),
+		ActorID:            actorID(r),
 		Name:               body.Name,
 		Kind:               body.Type,
 		Currency:           body.Currency,
@@ -48,7 +48,7 @@ func (h *handlers) createAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) listAccounts(w http.ResponseWriter, r *http.Request) {
-	result, err := h.svc.ListAccounts(r.Context(), app.ListAccountsQuery{ActorID: actorID()})
+	result, err := h.svc.ListAccounts(r.Context(), app.ListAccountsQuery{ActorID: actorID(r)})
 	if err != nil {
 		h.respondError(w, err)
 		return
@@ -62,7 +62,7 @@ func (h *handlers) listAccounts(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) getAccount(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.GetAccount(r.Context(), app.GetAccountQuery{
-		ActorID:    actorID(),
+		ActorID:    actorID(r),
 		AccountRef: r.PathValue("id"),
 	})
 	if err != nil {
@@ -95,7 +95,7 @@ func (h *handlers) patchAccount(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case body.Name != nil && body.OpeningBalance == nil:
 		result, err := h.svc.RenameAccount(r.Context(), app.RenameAccountCommand{
-			ActorID: actorID(), AccountRef: id, Name: *body.Name,
+			ActorID: actorID(r), AccountRef: id, Name: *body.Name,
 		})
 		if err != nil {
 			h.respondError(w, err)
@@ -109,7 +109,7 @@ func (h *handlers) patchAccount(w http.ResponseWriter, r *http.Request) {
 			obDate = *body.OpeningBalanceDate
 		}
 		result, err := h.svc.SetOpeningBalance(r.Context(), app.SetOpeningBalanceCommand{
-			ActorID: actorID(), AccountRef: id, OpeningBalance: *body.OpeningBalance, OpeningBalanceDate: obDate,
+			ActorID: actorID(r), AccountRef: id, OpeningBalance: *body.OpeningBalance, OpeningBalanceDate: obDate,
 		})
 		if err != nil {
 			h.respondError(w, err)
@@ -125,7 +125,7 @@ func (h *handlers) patchAccount(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) archiveAccount(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.ArchiveAccount(r.Context(), app.ArchiveAccountCommand{
-		ActorID: actorID(), AccountRef: r.PathValue("id"),
+		ActorID: actorID(r), AccountRef: r.PathValue("id"),
 	})
 	if err != nil {
 		h.respondError(w, err)

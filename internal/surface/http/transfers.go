@@ -35,7 +35,7 @@ func (h *handlers) createTransfer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.svc.RecordTransfer(r.Context(), app.RecordTransferCommand{
-		ActorID:        actorID(),
+		ActorID:        actorID(r),
 		FromAccountRef: body.FromAccount,
 		ToAccountRef:   body.ToAccount,
 		Amount:         body.Amount,
