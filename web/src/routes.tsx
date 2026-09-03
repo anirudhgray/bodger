@@ -17,6 +17,7 @@ import { BalancesPage } from '@/pages/Balances'
 import { Login } from '@/pages/Login'
 import { Placeholder } from '@/pages/Placeholder'
 import { TransactionEntry } from '@/pages/TransactionEntry'
+import { TransactionsList } from '@/pages/TransactionsList'
 import { checkSession } from '@/lib/session'
 
 // RouteError is exported only so routes.test.tsx can mount it directly
@@ -83,12 +84,7 @@ export const routes: RouteObject[] = [
       {
         path: 'transactions',
         // issue #61 — transaction list with filters
-        element: (
-          <Placeholder
-            title="Transactions"
-            description="The filterable transaction list lands in issue #61."
-          />
-        ),
+        element: <TransactionsList />,
       },
       {
         path: 'transactions/new',

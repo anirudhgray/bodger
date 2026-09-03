@@ -103,6 +103,103 @@ export function getBalances(): Promise<Balances> {
   return apiFetch<Balances>('/api/v1/balances')
 }
 
+// --- Transactions (issue #61) ---------------------------------------------
+//
+// Typed helpers over apiFetch for the transaction list screen. The wire
+// vocabulary here is "outflow"/"inflow"/"transfer" — internal/surface/http's
+// own spelling (internal/surface/http/router.go's "type" query parameter
+// and internal/surface/http/dto.go's transactionView) — not the CLI's
+// spend/receive/move verbs, which are a deliberate CLI-only divergence
+// (internal/surface/cli/transactions.go's own doc comment on
+// transactionKindFor explains why). The page component, not this file,
+// is where that gets translated for display.
+
+export type TransactionKind = 'outflow' | 'inflow' | 'transfer'
+
+// Transaction mirrors internal/surface/http/dto.go's transactionView:
+// account_id/category_id are set for an outflow or inflow,
+// from_account_id/to_account_id for a transfer — never both pairs at once.
+export type Transaction = {
+  id: string
+  type: TransactionKind
+  date: string
+  description: string
+  notes?: string
+  tags?: string[]
+  account_id?: string
+  category_id?: string
+  from_account_id?: string
+  to_account_id?: string
+  amount: string
+  currency: string
+}
+
+export type TransactionListFilter = {
+  account?: string
+  category?: string
+  type?: TransactionKind
+  from?: string
+  to?: string
+  cursor?: string
+}
+
+export type TransactionListPage = {
+  data: Transaction[]
+  next_cursor?: string
+}
+
+function buildQuery(params: Record<string, string | undefined>): string {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value) query.set(key, value)
+  }
+  const s = query.toString()
+  return s ? `?${s}` : ''
+}
+
+export function listTransactions(
+  filter: TransactionListFilter = {},
+): Promise<TransactionListPage> {
+  return apiFetch<TransactionListPage>(
+    `/api/v1/transactions${buildQuery(filter)}`,
+  )
+}
+
+// EditTransactionBody is a full replacement of the transaction's editable
+// fields (internal/surface/http/auth.go's sibling, editTransactionRequest,
+// documents why: there's no way to say "leave this field alone" in a
+// command whose string fields already use "" to mean something else) — a
+// caller must send the transaction's complete new state, not a partial
+// patch.
+export type EditTransactionBody = {
+  account?: string
+  category?: string
+  from_account?: string
+  to_account?: string
+  currency?: string
+  amount: string
+  date?: string
+  description: string
+  notes?: string
+  tags?: string[]
+}
+
+export function updateTransaction(
+  id: string,
+  body: EditTransactionBody,
+): Promise<Transaction> {
+  return apiFetch<Transaction>(`/api/v1/transactions/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
+}
+
+export function deleteTransaction(id: string): Promise<Transaction> {
+  return apiFetch<Transaction>(`/api/v1/transactions/${id}`, {
+    method: 'DELETE',
+  })
+}
+
 // --- Accounts and categories (shared reference data) ----------------------
 // Three sibling issues (#60, #61, #62) each independently needed these
 // lookups; this is the single definition all three converged on after the
