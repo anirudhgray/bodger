@@ -408,6 +408,31 @@ func (m *memSessions) Delete(_ context.Context, actorID, id string) error {
 	return nil
 }
 
+func (m *memSessions) ListByUser(_ context.Context, actorID string) ([]ports.Session, error) {
+	var out []ports.Session
+	for _, s := range m.byID {
+		if s.UserID == actorID {
+			out = append(out, s)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].CreatedAt.After(out[j].CreatedAt)
+		}
+		return out[i].ID > out[j].ID
+	})
+	return out, nil
+}
+
+func (m *memSessions) DeleteAllByUser(_ context.Context, actorID string) error {
+	for id, s := range m.byID {
+		if s.UserID == actorID {
+			delete(m.byID, id)
+		}
+	}
+	return nil
+}
+
 var _ ports.SessionRepository = (*memSessions)(nil)
 
 type memAPITokens struct {

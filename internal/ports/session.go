@@ -69,4 +69,17 @@ type SessionRepository interface {
 	// APITokenRepository.Revoke. Returns a *errs.Error with code
 	// NotFound if no such session exists for that actor.
 	Delete(ctx context.Context, actorID, id string) error
+
+	// ListByUser returns every live session actorID owns, sorted
+	// (created_at DESC, id DESC) for a deterministic, newest-first
+	// listing — the enumeration issue #71 ("log out everywhere") needs a
+	// use case to build on.
+	ListByUser(ctx context.Context, actorID string) ([]Session, error)
+
+	// DeleteAllByUser revokes every session actorID owns in one call —
+	// the bulk counterpart to Delete, for "log out of all sessions"
+	// (issue #71) and for SetPassword's own session-revocation-on-change
+	// behaviour (internal/app/auth.go). It is not an error for actorID to
+	// own no sessions; this simply deletes zero rows.
+	DeleteAllByUser(ctx context.Context, actorID string) error
 }
