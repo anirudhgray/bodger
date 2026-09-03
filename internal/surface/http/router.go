@@ -143,6 +143,17 @@ var routeTable = []route{
 	},
 
 	{
+		Method: http.MethodPost, Pattern: "/api/v1/auth/password",
+		Handler: func(h *handlers) http.HandlerFunc { return h.changePassword },
+
+		OperationID: "changePassword", Summary: "Change the acting user's password.",
+		Description:   "Revokes every session the acting user has open, including whichever one made this request - it will need to sign in again afterward.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The password was changed.",
+		Request: changePasswordRequest{}, Response: okView{},
+		Errors: []int{http.StatusUnprocessableEntity},
+	},
+
+	{
 		Method: http.MethodPost, Pattern: "/api/v1/auth/tokens",
 		Handler: func(h *handlers) http.HandlerFunc { return h.createAPIToken },
 

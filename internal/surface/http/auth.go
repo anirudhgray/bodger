@@ -85,6 +85,37 @@ func (h *handlers) logoutAll(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, okView{OK: true})
 }
 
+// changePasswordRequest is POST /api/v1/auth/password's request body.
+type changePasswordRequest struct {
+	NewPassword string `json:"new_password"`
+}
+
+// changePassword implements issue #62's in-app password change, over the
+// same app.SetPassword use case issue #57's CLI set-password command
+// calls — same operation, different surface. SetPassword revokes every
+// session the actor owns, including whichever one made this request (see
+// internal/app/auth.go's doc comment), so this clears the caller's own
+// cookie the same way logoutAll does: the request that changed the
+// password is itself no longer authenticated afterward, by design.
+func (h *handlers) changePassword(w http.ResponseWriter, r *http.Request) {
+	var body changePasswordRequest
+	if err := decodeJSON(r, &body); err != nil {
+		h.respondError(w, err)
+		return
+	}
+
+	if err := h.svc.SetPassword(r.Context(), app.SetPasswordCommand{
+		ActorID: actorID(r), NewPassword: body.NewPassword,
+	}); err != nil {
+		h.respondError(w, err)
+		return
+	}
+	if sessionID(r) != "" {
+		clearSessionCookie(w)
+	}
+	respond(w, http.StatusOK, okView{OK: true})
+}
+
 // apiTokenView is the JSON shape of an API token. There is no token_hash
 // field — the hash is never rendered back, and the plaintext only ever
 // appears once, on createAPIToken's response (below).

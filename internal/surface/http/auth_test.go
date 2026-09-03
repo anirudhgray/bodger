@@ -274,6 +274,62 @@ func TestLogoutAll_RevokesEverySession(t *testing.T) {
 	}
 }
 
+// TestChangePassword_RevokesCallersOwnSession covers issue #62's in-app
+// password change over HTTP: the new password authenticates a fresh
+// login, and the session that made the change is itself revoked (the
+// same app.SetPassword behaviour issue #56/#71 already covers at the
+// application layer — this just proves the HTTP route wires it through).
+func TestChangePassword_RevokesCallersOwnSession(t *testing.T) {
+	srv, svc := newAuthTestServer(t)
+	setUpPassword(t, svc, "correct-horse-battery")
+	loginResp, _ := rawDo(t, srv, http.MethodPost, "/api/v1/auth/login", map[string]any{"password": "correct-horse-battery"}, nil)
+	cookie := sessionCookieFrom(t, loginResp)
+
+	resp, decoded := rawDo(t, srv, http.MethodPost, "/api/v1/auth/password",
+		map[string]any{"new_password": "new-correct-horse-battery"},
+		func(r *http.Request) {
+			r.AddCookie(cookie)
+			r.Header.Set("X-Bodger-CSRF", "1")
+		},
+	)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("change-password status = %d, want 200: %+v", resp.StatusCode, decoded)
+	}
+
+	resp2, decoded2 := rawDo(t, srv, http.MethodGet, "/api/v1/accounts", nil, func(r *http.Request) {
+		r.AddCookie(cookie)
+	})
+	if resp2.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("old session after change-password = %d, want 401: %+v", resp2.StatusCode, decoded2)
+	}
+
+	newLoginResp, newDecoded := rawDo(t, srv, http.MethodPost, "/api/v1/auth/login", map[string]any{"password": "new-correct-horse-battery"}, nil)
+	if newLoginResp.StatusCode != http.StatusOK {
+		t.Fatalf("login with new password status = %d, want 200: %+v", newLoginResp.StatusCode, newDecoded)
+	}
+}
+
+// TestChangePassword_TooShort_RejectsWithInvalidInput proves the HTTP
+// route surfaces app.SetPassword's own minimum-length validation rather
+// than silently accepting a too-short password.
+func TestChangePassword_TooShort_RejectsWithInvalidInput(t *testing.T) {
+	srv, svc := newAuthTestServer(t)
+	setUpPassword(t, svc, "correct-horse-battery")
+	loginResp, _ := rawDo(t, srv, http.MethodPost, "/api/v1/auth/login", map[string]any{"password": "correct-horse-battery"}, nil)
+	cookie := sessionCookieFrom(t, loginResp)
+
+	resp, decoded := rawDo(t, srv, http.MethodPost, "/api/v1/auth/password",
+		map[string]any{"new_password": "short"},
+		func(r *http.Request) {
+			r.AddCookie(cookie)
+			r.Header.Set("X-Bodger-CSRF", "1")
+		},
+	)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422: %+v", resp.StatusCode, decoded)
+	}
+}
+
 // TestAPITokenLifecycle_OverHTTP covers create/list/revoke end to end,
 // through the real routes rather than the application layer directly.
 func TestAPITokenLifecycle_OverHTTP(t *testing.T) {
