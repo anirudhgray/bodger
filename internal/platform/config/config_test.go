@@ -106,19 +106,15 @@ func TestLoad_Precedence(t *testing.T) {
 			wantErr: "not a valid host:port address",
 		},
 		{
-			name:    "non-loopback http bind addr is refused without authentication",
-			env:     map[string]string{EnvHTTPBindAddr: "0.0.0.0:8080"},
-			wantErr: "binds a non-loopback address",
-		},
-		{
-			name:    "binding every interface via an empty host is refused",
-			env:     map[string]string{EnvHTTPBindAddr: ":8080"},
-			wantErr: "binds a non-loopback address",
-		},
-		{
-			name:    "a routable IP bind is refused",
-			env:     map[string]string{EnvHTTPBindAddr: "192.168.1.5:8080"},
-			wantErr: "binds a non-loopback address",
+			// A non-loopback bind is no longer rejected at config load
+			// time — that decision needs database state (has
+			// authentication been configured?) this package doesn't have
+			// access to; see validateHTTPBindAddr's doc comment and
+			// TestIsLoopback below. internal/surface/http's startup check
+			// is what actually enforces ADR-0006's rule now.
+			name: "a non-loopback http bind addr is accepted at load time",
+			env:  map[string]string{EnvHTTPBindAddr: "0.0.0.0:8080"},
+			want: Config{DefaultCurrency: Defaults.DefaultCurrency, UserTimezone: Defaults.UserTimezone, DBPath: Defaults.DBPath, HTTPBindAddr: "0.0.0.0:8080", LogLevel: Defaults.LogLevel},
 		},
 		{
 			name: "localhost is accepted as loopback",
@@ -153,6 +149,40 @@ func TestLoad_Precedence(t *testing.T) {
 				t.Errorf("load() = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestIsLoopback covers the boundary internal/surface/http's startup check
+// (ADR-0006) relies on to decide whether a bind requires authentication to
+// already be configured.
+func TestIsLoopback(t *testing.T) {
+	tests := []struct {
+		addr string
+		want bool
+	}{
+		{addr: "127.0.0.1:8080", want: true},
+		{addr: "localhost:8080", want: true},
+		{addr: "[::1]:8080", want: true},
+		{addr: "0.0.0.0:8080", want: false},
+		{addr: ":8080", want: false},
+		{addr: "192.168.1.5:8080", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.addr, func(t *testing.T) {
+			got, err := IsLoopback(tt.addr)
+			if err != nil {
+				t.Fatalf("IsLoopback(%q): %v", tt.addr, err)
+			}
+			if got != tt.want {
+				t.Errorf("IsLoopback(%q) = %v, want %v", tt.addr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsLoopback_InvalidAddrErrors(t *testing.T) {
+	if _, err := IsLoopback("not-a-host-port"); err == nil {
+		t.Error("IsLoopback(malformed addr) returned no error")
 	}
 }
 
