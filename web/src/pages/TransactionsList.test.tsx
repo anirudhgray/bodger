@@ -56,20 +56,30 @@ function stubLookups() {
     {
       id: 'a1',
       name: 'Checking',
-      type: 'checking',
+      type: 'bank',
       currency: 'USD',
+      opening_balance: '0.00',
+      sort_order: 0,
       archived: false,
     },
     {
       id: 'a2',
       name: 'Savings',
-      type: 'savings',
+      type: 'bank',
       currency: 'USD',
+      opening_balance: '0.00',
+      sort_order: 1,
       archived: false,
     },
   ])
   mockedListCategories.mockResolvedValue([
-    { id: 'c1', name: 'Food', type: 'expense', archived: false },
+    {
+      id: 'c1',
+      name: 'Food',
+      type: 'expense',
+      sort_order: 0,
+      archived: false,
+    },
   ])
 }
 
