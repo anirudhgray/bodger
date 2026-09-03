@@ -384,6 +384,33 @@ Delivered so far in M2:
   an API token with a soft `Revoke` that keeps it listable. No use-case
   or surface wiring yet — issue #55 builds login, logout, and token
   issuance on top of these.
+- The application-layer half of M2 auth (issue #55, ADR-0006): `internal/app/auth.go`
+  adds `Login`, `Logout`, `SetPassword`, `CreateAPIToken`, `ListAPITokens`,
+  and `RevokeAPIToken`, plus `AuthenticateSession` and
+  `AuthenticateAPIToken` — the two entry points a future HTTP surface's
+  auth middleware (issue #56) calls to turn a live session cookie or
+  bearer token into an `ActorID`, sliding a session's expiry forward
+  (`SessionRepository.Touch`) or recording an API token's use
+  (`APITokenRepository.Touch`) on every successful check. `internal/ports`
+  gained a minimal `UserRepository` (`GetByID`, `SetPasswordHash`),
+  implemented over SQLite by `internal/adapters/sqlite`'s
+  `UserRepository`; `Service` gained `Users`, `Sessions`, and `APITokens`
+  fields alongside matching `NewService` parameters. Three design calls
+  where ADR-0006 and the issue left room: there is no username or email
+  column anywhere in the schema and building one is out of scope, so
+  `Login` takes only a password and verifies it against the single
+  seeded user (`ports.SeededUserID`) rather than carry a `Username`
+  field that would drive no real lookup; wrong password and "no
+  password set yet" (a fresh install) both fail `Login` identically,
+  with the same generic message, so neither is distinguishable from
+  outside, and `AuthenticateSession`/`AuthenticateAPIToken` apply the
+  same rule to an unrecognised, expired, or revoked credential; and a
+  session's sliding-expiry window is 30 days, a default ADR-0006 doesn't
+  pin down. Every use case has an in-memory-repository, frozen-clock
+  test in `internal/app/auth_test.go`, including the actor-resolution
+  audit the issue asked for: a session authenticated via
+  `AuthenticateSession` resolves to an `ActorID` that, fed into the
+  pre-existing `ListAccounts`, returns only that actor's own accounts.
 - **Structured logging is actually wired up.** `internal/platform/logging.New`
   (constructed in M1, issue #4) was never called anywhere in the running
   binary — `cmd/bodger` now constructs one `*slog.Logger` in `main`, shared
