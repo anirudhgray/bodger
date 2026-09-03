@@ -506,6 +506,30 @@ Delivered so far in M2:
   per §3, and no cross-account total, since that would need currency
   conversion M3 hasn't built yet. `web/src/lib/api.ts` gained a small
   `getBalances` helper alongside `apiFetch`, not a restructuring of it.
+- Fast transaction entry (issue #60), replacing the `/transactions/new`
+  placeholder. `web/src/pages/TransactionEntry.tsx` mirrors the CLI's own
+  verbs — Spend / Receive / Move — over the REST API's existing
+  `POST /api/v1/transactions` (outflow/inflow) and `POST /api/v1/transfers`
+  endpoints, following ux-principles.md §3's fast-entry budget: three
+  required fields for the common case (amount, category, account), a
+  date the screen never asks for unless "Add details" is opened (the API
+  resolves "today" server-side, per ADR-0005), and no confirmation dialog
+  for an ordinary entry (§5). The account field defaults to the most
+  recently used one, remembered in `localStorage` per browser (not
+  server-side state — a per-viewer convenience, not data), falling back
+  to the only account when there's just one and hiding its picker
+  entirely in that case. Splits stay out of scope (M1 has no split-entry
+  use case); notes and tags sit behind the same "Add details" disclosure
+  as the date. A validation failure leaves every typed field in place
+  rather than clearing the form (§5's "partial input is preserved").
+  `web/src/lib/api.ts` gained `listAccounts`, `listCategories`,
+  `recordOutflow`, `recordInflow`, and `recordTransfer` — new, separate
+  functions alongside `apiFetch` rather than changes to it, since the
+  remaining M2 web screens (issues #61–#63) add their own functions to
+  this file in parallel. `web/src/components/ui/select.tsx` is a new
+  primitive: a plain native `<select>` styled to match `input.tsx` rather
+  than a Radix combobox, since the account/category pickers here are
+  short, flat, search-free lists that don't earn the extra dependency yet.
 
 - `internal/surface/cli`'s `auth` command group (issue #57): `set-password`
   (prompts for a new password with typed input hidden via `golang.org/x/term`,
