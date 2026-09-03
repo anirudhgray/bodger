@@ -162,6 +162,15 @@ mergeable_state}'` once a PR exists, as a second confirmation - it
 - Resolve conflicts by hand for anything additive/mechanical; stop and ask
   if a conflict looks like a real semantic disagreement rather than two
   independent additions landing in the same spot.
+- Write the PR body in `pull_request_template.md`'s section structure -
+  Summary, Changes, Dependencies, Artefacts (delete this section if
+  there's nothing to attach), Testing. `gh pr create --body` bypasses
+  GitHub's auto-populated template entirely, so this only happens if
+  the body is written to match it deliberately. This doesn't mean
+  dropping content that doesn't fit a literal section name - a scoping
+  note on what the issue text got wrong, or what this PR unblocks, are
+  worth keeping; fold them into Changes or Dependencies rather than
+  inventing a new top-level heading for them.
 
 ## 6. When to create a new issue
 
