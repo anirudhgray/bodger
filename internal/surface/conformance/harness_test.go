@@ -70,9 +70,10 @@ const actorTimezone = "Asia/Kolkata"
 // test compares are directly comparable rather than merely
 // structurally similar.
 type harness struct {
-	t   *testing.T
-	svc *app.Service
-	srv *httptest.Server
+	t     *testing.T
+	svc   *app.Service
+	srv   *httptest.Server
+	token string
 }
 
 // newHarness builds a fresh, empty, fully-migrated database and the
@@ -116,7 +117,24 @@ func newHarness(t *testing.T) *harness {
 	srv := httptest.NewServer(httpsurface.NewMux(svc, nil))
 	t.Cleanup(srv.Close)
 
-	return &harness{t: t, svc: svc, srv: srv}
+	// Every route runHTTP exercises now requires a resolved ActorID
+	// (issue #56) — a bearer API token, minted here once, is what
+	// authenticates every runHTTP call below; conformance cares that both
+	// surfaces resolve the same ActorID and observe the same result, not
+	// which credential type got it there.
+	if err := svc.SetPassword(context.Background(), app.SetPasswordCommand{
+		ActorID: seededUserID, NewPassword: "conformance-test-password",
+	}); err != nil {
+		t.Fatalf("SetPassword: %v", err)
+	}
+	tok, err := svc.CreateAPIToken(context.Background(), app.CreateAPITokenCommand{
+		ActorID: seededUserID, Name: "conformance",
+	})
+	if err != nil {
+		t.Fatalf("CreateAPIToken: %v", err)
+	}
+
+	return &harness{t: t, svc: svc, srv: srv, token: tok.PlaintextToken}
 }
 
 // seed creates the accounts and categories this package's case table
@@ -240,6 +258,7 @@ func (h *harness) runHTTP(method, path string, body any) (status int, decoded ma
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	req.Header.Set("Authorization", "Bearer "+h.token)
 
 	resp, err := h.srv.Client().Do(req)
 	if err != nil {
