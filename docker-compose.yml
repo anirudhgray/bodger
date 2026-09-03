@@ -2,28 +2,23 @@
 # (SQLite is an embedded file, ADR-0007) and no reverse proxy (the binary
 # serves the API and the embedded web UI itself, ADR-0001).
 #
-# network_mode: host, not a `ports:` mapping - see "Running with Docker"
-# in docs/user-guide.md for why. Short version: bodger refuses to bind
-# anything but loopback until authentication exists (ADR-0006), and a
-# loopback bind inside a container's own network namespace is never
-# reachable through Docker's bridge-network port publishing, so `ports:`
-# would silently do nothing here. Host networking makes the container's
-# 127.0.0.1 the same loopback interface as the host's, which is exactly
-# as reachable as running `bodger serve` directly on the host - visible
-# from this machine only, at whatever host:port BODGER_HTTP_BIND_ADDR
-# names below.
+# No `ports:` mapping yet, deliberately - see "Running with Docker" in
+# docs/user-guide.md. Short version: bodger refuses to bind anything but
+# loopback until authentication exists (ADR-0006), and a loopback bind
+# inside a container's own network namespace is never reachable through
+# Docker's bridge-network port publishing - a `ports:` entry here would
+# silently do nothing. `network_mode: host` would work around that, but
+# trades away container network isolation to do it, which isn't a call
+# to make silently in a compose file most people won't read closely.
+# Pinned here until #56 (auth) lands and a non-loopback bind is allowed,
+# at which point this gets a real `ports:` mapping instead.
 services:
   bodger:
     build:
       context: .
     image: bodger:latest
-    network_mode: host
     restart: unless-stopped
     environment:
-      # Uncomment to change the port bodger listens on (default
-      # 127.0.0.1:8080) - it must stay a loopback address until #56 lands.
-      # BODGER_HTTP_BIND_ADDR: 127.0.0.1:8080
-      #
       # Uncomment to set your own defaults (see docs/user-guide.md):
       # BODGER_DEFAULT_CURRENCY: USD
       # BODGER_USER_TIMEZONE: UTC
