@@ -1,7 +1,9 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { useState } from 'react'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { logout } from '@/lib/session'
 
 const navItems = [
   { to: '/transactions', label: 'Transactions' },
@@ -12,9 +14,30 @@ const navItems = [
 
 // AppLayout is the routing skeleton's shell: a nav bar and an <Outlet />
 // for whichever placeholder (soon: real screen) the current route
-// renders. It holds no application state and calls no API — every screen
-// underneath it owns its own data fetching once issues #59-#63 build it.
+// renders. Its own loader (routes.tsx's requireAuth) already guarantees
+// an authenticated actor by the time this renders, so the only auth
+// concern this component itself owns is logging out.
 export function AppLayout() {
+  const navigate = useNavigate()
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  async function handleLogout() {
+    setLoggingOut(true)
+    try {
+      await logout()
+    } catch {
+      // The route guard on '/' will bounce back here anyway if the
+      // session is genuinely still live, but navigating regardless (below)
+      // keeps the button responsive rather than stuck disabled on a
+      // network error — a bare try/finally would still navigate, but
+      // would also leave this handler's own promise rejected with nothing
+      // to catch it (an actual unhandled-rejection console error, not
+      // just a test artifact).
+    } finally {
+      navigate('/login', { replace: true })
+    }
+  }
+
   return (
     <div className="flex min-h-svh flex-col">
       <header className="border-border flex items-center justify-between border-b px-6 py-3">
@@ -36,8 +59,14 @@ export function AppLayout() {
               {item.label}
             </NavLink>
           ))}
-          <Button asChild size="sm" variant="outline" className="ml-2">
-            <NavLink to="/login">Log in</NavLink>
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-2"
+            disabled={loggingOut}
+            onClick={handleLogout}
+          >
+            {loggingOut ? 'Logging out…' : 'Log out'}
           </Button>
         </nav>
       </header>

@@ -1,9 +1,11 @@
-// Smoke test for the routing skeleton (issue #58): proves the route tree
-// actually mounts and each top-level path resolves to its placeholder, so
-// a broken import or route definition fails `make test` rather than only
-// showing up when someone next opens the app. Not a place for anything
-// resembling behaviour these placeholders don't have yet — the real
-// screens (#59-#63) bring their own component tests.
+// Smoke test for the routing skeleton (issue #58), plus the auth guard
+// issue #59 layered onto it: proves the route tree actually mounts, each
+// top-level path resolves to its placeholder, and the '/' and '/login'
+// loaders send an unauthenticated or already-authenticated visitor to the
+// right place. checkSession is mocked throughout — these are routing
+// tests, not a test of the session-probe request itself (session.test.ts
+// covers that in isolation) — so every case sets its own resolved value
+// rather than relying on a real fetch.
 //
 // Each case builds its own createMemoryRouter from the same routes tree
 // routes.tsx feeds the real createBrowserRouter, rather than sharing one
@@ -16,55 +18,105 @@ import {
   RouterProvider,
   type RouteObject,
 } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('@/lib/session', () => ({
+  checkSession: vi.fn(),
+  login: vi.fn(),
+  logout: vi.fn(),
+}))
+
+import { checkSession } from '@/lib/session'
 import { routes, RouteError } from './routes'
 
+const mockedCheckSession = vi.mocked(checkSession)
+
 describe('routes', () => {
-  it('redirects the root route to the transactions placeholder', async () => {
-    const router = createMemoryRouter(routes, { initialEntries: ['/'] })
-    render(<RouterProvider router={router} />)
-
-    expect(
-      await screen.findByRole('heading', { name: 'Transactions' }),
-    ).toBeInTheDocument()
-  })
-
-  it('renders the login placeholder at /login', async () => {
-    const router = createMemoryRouter(routes, { initialEntries: ['/login'] })
-    render(<RouterProvider router={router} />)
-
-    expect(
-      await screen.findByRole('heading', { name: 'Log in' }),
-    ).toBeInTheDocument()
-  })
-
-  it.each([
-    ['/transactions/new', 'Add a transaction'],
-    ['/balances', 'Balances'],
-    ['/settings', 'Settings'],
-  ])('renders the placeholder at %s', async (path, heading) => {
-    const router = createMemoryRouter(routes, { initialEntries: [path] })
-    render(<RouterProvider router={router} />)
-
-    expect(
-      await screen.findByRole('heading', { name: heading }),
-    ).toBeInTheDocument()
-  })
-
-  // Regression coverage for a real bug: /api/v1 (not a registered REST
-  // route, so the server's SPA fallback correctly serves index.html) used
-  // to hit react-router-dom's own default crash screen client-side, since
-  // nothing in the route tree matched it and there was no errorElement.
-  it('renders a not-found placeholder for a path nothing matches', async () => {
-    const router = createMemoryRouter(routes, {
-      initialEntries: ['/api/v1'],
+  describe('authenticated', () => {
+    beforeEach(() => {
+      mockedCheckSession.mockReset().mockResolvedValue(true)
     })
-    render(<RouterProvider router={router} />)
 
-    expect(
-      await screen.findByRole('heading', { name: 'Page not found' }),
-    ).toBeInTheDocument()
+    it('redirects the root route to the transactions placeholder', async () => {
+      const router = createMemoryRouter(routes, { initialEntries: ['/'] })
+      render(<RouterProvider router={router} />)
+
+      expect(
+        await screen.findByRole('heading', { name: 'Transactions' }),
+      ).toBeInTheDocument()
+    })
+
+    it('redirects /login to the app when the session is already valid', async () => {
+      const router = createMemoryRouter(routes, {
+        initialEntries: ['/login'],
+      })
+      render(<RouterProvider router={router} />)
+
+      expect(
+        await screen.findByRole('heading', { name: 'Transactions' }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  describe('unauthenticated', () => {
+    beforeEach(() => {
+      mockedCheckSession.mockReset().mockResolvedValue(false)
+    })
+
+    it('renders the login form at /login', async () => {
+      const router = createMemoryRouter(routes, {
+        initialEntries: ['/login'],
+      })
+      render(<RouterProvider router={router} />)
+
+      expect(
+        await screen.findByRole('heading', { name: 'Log in' }),
+      ).toBeInTheDocument()
+      expect(screen.getByLabelText('Password')).toBeInTheDocument()
+    })
+
+    it('redirects a protected route to the login form', async () => {
+      const router = createMemoryRouter(routes, { initialEntries: ['/'] })
+      render(<RouterProvider router={router} />)
+
+      expect(
+        await screen.findByRole('heading', { name: 'Log in' }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  describe('placeholders (authenticated)', () => {
+    beforeEach(() => {
+      mockedCheckSession.mockReset().mockResolvedValue(true)
+    })
+
+    it.each([
+      ['/transactions/new', 'Add a transaction'],
+      ['/balances', 'Balances'],
+      ['/settings', 'Settings'],
+    ])('renders the placeholder at %s', async (path, heading) => {
+      const router = createMemoryRouter(routes, { initialEntries: [path] })
+      render(<RouterProvider router={router} />)
+
+      expect(
+        await screen.findByRole('heading', { name: heading }),
+      ).toBeInTheDocument()
+    })
+
+    // Regression coverage for a real bug: /api/v1 (not a registered REST
+    // route, so the server's SPA fallback correctly serves index.html) used
+    // to hit react-router-dom's own default crash screen client-side, since
+    // nothing in the route tree matched it and there was no errorElement.
+    it('renders a not-found placeholder for a path nothing matches', async () => {
+      const router = createMemoryRouter(routes, {
+        initialEntries: ['/api/v1'],
+      })
+      render(<RouterProvider router={router} />)
+
+      expect(
+        await screen.findByRole('heading', { name: 'Page not found' }),
+      ).toBeInTheDocument()
+    })
   })
 
   it('renders RouteError instead of the default crash screen when a route throws', async () => {

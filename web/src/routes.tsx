@@ -7,12 +7,15 @@ import {
   createBrowserRouter,
   isRouteErrorResponse,
   Navigate,
+  redirect,
   type RouteObject,
   useRouteError,
 } from 'react-router-dom'
 
 import { AppLayout } from '@/App'
+import { Login } from '@/pages/Login'
 import { Placeholder } from '@/pages/Placeholder'
+import { checkSession } from '@/lib/session'
 
 // RouteError is exported only so routes.test.tsx can mount it directly
 // against a route that deliberately throws — the real route tree below
@@ -35,6 +38,28 @@ export function RouteError() {
   return <Placeholder title="Something went wrong" description={description} />
 }
 
+// redirectIfAuthenticated is /login's loader (issue #59): visiting the
+// login page with a still-valid session cookie sends you straight past
+// it rather than asking for a password again.
+async function redirectIfAuthenticated() {
+  if (await checkSession()) {
+    return redirect('/')
+  }
+  return null
+}
+
+// requireAuth is the '/' layout route's loader: it runs before AppLayout
+// (and anything nested under it) ever renders, and sends an
+// unauthenticated visitor to /login instead — the "route guard/redirect"
+// issue #59 asks for. Everything under this layout can assume, without
+// checking again itself, that it's rendering for an authenticated actor.
+async function requireAuth() {
+  if (!(await checkSession())) {
+    return redirect('/login')
+  }
+  return null
+}
+
 // routes is the route tree itself, separated from router below so
 // routes.test.tsx can mount it in a createMemoryRouter instead — a real
 // createBrowserRouter reads and owns actual browser history, which makes
@@ -42,18 +67,14 @@ export function RouteError() {
 export const routes: RouteObject[] = [
   {
     path: '/login',
-    // issue #59 — login and session handling
-    element: (
-      <Placeholder
-        title="Log in"
-        description="Session-cookie login lands in issue #59."
-      />
-    ),
+    element: <Login />,
+    loader: redirectIfAuthenticated,
     errorElement: <RouteError />,
   },
   {
     path: '/',
     element: <AppLayout />,
+    loader: requireAuth,
     errorElement: <RouteError />,
     children: [
       { index: true, element: <Navigate to="/transactions" replace /> },
