@@ -1,0 +1,20 @@
+# Keep the build context small and the image reproducible from source
+# only - node_modules and dist/ are rebuilt fresh inside the image every
+# time (npm ci from web/package-lock.json, go build from go.sum), so
+# whatever happens to exist on the host is noise, not input.
+.git
+.githooks
+.claude
+agents/design-docs
+bin/
+coverage.out
+*.db
+*.db.pre-*.bak
+
+web/node_modules
+web/dist
+# Tracked only so internal/platform/webui's go:embed directive has
+# something to match before any build has run (see that package's doc
+# comment) - the multi-stage build always overwrites this with a real
+# build's output, so the placeholder marker itself isn't needed as input.
+internal/platform/webui/dist
