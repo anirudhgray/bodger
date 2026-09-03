@@ -16,6 +16,7 @@ import { AppLayout } from '@/App'
 import { BalancesPage } from '@/pages/Balances'
 import { Login } from '@/pages/Login'
 import { Placeholder } from '@/pages/Placeholder'
+import { Settings } from '@/pages/Settings'
 import { TransactionEntry } from '@/pages/TransactionEntry'
 import { TransactionsList } from '@/pages/TransactionsList'
 import { checkSession } from '@/lib/session'
@@ -98,12 +99,7 @@ export const routes: RouteObject[] = [
       {
         path: 'settings',
         // issue #62 — settings: password, API tokens, accounts/categories CRUD
-        element: (
-          <Placeholder
-            title="Settings"
-            description="Password, API tokens, and accounts/categories management land in issue #62."
-          />
-        ),
+        element: <Settings />,
       },
       {
         // Catches anything that isn't one of the paths above — a typo'd
