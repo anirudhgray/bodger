@@ -78,3 +78,27 @@ export async function apiFetch<T>(
 
   return (body as DataBody<T>).data
 }
+
+// BalanceEntry is one account's computed balance, as GET /api/v1/balances
+// (internal/surface/http/balances.go) returns it: amount is a plain
+// decimal string in currency's minor-unit precision, not a number — never
+// parsed as a float here, only ever displayed as-is (issue #63; no
+// client-side financial logic, docs/architecture.md §3).
+export type BalanceEntry = {
+  account_id: string
+  account: string
+  amount: string
+  currency: string
+}
+
+export type Balances = {
+  as_of: string
+  balances: BalanceEntry[]
+}
+
+// getBalances fetches every account's balance as of today (the API
+// resolves "today" server-side when as_of is omitted — normalise-once,
+// ADR-0005 — this call never passes one).
+export function getBalances(): Promise<Balances> {
+  return apiFetch<Balances>('/api/v1/balances')
+}
