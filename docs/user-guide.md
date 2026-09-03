@@ -283,6 +283,10 @@ curl http://127.0.0.1:8080/api/v1/accounts \
 
 The `token` field is shown exactly once, in that create response — store it somewhere safe, since it can't be retrieved again. `GET /api/v1/auth/tokens` lists every token you've created (including expired and revoked ones, for history), and `DELETE /api/v1/auth/tokens/{id}` revokes one immediately. You can also manage API tokens from the command line with `bodger auth token create`/`list`/`revoke`.
 
+### Using the web UI
+
+With `bodger serve` running, open its address in a browser (`http://127.0.0.1:8080` by default). Visiting it without a signed-in session lands you on a login screen; enter the password you set with `bodger auth set-password` — there's no separate web password, it's the same credential the CLI and REST API use. A successful login takes you into the app itself; visiting the login page again while already signed in just sends you straight back in. The "Log out" button in the top-right of the nav bar ends your session and returns you to the login screen.
+
 ---
 
 ## Command reference
