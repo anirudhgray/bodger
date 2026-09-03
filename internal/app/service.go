@@ -58,6 +58,14 @@ type Service struct {
 	Categories   ports.CategoryRepository
 	Transactions ports.TransactionRepository
 	Tags         ports.TagRepository
+
+	// Users, Sessions, and APITokens are issue #55's auth use cases'
+	// repository ports (ADR-0006): reading and writing a user's password
+	// hash, and issuing/authenticating/revoking session cookies and API
+	// tokens.
+	Users     ports.UserRepository
+	Sessions  ports.SessionRepository
+	APITokens ports.APITokenRepository
 }
 
 // NewService constructs a Service from its dependencies, rejecting a nil
@@ -72,6 +80,9 @@ func NewService(
 	categories ports.CategoryRepository,
 	transactions ports.TransactionRepository,
 	tags ports.TagRepository,
+	users ports.UserRepository,
+	sessions ports.SessionRepository,
+	apiTokens ports.APITokenRepository,
 ) (*Service, error) {
 	switch {
 	case clk == nil:
@@ -86,6 +97,12 @@ func NewService(
 		return nil, missingDependency("transaction repository")
 	case tags == nil:
 		return nil, missingDependency("tag repository")
+	case users == nil:
+		return nil, missingDependency("user repository")
+	case sessions == nil:
+		return nil, missingDependency("session repository")
+	case apiTokens == nil:
+		return nil, missingDependency("API token repository")
 	}
 
 	return &Service{
@@ -96,6 +113,9 @@ func NewService(
 		Categories:   categories,
 		Transactions: transactions,
 		Tags:         tags,
+		Users:        users,
+		Sessions:     sessions,
+		APITokens:    apiTokens,
 	}, nil
 }
 

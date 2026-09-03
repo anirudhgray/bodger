@@ -60,6 +60,30 @@ type fakeTags struct{}
 
 func (fakeTags) List(context.Context, string) ([]ledger.Tag, error) { return nil, nil }
 
+type fakeUsers struct{}
+
+func (fakeUsers) GetByID(context.Context, string) (ports.User, error)   { return ports.User{}, nil }
+func (fakeUsers) SetPasswordHash(context.Context, string, string) error { return nil }
+
+type fakeSessions struct{}
+
+func (fakeSessions) Create(context.Context, string, ports.Session) error { return nil }
+func (fakeSessions) GetByTokenHash(context.Context, string) (ports.Session, error) {
+	return ports.Session{}, nil
+}
+func (fakeSessions) Touch(context.Context, string, string, time.Time, time.Time) error { return nil }
+func (fakeSessions) Delete(context.Context, string, string) error                      { return nil }
+
+type fakeAPITokens struct{}
+
+func (fakeAPITokens) Create(context.Context, string, ports.APIToken) error { return nil }
+func (fakeAPITokens) GetByTokenHash(context.Context, string) (ports.APIToken, error) {
+	return ports.APIToken{}, nil
+}
+func (fakeAPITokens) List(context.Context, string) ([]ports.APIToken, error)  { return nil, nil }
+func (fakeAPITokens) Touch(context.Context, string, string, time.Time) error  { return nil }
+func (fakeAPITokens) Revoke(context.Context, string, string, time.Time) error { return nil }
+
 // TestNewService_RejectsMissingDependencies checks both halves of
 // ADR-0011's safe/internal split for a mis-wired container: the caller gets
 // an *errs.Error coded Internal (so a surface has an exit code and a
@@ -80,6 +104,9 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 		categories   ports.CategoryRepository
 		transactions ports.TransactionRepository
 		tags         ports.TagRepository
+		users        ports.UserRepository
+		sessions     ports.SessionRepository
+		apiTokens    ports.APITokenRepository
 		wantCause    string
 	}{
 		{
@@ -90,6 +117,9 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			categories:   fakeCategories{},
 			transactions: fakeTransactions{},
 			tags:         fakeTags{},
+			users:        fakeUsers{},
+			sessions:     fakeSessions{},
+			apiTokens:    fakeAPITokens{},
 			wantCause:    "clock",
 		},
 		{
@@ -100,6 +130,9 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			categories:   fakeCategories{},
 			transactions: fakeTransactions{},
 			tags:         fakeTags{},
+			users:        fakeUsers{},
+			sessions:     fakeSessions{},
+			apiTokens:    fakeAPITokens{},
 			wantCause:    "id generator",
 		},
 		{
@@ -110,6 +143,9 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			categories:   fakeCategories{},
 			transactions: fakeTransactions{},
 			tags:         fakeTags{},
+			users:        fakeUsers{},
+			sessions:     fakeSessions{},
+			apiTokens:    fakeAPITokens{},
 			wantCause:    "account repository",
 		},
 		{
@@ -120,6 +156,9 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			categories:   nil,
 			transactions: fakeTransactions{},
 			tags:         fakeTags{},
+			users:        fakeUsers{},
+			sessions:     fakeSessions{},
+			apiTokens:    fakeAPITokens{},
 			wantCause:    "category repository",
 		},
 		{
@@ -130,6 +169,9 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			categories:   fakeCategories{},
 			transactions: nil,
 			tags:         fakeTags{},
+			users:        fakeUsers{},
+			sessions:     fakeSessions{},
+			apiTokens:    fakeAPITokens{},
 			wantCause:    "transaction repository",
 		},
 		{
@@ -140,13 +182,58 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			categories:   fakeCategories{},
 			transactions: fakeTransactions{},
 			tags:         nil,
+			users:        fakeUsers{},
+			sessions:     fakeSessions{},
+			apiTokens:    fakeAPITokens{},
 			wantCause:    "tag repository",
+		},
+		{
+			name:         "nil user repository",
+			clk:          clk,
+			ids:          ids,
+			accounts:     fakeAccounts{},
+			categories:   fakeCategories{},
+			transactions: fakeTransactions{},
+			tags:         fakeTags{},
+			users:        nil,
+			sessions:     fakeSessions{},
+			apiTokens:    fakeAPITokens{},
+			wantCause:    "user repository",
+		},
+		{
+			name:         "nil session repository",
+			clk:          clk,
+			ids:          ids,
+			accounts:     fakeAccounts{},
+			categories:   fakeCategories{},
+			transactions: fakeTransactions{},
+			tags:         fakeTags{},
+			users:        fakeUsers{},
+			sessions:     nil,
+			apiTokens:    fakeAPITokens{},
+			wantCause:    "session repository",
+		},
+		{
+			name:         "nil API token repository",
+			clk:          clk,
+			ids:          ids,
+			accounts:     fakeAccounts{},
+			categories:   fakeCategories{},
+			transactions: fakeTransactions{},
+			tags:         fakeTags{},
+			users:        fakeUsers{},
+			sessions:     fakeSessions{},
+			apiTokens:    nil,
+			wantCause:    "API token repository",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := app.NewService(tt.clk, cfg, tt.ids, tt.accounts, tt.categories, tt.transactions, tt.tags)
+			_, err := app.NewService(
+				tt.clk, cfg, tt.ids, tt.accounts, tt.categories, tt.transactions, tt.tags,
+				tt.users, tt.sessions, tt.apiTokens,
+			)
 			if err == nil {
 				t.Fatalf("NewService(...) returned no error, want one caused by a nil %s", tt.wantCause)
 			}
@@ -176,7 +263,10 @@ func TestNewService_BuildsWithEveryDependency(t *testing.T) {
 	cfg := config.Defaults
 	ids := idgen.NewSequence("test")
 
-	svc, err := app.NewService(clk, cfg, ids, fakeAccounts{}, fakeCategories{}, fakeTransactions{}, fakeTags{})
+	svc, err := app.NewService(
+		clk, cfg, ids, fakeAccounts{}, fakeCategories{}, fakeTransactions{}, fakeTags{},
+		fakeUsers{}, fakeSessions{}, fakeAPITokens{},
+	)
 	if err != nil {
 		t.Fatalf("NewService(...) unexpected error: %v", err)
 	}
@@ -192,6 +282,9 @@ func TestNewService_BuildsWithEveryDependency(t *testing.T) {
 	if svc.Accounts == nil || svc.Categories == nil || svc.Transactions == nil || svc.Tags == nil {
 		t.Error("Service repositories should all be non-nil after a successful NewService call")
 	}
+	if svc.Users == nil || svc.Sessions == nil || svc.APITokens == nil {
+		t.Error("Service auth repositories should all be non-nil after a successful NewService call")
+	}
 }
 
 // TestService_UsesInjectedClockNotWallClock is a light guard that Service
@@ -203,7 +296,10 @@ func TestService_UsesInjectedClockNotWallClock(t *testing.T) {
 	frozenAt := time.Date(2026, time.July, 31, 18, 45, 0, 0, time.UTC)
 	clk := clock.NewFrozen(frozenAt)
 
-	svc, err := app.NewService(clk, config.Defaults, idgen.NewSequence("t"), fakeAccounts{}, fakeCategories{}, fakeTransactions{}, fakeTags{})
+	svc, err := app.NewService(
+		clk, config.Defaults, idgen.NewSequence("t"), fakeAccounts{}, fakeCategories{}, fakeTransactions{}, fakeTags{},
+		fakeUsers{}, fakeSessions{}, fakeAPITokens{},
+	)
 	if err != nil {
 		t.Fatalf("NewService(...) unexpected error: %v", err)
 	}

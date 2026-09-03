@@ -51,6 +51,7 @@ func newTestFactory(t *testing.T, frozenAt time.Time) clisurface.ServiceFactory 
 			clk, config.Defaults, idgen.New(),
 			sqlite.NewAccountRepository(db), sqlite.NewCategoryRepository(db),
 			sqlite.NewTransactionRepository(db), sqlite.NewTagRepository(db),
+			sqlite.NewUserRepository(db), sqlite.NewSessionRepository(db), sqlite.NewAPITokenRepository(db),
 		)
 		return svc, func() error { return nil }, err
 	}
