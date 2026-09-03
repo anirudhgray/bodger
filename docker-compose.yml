@@ -1,0 +1,39 @@
+# bodger's self-hosted stack: one service, no separate database container
+# (SQLite is an embedded file, ADR-0007) and no reverse proxy (the binary
+# serves the API and the embedded web UI itself, ADR-0001).
+#
+# network_mode: host, not a `ports:` mapping - see "Running with Docker"
+# in docs/user-guide.md for why. Short version: bodger refuses to bind
+# anything but loopback until authentication exists (ADR-0006), and a
+# loopback bind inside a container's own network namespace is never
+# reachable through Docker's bridge-network port publishing, so `ports:`
+# would silently do nothing here. Host networking makes the container's
+# 127.0.0.1 the same loopback interface as the host's, which is exactly
+# as reachable as running `bodger serve` directly on the host - visible
+# from this machine only, at whatever host:port BODGER_HTTP_BIND_ADDR
+# names below.
+services:
+  bodger:
+    build:
+      context: .
+    image: bodger:latest
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      # Uncomment to change the port bodger listens on (default
+      # 127.0.0.1:8080) - it must stay a loopback address until #56 lands.
+      # BODGER_HTTP_BIND_ADDR: 127.0.0.1:8080
+      #
+      # Uncomment to set your own defaults (see docs/user-guide.md):
+      # BODGER_DEFAULT_CURRENCY: USD
+      # BODGER_USER_TIMEZONE: UTC
+      BODGER_DB_PATH: /data/bodger.db
+    volumes:
+      # Named volume, not a bind mount: survives `docker compose down` and
+      # a container recreate (e.g. `docker compose pull && docker compose
+      # up -d` to upgrade, ADR-0007). Back it up the same way as any other
+      # bodger install - copy bodger.db back out - see docs/user-guide.md.
+      - bodger-data:/data
+
+volumes:
+  bodger-data:
