@@ -30,6 +30,12 @@
 //	GET         /api/v1/balances
 //	GET         /healthz
 //
+// `bodger serve` (server.go's `serve` command) answers every other path
+// with the embedded web UI's static assets instead of a 404 — see
+// webui.go and internal/platform/webui. NewMux on its own, and every test
+// in this package that calls it directly, sees only the routes above;
+// only NewServerHandler adds the web UI's catch-all.
+//
 // There is no authentication yet (M1, ADR-0006): every request acts as
 // the single seeded user, ports.SeededUserID. This package binds
 // loopback only by default, and internal/platform/config refuses to load

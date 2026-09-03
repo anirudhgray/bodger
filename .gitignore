@@ -3,10 +3,19 @@ agents/design-docs
 
 # Build artefacts
 bin/
-dist/
+/dist/
 coverage.out
-web/dist/
 web/node_modules/
+
+# Vite's build output (web/vite.config.ts's build.outDir): embedded by
+# internal/platform/webui via go:embed. Nothing `npm run build` produces
+# here is tracked — its placeholder fallback page lives outside this
+# directory entirely (internal/platform/webui/placeholder/), specifically
+# so a real local build never dirties a tracked file. .gitkeep only
+# exists so `//go:embed all:dist` has something to match on a fresh
+# checkout that hasn't run `make build-web` yet.
+internal/platform/webui/dist/*
+!internal/platform/webui/dist/.gitkeep
 
 # Agent-managed worktrees (git worktree add .claude/worktrees/...)
 .claude/worktrees/

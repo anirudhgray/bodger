@@ -224,8 +224,8 @@ Rules, scheduled occurrences, materialisation, forecasting. Occurrences never to
 ## 9. Status
 
 **M1 · Arda shipped as [v0.1.0](https://github.com/anirudhgray/bodger/releases/tag/v0.1.0).**
-M2 · The Shire — see the [M2 milestone](https://github.com/anirudhgray/bodger/milestone/2)
-for its issues — is now underway.
+M2 · The Shire is underway — see the [M2 milestone](https://github.com/anirudhgray/bodger/milestone/2)
+for its issues.
 
 | Milestone | Status |
 | --- | --- |
@@ -337,10 +337,28 @@ Delivered so far in M1:
   last remaining item against the scope in §8: everything the milestone
   promised is now built and mechanically enforced.
 
-Not yet built: everything else in §2.
-
 Delivered so far in M2:
 
+- `web/` — the React + TypeScript + Vite scaffold (issue #58): Tailwind
+  and shadcn/ui (Radix primitives copied into `web/src/components/ui`,
+  not an npm-installed themed component library), a routing skeleton
+  (`web/src/routes.tsx`) with placeholder screens for the issues below to
+  fill in, and `npm run dev`'s Vite dev server proxying `/api` and
+  `/healthz` to a locally running `bodger serve` so frontend iteration
+  doesn't need a production build each time. `make build-web` builds
+  straight into `internal/platform/webui/dist`, which that package
+  `go:embed`s; nothing under `dist/` is tracked except an empty
+  `.gitkeep` (so `go build`/`go test`/`go vet` keep working on a Go-only
+  checkout before `npm run build` has ever run), and a real build is free
+  to empty and rewrite the directory without ever touching a tracked file
+  — `internal/platform/webui`'s own placeholder page lives in a sibling
+  `placeholder/` directory outside Vite's output path instead, and is
+  served in `dist/index.html`'s place until a real build exists.
+  `internal/surface/http.NewServerHandler` serves whichever one `Dist()`
+  returns alongside the REST API, falling back to `index.html` for any
+  path that isn't a real static asset so a hard refresh on a client-side
+  route still resolves. Holds no financial logic and imports no domain
+  type, per §3.
 - `internal/platform/auth` — pure, no-I/O Argon2id password hashing
   (`golang.org/x/crypto/argon2`) behind a hand-rolled, self-describing
   PHC-string encode/decode, with default parameters starting from
@@ -362,6 +380,8 @@ Delivered so far in M2:
   surfaces — see [`contributing.md`](contributing.md#logging) for why). A
   rotating log file was considered and deliberately deferred rather than
   adding a dependency unilaterally (issue #43).
+
+Not yet built: everything else in §2.
 
 This section is updated **in the same PR** as the work it describes, per CLAUDE.md — not in a later docs pass.
 
