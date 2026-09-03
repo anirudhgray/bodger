@@ -530,6 +530,32 @@ Delivered so far in M2:
   primitive: a plain native `<select>` styled to match `input.tsx` rather
   than a Radix combobox, since the account/category pickers here are
   short, flat, search-free lists that don't earn the extra dependency yet.
+- Web UI transaction list with filters (issue #61), replacing the
+  `/transactions` placeholder. `web/src/pages/TransactionsList.tsx` lists
+  the REST API's cursor-paginated `GET /api/v1/transactions`, with date
+  range, account, category, and type filters behind a "Filters" toggle —
+  the "occasional" progressive-disclosure layer (ux-principles.md §4), not
+  shown by default. Type filtering and each row's own type label use the
+  same spend/receive/move vocabulary the CLI does
+  (`internal/surface/cli/transactions.go`'s `transactionTypeFor`), not the
+  REST wire spelling (`outflow`/`inflow`/`transfer`) — a small,
+  presentation-only translation table in the page component, the same
+  deliberate CLI-and-web-diverge-from-the-wire-API case that file's own
+  doc comment already carves out for the CLI alone. Edit is inline,
+  pre-filling a form from the row and submitting the transaction's full
+  new state on save — `PATCH /api/v1/transactions/{id}` is a full
+  replacement, not a partial patch (`internal/surface/http/auth.go`'s
+  sibling `editTransactionRequest` doc comment explains why: this
+  package's raw-string command fields already use `""` to mean something
+  specific, which would collide with also meaning "leave this field
+  alone"). Delete is a plain inline button with no confirmation dialog,
+  matching the CLI's own `transactions delete` (soft, reversible in the
+  database; ux-principles.md §5 reserves confirmation for genuinely
+  hard-to-undo actions). `web/src/lib/api.ts` gained typed
+  `listTransactions`/`updateTransaction`/`deleteTransaction`/`listAccounts`/`listCategories`
+  helpers alongside `apiFetch`. No client-side total or rollup over the
+  filtered list (architecture.md §3) — this screen renders what the API
+  returns and nothing it computes itself.
 
 - `internal/surface/cli`'s `auth` command group (issue #57): `set-password`
   (prompts for a new password with typed input hidden via `golang.org/x/term`,
