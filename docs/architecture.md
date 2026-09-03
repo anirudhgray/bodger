@@ -490,6 +490,15 @@ Delivered so far in M2:
   `radix-ui`'s `Label`), join the existing `button.tsx`. No client-side
   token handling anywhere — the session credential is the `HttpOnly`
   cookie the browser already manages.
+- `web/src/pages/Balances.tsx` (issue #63) — the "what do I have
+  available?" screen (ux-principles.md §1), replacing the `/balances`
+  placeholder. Renders `GET /api/v1/balances`' response for every
+  account exactly as the API returns it: `amount` is displayed as the
+  plain decimal string the wire format already is, never parsed into a
+  number or summed across accounts — no client-side financial logic,
+  per §3, and no cross-account total, since that would need currency
+  conversion M3 hasn't built yet. `web/src/lib/api.ts` gained a small
+  `getBalances` helper alongside `apiFetch`, not a restructuring of it.
 
 - `internal/surface/cli`'s `auth` command group (issue #57): `set-password`
   (prompts for a new password with typed input hidden via `golang.org/x/term`,
