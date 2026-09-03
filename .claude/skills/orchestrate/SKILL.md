@@ -162,6 +162,32 @@ mergeable_state}'` once a PR exists, as a second confirmation - it
 - Resolve conflicts by hand for anything additive/mechanical; stop and ask
   if a conflict looks like a real semantic disagreement rather than two
   independent additions landing in the same spot.
+- Write the PR body in `pull_request_template.md`'s section structure -
+  Summary, Changes, Dependencies, Artefacts (delete this section if
+  there's nothing to attach), Testing. `gh pr create --body` bypasses
+  GitHub's auto-populated template entirely, so this only happens if
+  the body is written to match it deliberately. This doesn't mean
+  dropping content that doesn't fit a literal section name - a scoping
+  note on what the issue text got wrong, or what this PR unblocks, are
+  worth keeping; fold them into Changes or Dependencies rather than
+  inventing a new top-level heading for them.
+- **Testing needs actual manual steps, not just automated-command
+  output.** The template's own placeholder text asks for "manual steps
+  to verify the change works" - a reviewer should be able to follow
+  concrete steps to check the feature and likely regressions
+  themselves, not just read that `make check` passed (that belongs
+  there too, but as a supplement, not a replacement). When the change
+  ships with a reachable surface (CLI/HTTP/web), give the literal
+  commands or click-through steps against the running binary - this is
+  also where the Web UI screenshot/recording workflow CLAUDE.md
+  describes for UI surfaces produces the Artefacts section's content.
+  When it doesn't yet - an app-layer-only slice like issue #55, whose
+  surface wiring is a separate, later issue - say so plainly rather
+  than implying a walkthrough that doesn't exist, and give the nearest
+  real equivalent: specific `go test -run <name> -v` invocations mapped
+  one-to-one to the PR's individual acceptance-criteria scenarios, not
+  a single blanket `go test ./...`, so a reviewer can run one and see
+  exactly what it proves.
 
 ## 6. When to create a new issue
 
