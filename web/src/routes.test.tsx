@@ -26,6 +26,20 @@ vi.mock('@/lib/session', () => ({
   logout: vi.fn(),
 }))
 
+// TransactionEntry (issue #60) fetches accounts/categories on mount — its
+// own test file (TransactionEntry.test.tsx) covers that screen's actual
+// behaviour with realistic data; this file only needs the route to resolve
+// to it, so an empty resolved list is enough to let it render without
+// throwing.
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>()
+  return {
+    ...actual,
+    listAccounts: vi.fn().mockResolvedValue([]),
+    listCategories: vi.fn().mockResolvedValue([]),
+  }
+})
+
 import { checkSession } from '@/lib/session'
 import { routes, RouteError } from './routes'
 
@@ -90,15 +104,29 @@ describe('routes', () => {
       mockedCheckSession.mockReset().mockResolvedValue(true)
     })
 
-    it.each([
-      ['/transactions/new', 'Add a transaction'],
-      ['/settings', 'Settings'],
-    ])('renders the placeholder at %s', async (path, heading) => {
-      const router = createMemoryRouter(routes, { initialEntries: [path] })
+    it.each([['/settings', 'Settings']])(
+      'renders the placeholder at %s',
+      async (path, heading) => {
+        const router = createMemoryRouter(routes, { initialEntries: [path] })
+        render(<RouterProvider router={router} />)
+
+        expect(
+          await screen.findByRole('heading', { name: heading }),
+        ).toBeInTheDocument()
+      },
+    )
+
+    // /transactions/new is issue #60's real screen now, not a placeholder
+    // — TransactionEntry.test.tsx covers its actual behaviour; this just
+    // proves the route resolves to it.
+    it('renders the transaction entry screen at /transactions/new', async () => {
+      const router = createMemoryRouter(routes, {
+        initialEntries: ['/transactions/new'],
+      })
       render(<RouterProvider router={router} />)
 
       expect(
-        await screen.findByRole('heading', { name: heading }),
+        await screen.findByRole('button', { name: 'Spend' }),
       ).toBeInTheDocument()
     })
 

@@ -102,3 +102,102 @@ export type Balances = {
 export function getBalances(): Promise<Balances> {
   return apiFetch<Balances>('/api/v1/balances')
 }
+
+// --- issue #60: accounts/categories lookups and transaction recording ---
+// Added as new, self-contained functions rather than touching apiFetch or
+// anything above — several other issues (#61-#63) are adding their own
+// functions to this file at the same time, on sibling branches.
+
+export type Account = {
+  id: string
+  name: string
+  type: string
+  currency: string
+  archived: boolean
+}
+
+export type Category = {
+  id: string
+  name: string
+  type: 'expense' | 'income'
+  archived: boolean
+}
+
+export function listAccounts(): Promise<Account[]> {
+  return apiFetch<Account[]>('/api/v1/accounts')
+}
+
+export function listCategories(): Promise<Category[]> {
+  return apiFetch<Category[]>('/api/v1/categories')
+}
+
+// RecordTransactionInput/RecordTransferInput carry the amount, date, and
+// every other value the API normalises server-side (ADR-0005) as raw
+// strings — this file never parses or validates them, it only passes them
+// through (docs/architecture.md §3).
+export type RecordTransactionInput = {
+  account: string
+  category: string
+  amount: string
+  date?: string
+  description?: string
+  notes?: string
+  tags?: string[]
+}
+
+export type RecordTransferInput = {
+  fromAccount: string
+  toAccount: string
+  amount: string
+  date?: string
+  description?: string
+  notes?: string
+  tags?: string[]
+}
+
+export function recordOutflow(input: RecordTransactionInput): Promise<unknown> {
+  return apiFetch('/api/v1/transactions', {
+    method: 'POST',
+    body: JSON.stringify({
+      type: 'outflow',
+      account: input.account,
+      category: input.category,
+      amount: input.amount,
+      date: input.date,
+      description: input.description ?? '',
+      notes: input.notes,
+      tags: input.tags,
+    }),
+  })
+}
+
+export function recordInflow(input: RecordTransactionInput): Promise<unknown> {
+  return apiFetch('/api/v1/transactions', {
+    method: 'POST',
+    body: JSON.stringify({
+      type: 'inflow',
+      account: input.account,
+      category: input.category,
+      amount: input.amount,
+      date: input.date,
+      description: input.description ?? '',
+      notes: input.notes,
+      tags: input.tags,
+    }),
+  })
+}
+
+export function recordTransfer(input: RecordTransferInput): Promise<unknown> {
+  return apiFetch('/api/v1/transfers', {
+    method: 'POST',
+    body: JSON.stringify({
+      from_account: input.fromAccount,
+      to_account: input.toAccount,
+      amount: input.amount,
+      date: input.date,
+      description: input.description ?? '',
+      notes: input.notes,
+      tags: input.tags,
+    }),
+  })
+}
