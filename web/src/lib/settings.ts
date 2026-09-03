@@ -49,10 +49,19 @@ export async function revokeApiToken(id: string): Promise<void> {
   await apiFetch(`/api/v1/auth/tokens/${id}`, { method: 'DELETE' })
 }
 
+// AccountKind/CategoryKind mirror internal/surface/http/openapi_gen.go's
+// enum table (the real wire values ledger.AccountKind/CategoryKind
+// produce) — kept here rather than imported from '@/lib/api' because this
+// branch predates #60/#61 (issues #60, #61, #62 each independently needed
+// this same reference data on separate branches); once this stack merges,
+// this and api.ts's identical definitions should collapse into one.
+export type AccountKind =
+  'bank' | 'cash' | 'credit_card' | 'wallet' | 'investment' | 'loan' | 'other'
+
 export type Account = {
   id: string
   name: string
-  type: string
+  type: AccountKind
   currency: string
   opening_balance: string
   opening_balance_date?: string
@@ -91,10 +100,12 @@ export async function archiveAccount(id: string): Promise<Account> {
   return apiFetch<Account>(`/api/v1/accounts/${id}`, { method: 'DELETE' })
 }
 
+export type CategoryKind = 'expense' | 'income'
+
 export type Category = {
   id: string
   name: string
-  type: string
+  type: CategoryKind
   parent_id?: string
   sort_order: number
   archived: boolean
