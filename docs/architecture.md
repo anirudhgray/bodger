@@ -203,22 +203,35 @@ Fast transaction entry, transaction list with filters, account balances, setting
 
 A Docker image and Compose file (issue #64) were built alongside this milestone but shipped as a fast-follow rather than blocking it: PR #72 is complete and verified, but held on [#93](https://github.com/anirudhgray/bodger/issues/93), a read-visibility bug that leaves a containerized instance unauthenticatable after its first-run password is set. Docker packaging isn't core to "a non-technical person can use the product" the way the web UI and auth are, so #64 was moved out of the M2 milestone rather than holding M2 open on an external bug fix; it merges whenever #93 is resolved.
 
-### M3 — Multi-currency and FX
+### M3 · Rivendell — UI polish and design system
+The unglamorous pass before FX adds more surface to get wrong: a deliberate
+visual language instead of shadcn's install defaults, plus the UI debt M2
+shipped with rather than blocked on. Design tokens (color, type, spacing,
+radius, elevation) drafted first as mockups via Claude Design, then
+documented in `docs/design-system.md`; the existing `web/src/components/ui`
+primitives audited and brought into line with it. Cross-navigation between
+related screens and a responsive layout for small screens
+([#89](https://github.com/anirudhgray/bodger/issues/89),
+[#88](https://github.com/anirudhgray/bodger/issues/88)) land here rather
+than as ad-hoc fixes, since both are exactly the kind of thing a real
+design system should settle once rather than patch per-screen.
+
+### M4 — Multi-currency and FX
 Cross-currency transfers enabled. FX provider abstraction, rate storage, explicit conversion policies, reporting currency. Every converted figure carries its rate, date, source, and policy ([ADR-0004](decisions/0004-multi-currency-and-fx.md)).
 
-### M4 — Analytics and charts
+### M5 — Analytics and charts
 The shared query/filter model ([ADR-0009](decisions/0009-query-and-analytics-model.md)), spending and income by category, cash flow, trends, savings rate. Charts in the web UI and machine-readable output from the CLI, both over the same analytics methods.
 
-### M5 — Import and export
+### M6 — Import and export
 The staged import pipeline, CSV import with column mapping, duplicate detection, preview and commit. Canonical versioned JSON export and full backup ([ADR-0008](decisions/0008-import-export-architecture.md)). Export lands before or with import: backup is what makes import safe to attempt.
 
-### M6 — Budgets
+### M7 — Budgets
 Monthly category budgets, actual vs budget, remaining, utilisation, history. Rollover stays deferred.
 
-### M7 — MCP server
+### M8 — MCP server
 `bodger mcp` over stdio. Read, write, and destructive tool tiers with confirmation and audit.
 
-### M8 — Recurring transactions
+### M9 — Recurring transactions
 Rules, scheduled occurrences, materialisation, forecasting. Occurrences never touch a balance.
 
 ---
@@ -239,12 +252,13 @@ bug in containerized `bodger serve` unrelated to the milestone's own goal
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
 | M1 · Arda — Ledger core, CLI, REST API | ✅ Complete (v0.1.0) |
 | M2 · The Shire — Web UI and authentication | ✅ Complete |
-| M3 — Multi-currency and FX | ⬜ Not started |
-| M4 — Analytics and charts | ⬜ Not started |
-| M5 — Import and export | ⬜ Not started |
-| M6 — Budgets | ⬜ Not started |
-| M7 — MCP server | ⬜ Not started |
-| M8 — Recurring transactions | ⬜ Not started |
+| M3 · Rivendell — UI polish and design system | ⬜ Not started |
+| M4 — Multi-currency and FX | ⬜ Not started |
+| M5 — Analytics and charts | ⬜ Not started |
+| M6 — Import and export | ⬜ Not started |
+| M7 — Budgets | ⬜ Not started |
+| M8 — MCP server | ⬜ Not started |
+| M9 — Recurring transactions | ⬜ Not started |
 
 Delivered in M0: this document, [`data-model.md`](data-model.md), [`ux-principles.md`](ux-principles.md), ADRs 0001–0011, [`contributing.md`](contributing.md), a placeholder [`user-guide.md`](user-guide.md), `.tool-versions`, `Makefile`, and the GitHub Actions workflow.
 
@@ -511,7 +525,7 @@ Delivered so far in M2:
   plain decimal string the wire format already is, never parsed into a
   number or summed across accounts — no client-side financial logic,
   per §3, and no cross-account total, since that would need currency
-  conversion M3 hasn't built yet. `web/src/lib/api.ts` gained a small
+  conversion M4 hasn't built yet. `web/src/lib/api.ts` gained a small
   `getBalances` helper alongside `apiFetch`, not a restructuring of it.
 - Fast transaction entry (issue #60), replacing the `/transactions/new`
   placeholder. `web/src/pages/TransactionEntry.tsx` mirrors the CLI's own

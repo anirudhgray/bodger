@@ -26,7 +26,7 @@ The interesting pressure is that "four surfaces, one core" and "trivial to self-
 | HTTP routing | stdlib `net/http.ServeMux` | Since Go 1.22 it does method and path-pattern routing, which is the entire reason people reached for chi or gorilla. The handlers here are thin by design ([ADR-0005](0005-shared-application-layer.md)), so a framework would be adding a dependency to save nothing. |
 | CLI | cobra | Boring and universal. Subcommands, help, completions, no surprises. |
 | MCP | `github.com/modelcontextprotocol/go-sdk` | The official Go SDK. Same language as the app layer, so tools call app methods directly. |
-| Web UI | React + TypeScript + Vite | Large ecosystem for the chart-and-table work that dominates M4, and a TypeScript client generated from the API's OpenAPI description keeps the wire contract checked at compile time. Vite's build output is static files, which is what makes embedding work. |
+| Web UI | React + TypeScript + Vite | Large ecosystem for the chart-and-table work that dominates M5, and a TypeScript client generated from the API's OpenAPI description keeps the wire contract checked at compile time. Vite's build output is static files, which is what makes embedding work. |
 | Money | `int64` minor units + currency | Never floats. See [ADR-0004](0004-multi-currency-and-fx.md). |
 | Toolchain pin | `.tool-versions` | `asdf` is already present on the developer's machine; `mise` reads the same file. |
 | Task runner | `Makefile` | The repo's existing `.githooks/pre-push` already tells the user to run `make setup-hooks`. CI runs the same targets. |
@@ -48,7 +48,7 @@ The CLI, REST API, and MCP server are all subcommands of the same binary and all
 
 **TypeScript end-to-end (Node + Prisma + Next.js).** One language across the whole stack, and the strongest UI ecosystem. Rejected on the self-hosting constraint: shipping a Node application to someone's NAS means shipping `node_modules`, a runtime version, and a build step, where Go ships a file. The CLI also matters here — a Node CLI has visible startup latency, and fast entry is a product requirement ([ADR-0010](0010-personal-finance-not-accounting-software.md)). Go's weaker frontend story is irrelevant because the frontend is React either way.
 
-**Python (FastAPI + SQLAlchemy).** Excellent for the analytics work in M4. Rejected for the same packaging reason, more acutely — Python deployment on a home server is the least reproducible of the three — plus `Decimal`-vs-`float` money bugs are easy to write and hard to see, where Go's type system makes a `Money` value object that simply cannot be added to another currency.
+**Python (FastAPI + SQLAlchemy).** Excellent for the analytics work in M5. Rejected for the same packaging reason, more acutely — Python deployment on a home server is the least reproducible of the three — plus `Decimal`-vs-`float` money bugs are easy to write and hard to see, where Go's type system makes a `Money` value object that simply cannot be added to another currency.
 
 **Rust (Axum + SQLx).** Best correctness guarantees of the candidates and the same single-binary deployment. Rejected on velocity: this is a large surface area to build, much of it by agents working in parallel, and Rust's compile times and lifetime friction cost more here than its extra safety buys over Go for a domain whose hard parts are semantic (what does "August" mean, which rate converted this) rather than memory-related.
 
@@ -64,6 +64,6 @@ The CLI, REST API, and MCP server are all subcommands of the same binary and all
 
 - **Two languages, two toolchains.** Go and TypeScript, with `make` and CI wrapping both. The web UI is a real sub-project with its own dependency and lint story.
 - **Multiple processes on one SQLite file.** `bodger serve` in a container and `bodger tx add` in a terminal can open the same database. WAL mode plus a busy timeout makes this safe at personal-scale concurrency, but it is a real constraint and it is documented in [ADR-0007](0007-persistence-and-migrations.md), not glossed over.
-- **SQLite's analytical ceiling.** Fine for a personal ledger; window functions and CTEs are available. If M4's analytics ever outgrow it, that is the trigger for the Postgres adapter, not a surprise.
+- **SQLite's analytical ceiling.** Fine for a personal ledger; window functions and CTEs are available. If M5's analytics ever outgrow it, that is the trigger for the Postgres adapter, not a surprise.
 - **Go's verbosity.** More boilerplate mapping between DTOs and domain types than a dynamic language would need. Accepted: explicitness at layer boundaries is the property this architecture depends on.
 - **A generated TypeScript API client is a build-order dependency.** The web build needs the API's OpenAPI description, so `make build` orders those steps.

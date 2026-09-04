@@ -96,6 +96,6 @@ This is a CI test on a fixture covering multiple currencies, transfers, splits, 
 - **Two extra tables and a state machine** for something a naive implementation does in one pass. The complexity is real; it buys preview and rollback.
 - **Review is mandatory friction.** A user importing a clean statement still confirms. Mitigated by a summary view and bulk accept, not by skipping the stage.
 - **A large import holds the write lock for its commit** ([ADR-0007](0007-persistence-and-migrations.md)). Acceptable for a personal tool.
-- **Staged rows accumulate** for abandoned imports. A retention policy is a future issue, not an M5 blocker.
+- **Staged rows accumulate** for abandoned imports. A retention policy is a future issue, not an M6 blocker.
 - **Determinism constrains the export writer** — stable ordering and no incidental timestamps. Easy to break accidentally, which is precisely why the byte-identical test exists.
 - **CSV import cannot represent splits.** A documented limitation, surfaced in the UI rather than discovered.

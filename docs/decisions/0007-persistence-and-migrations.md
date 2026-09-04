@@ -49,7 +49,7 @@ Repository tests run against a **real temp-file SQLite database**, not an in-mem
 
 ## Alternatives considered
 
-**Postgres from the start.** More capable, better concurrency, no writer-serialisation constraint, and the obvious answer for a multi-user product. Rejected because it adds a container, a backup story, connection configuration, and a version-upgrade path to every self-hosted install, in exchange for capabilities a single-user ledger doesn't exercise. The repository boundary keeps it available. If M4's analytics or a real multi-user deployment ever demand it, that is the trigger.
+**Postgres from the start.** More capable, better concurrency, no writer-serialisation constraint, and the obvious answer for a multi-user product. Rejected because it adds a container, a backup story, connection configuration, and a version-upgrade path to every self-hosted install, in exchange for capabilities a single-user ledger doesn't exercise. The repository boundary keeps it available. If M5's analytics or a real multi-user deployment ever demand it, that is the trigger.
 
 **`mattn/go-sqlite3` (cgo).** Faster, and the reference driver. Rejected: cgo means a C toolchain for cross-compilation, a non-static binary, and a fatter container. The performance difference is invisible at personal-ledger scale.
 
