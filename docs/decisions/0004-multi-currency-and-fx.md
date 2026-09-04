@@ -96,7 +96,7 @@ Both posting amounts are authoritative (the user knows both), the implied rate i
 **Bad:**
 
 - **The API is more verbose.** Every monetary field is an object with a currency, and converted ones carry five more fields. Deliberate: the alternative is a bare number nobody can verify.
-- **Every surface must render provenance somewhere.** The web UI needs a way to show "converted at 0.0115 on 14 Aug" without cluttering a table — probably a tooltip or a detail row. That is real design work, deferred to M3.
+- **Every surface must render provenance somewhere.** The web UI needs a way to show "converted at 0.0115 on 14 Aug" without cluttering a table — probably a tooltip or a detail row. That is real design work, deferred to M4 (the FX milestone — renumbered when M3 became the UI-polish/design-system milestone).
 - **Policy is a parameter on nearly every analytics query**, and picking the right default per endpoint is a judgement call that must be made explicitly rather than inherited.
 - **Multi-currency reports can fail** where a single-currency one would succeed, when rates are missing. Correct, but it is a failure mode the UI must handle gracefully rather than as an error page.
 - **The rate table grows forever.** Trivial at daily granularity for a handful of currency pairs; a non-issue at this scale.
