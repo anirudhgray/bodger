@@ -27,4 +27,8 @@ internal/platform/webui/dist/*
 .env
 .env.*
 
+# curl's cookie jar (docs/user-guide.md and PR testing steps use
+# `curl -c cookies.txt` against a locally running `bodger serve`)
+cookies.txt
+
 .DS_Store
