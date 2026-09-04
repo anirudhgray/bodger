@@ -1,7 +1,7 @@
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import mkcert from 'vite-plugin-mkcert'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 // bodger's REST API always binds loopback (docs/architecture.md §9,
 // ADR-0006 — no auth yet). `bodger serve`'s default is 127.0.0.1:8080;
@@ -63,5 +63,10 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // web/e2e/*.spec.ts (issue #65) are Playwright specs, not Vitest's —
+    // they'd otherwise match Vitest's default *.spec.ts include pattern
+    // and fail immediately (test() isn't valid outside a Playwright
+    // runner). `npm run test:e2e` runs them instead.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
   },
 })
