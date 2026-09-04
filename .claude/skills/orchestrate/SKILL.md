@@ -156,6 +156,42 @@ An agent's self-report is a claim, not a fact. Before pushing anything:
   before merging. A branch built in parallel with another can be broken
   by whatever merged first without any git conflict at all. Re-run
   build/vet/fmt/test after the merge, not just before it.
+- **When the branch's base (or a sibling PR you're stacking on) gets
+  squash-merged, rebase onto it rather than merging.** A plain `git merge
+  origin/main` drags the old branch's full pre-squash commit history in
+  alongside the new squash commit - redundant, confusing history, even
+  though the content ends up correct. Instead:
+  `git rebase --onto origin/main origin/<old-base> <branch>` replays only
+  the branch's own commits on top of the real squashed `main`. This is
+  provably the intended shape, not just tidier: once the old base branch
+  is deleted, GitHub itself auto-retargets the PR's `base` to `main`. When
+  several sibling PRs share a now-merged base and get squash-merged one at
+  a time, each remaining PR needs this rebase again after every one of its
+  siblings lands - step 3's hotspot table means this is a near-certainty,
+  not an edge case, for any batch of parallel PRs that touch the same
+  hotspots.
+- **A dependency change on the branch you rebased onto needs a real
+  install, not just a clean rebase.** If `origin/main` (or whatever you
+  rebased onto) added a package (`package.json`/`package-lock.json`,
+  `go.mod`/`go.sum`), run `npm install` / `go mod download` in the
+  worktree before re-running checks - otherwise `tsc`/`vitest`/`go build`
+  fail on a module the lockfile now expects but `node_modules`/the module
+  cache doesn't have yet.
+- **A passing local check is not the same as a pushed check.** `make
+  check` validates the working tree, not what's about to be pushed. A fix
+  made after resolving a rebase conflict (a Prettier reformat, a stray
+  edit) has to actually be committed - via `git commit --fixup <commit> &&
+  git rebase -i --autosquash <base>` if it belongs folded into an earlier
+  commit in the same rebase, otherwise a plain new commit - before
+  pushing. Run `git status --short` immediately before every push and
+  confirm it's clean; a CI failure on a commit that "already passed
+  locally" almost always means the fix that made it pass was never
+  committed.
+- `gh pr merge --squash --delete-branch` can report a failure that's only
+  the local-branch deletion (typically because a worktree still has that
+  branch checked out), not a failed merge. Confirm the real outcome with
+  `gh pr view <N> --json state,mergedAt` before treating the error as a
+  problem to fix.
 - Check `gh api repos/<org>/<repo>/pulls/<N> --jq '{mergeable,
 mergeable_state}'` once a PR exists, as a second confirmation - it
   should read `clean`/`true` after the merge-in above.
