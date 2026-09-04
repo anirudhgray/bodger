@@ -4,16 +4,8 @@
 // project's one-call-per-action discipline — no business logic lives
 // here, only the shape of the request/response bodies
 // internal/surface/http already defines (see dto.go, auth.go).
-import {
-  apiFetch,
-  type Account,
-  type AccountKind,
-  type Category,
-  type CategoryKind,
-} from '@/lib/api'
+import { apiFetch, type Account, type Category } from '@/lib/api'
 import type { components } from '@/lib/api-types'
-
-export type { Account, AccountKind, Category, CategoryKind }
 
 // changePassword calls the in-app password-change route (#62). The API
 // revokes every session on success, including the one that made this
@@ -54,11 +46,13 @@ export async function revokeApiToken(id: string): Promise<void> {
   await apiFetch(`/api/v1/auth/tokens/${id}`, { method: 'DELETE' })
 }
 
-// Account/AccountKind are imported from '@/lib/api' (see the top of this
-// file) rather than declared here — issues #60/#61/#62 each independently
-// needed this same reference data on separate branches and each guessed
-// its own shape; issue #83 collapsed every copy onto the one generated
-// from internal/surface/http/openapi.json.
+// Account is imported from '@/lib/api' (see the top of this file) rather
+// than declared here — issues #60/#61/#62 each independently needed this
+// same reference data on separate branches and each guessed its own
+// shape; issue #83 collapsed every copy onto the one generated from
+// internal/surface/http/openapi.json. AccountKind isn't used by anything
+// in this file, so callers that need it (e.g. Settings.tsx) import it
+// straight from '@/lib/api' rather than through a re-export here.
 
 export async function listAccounts(): Promise<Account[]> {
   return apiFetch<Account[]>('/api/v1/accounts')
@@ -89,7 +83,9 @@ export async function archiveAccount(id: string): Promise<Account> {
   return apiFetch<Account>(`/api/v1/accounts/${id}`, { method: 'DELETE' })
 }
 
-// Category/CategoryKind: see the Account/AccountKind comment above.
+// Category: see the Account comment above — same reasoning, and
+// CategoryKind is likewise imported straight from '@/lib/api' by callers
+// that need it.
 
 export async function listCategories(): Promise<Category[]> {
   return apiFetch<Category[]>('/api/v1/categories')
