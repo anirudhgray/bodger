@@ -8,6 +8,8 @@
 // (internal/surface/http/auth_middleware.go, ADR-0006). A bearer-token
 // caller wouldn't need this, but the web UI is cookie-only by design (no
 // client-side token handling), so there's no case where it doesn't apply.
+import type { components } from './api-types'
+
 const CSRF_HEADER = 'X-Bodger-CSRF'
 const SAFE_METHODS = new Set(['GET', 'HEAD'])
 
@@ -83,18 +85,12 @@ export async function apiFetch<T>(
 // (internal/surface/http/balances.go) returns it: amount is a plain
 // decimal string in currency's minor-unit precision, not a number — never
 // parsed as a float here, only ever displayed as-is (issue #63; no
-// client-side financial logic, docs/architecture.md §3).
-export type BalanceEntry = {
-  account_id: string
-  account: string
-  amount: string
-  currency: string
-}
+// client-side financial logic, docs/architecture.md §3). Aliased (not
+// re-spelled) from the generated schema (issue #83) — see this file's
+// Account/Category types below for why.
+export type BalanceEntry = components['schemas']['Balance']
 
-export type Balances = {
-  as_of: string
-  balances: BalanceEntry[]
-}
+export type Balances = components['schemas']['Balances']
 
 // getBalances fetches every account's balance as of today (the API
 // resolves "today" server-side when as_of is omitted — normalise-once,
@@ -114,25 +110,14 @@ export function getBalances(): Promise<Balances> {
 // transactionKindFor explains why). The page component, not this file,
 // is where that gets translated for display.
 
-export type TransactionKind = 'outflow' | 'inflow' | 'transfer'
-
 // Transaction mirrors internal/surface/http/dto.go's transactionView:
 // account_id/category_id are set for an outflow or inflow,
 // from_account_id/to_account_id for a transfer — never both pairs at once.
-export type Transaction = {
-  id: string
-  type: TransactionKind
-  date: string
-  description: string
-  notes?: string
-  tags?: string[]
-  account_id?: string
-  category_id?: string
-  from_account_id?: string
-  to_account_id?: string
-  amount: string
-  currency: string
-}
+// Generated from openapi.json (issue #83), not hand-transcribed — see
+// this file's Account/Category types below for why that matters.
+export type Transaction = components['schemas']['Transaction']
+
+export type TransactionKind = Transaction['type']
 
 export type TransactionListFilter = {
   account?: string
@@ -143,10 +128,7 @@ export type TransactionListFilter = {
   cursor?: string
 }
 
-export type TransactionListPage = {
-  data: Transaction[]
-  next_cursor?: string
-}
+export type TransactionListPage = components['schemas']['TransactionList']
 
 function buildQuery(params: Record<string, string | undefined>): string {
   const query = new URLSearchParams()
@@ -202,39 +184,22 @@ export function deleteTransaction(id: string): Promise<Transaction> {
 
 // --- Accounts and categories (shared reference data) ----------------------
 // Three sibling issues (#60, #61, #62) each independently needed these
-// lookups; this is the single definition all three converged on after the
-// fact, matching internal/surface/http/dto.go's accountView/categoryView
-// exactly (field-for-field, including AccountKind/CategoryKind's real wire
-// values from internal/surface/http/openapi_gen.go's enum table) rather
-// than each screen's own narrower guess.
+// lookups, and each hand-transcribed its own guess of the wire shape —
+// two of the three guessed plausible-sounding but nonexistent account
+// kinds ("checking", "savings") instead of the real set. issue #83 closed
+// that gap: Account/Category (and their "type" enums) are now aliased
+// straight from ./api-types.ts, which `npm run generate:api-types`
+// regenerates from internal/surface/http/openapi.json — itself generated
+// from internal/surface/http/dto.go's accountView/categoryView and
+// openapi_gen.go's enum table (see docs/contributing.md's "Regenerating
+// the frontend's API types" section). A field or enum value that doesn't
+// actually exist on the wire is now a tsc error here, not a silent guess.
 
-export type AccountKind =
-  'bank' | 'cash' | 'credit_card' | 'wallet' | 'investment' | 'loan' | 'other'
+export type Account = components['schemas']['Account']
+export type AccountKind = Account['type']
 
-export type Account = {
-  id: string
-  name: string
-  type: AccountKind
-  currency: string
-  opening_balance: string
-  opening_balance_date?: string
-  institution?: string
-  sort_order: number
-  archived: boolean
-  archived_at?: string
-}
-
-export type CategoryKind = 'expense' | 'income'
-
-export type Category = {
-  id: string
-  name: string
-  type: CategoryKind
-  parent_id?: string
-  sort_order: number
-  archived: boolean
-  archived_at?: string
-}
+export type Category = components['schemas']['Category']
+export type CategoryKind = Category['type']
 
 export function listAccounts(): Promise<Account[]> {
   return apiFetch<Account[]>('/api/v1/accounts')

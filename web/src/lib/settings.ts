@@ -4,7 +4,16 @@
 // project's one-call-per-action discipline — no business logic lives
 // here, only the shape of the request/response bodies
 // internal/surface/http already defines (see dto.go, auth.go).
-import { apiFetch } from '@/lib/api'
+import {
+  apiFetch,
+  type Account,
+  type AccountKind,
+  type Category,
+  type CategoryKind,
+} from '@/lib/api'
+import type { components } from '@/lib/api-types'
+
+export type { Account, AccountKind, Category, CategoryKind }
 
 // changePassword calls the in-app password-change route (#62). The API
 // revokes every session on success, including the one that made this
@@ -18,18 +27,14 @@ export async function changePassword(newPassword: string): Promise<void> {
   })
 }
 
-export type ApiToken = {
-  id: string
-  name: string
-  created_at: string
-  last_used_at?: string
-  expires_at?: string
-  revoked_at?: string
-}
+// ApiToken/CreatedApiToken are generated from openapi.json (issue #83),
+// not hand-transcribed — see the Account/Category comment further down
+// for why that matters. CreatedApiToken (POST's response) genuinely
+// isn't just ApiToken plus a token field: it lacks last_used_at/revoked_at,
+// since a token this response describes was just created.
+export type ApiToken = components['schemas']['ApiToken']
 
-export type CreatedApiToken = ApiToken & {
-  token: string
-}
+export type CreatedApiToken = components['schemas']['CreateAPITokenResponse']
 
 export async function listApiTokens(): Promise<ApiToken[]> {
   return apiFetch<ApiToken[]>('/api/v1/auth/tokens')
@@ -49,27 +54,11 @@ export async function revokeApiToken(id: string): Promise<void> {
   await apiFetch(`/api/v1/auth/tokens/${id}`, { method: 'DELETE' })
 }
 
-// AccountKind/CategoryKind mirror internal/surface/http/openapi_gen.go's
-// enum table (the real wire values ledger.AccountKind/CategoryKind
-// produce) — kept here rather than imported from '@/lib/api' because this
-// branch predates #60/#61 (issues #60, #61, #62 each independently needed
-// this same reference data on separate branches); once this stack merges,
-// this and api.ts's identical definitions should collapse into one.
-export type AccountKind =
-  'bank' | 'cash' | 'credit_card' | 'wallet' | 'investment' | 'loan' | 'other'
-
-export type Account = {
-  id: string
-  name: string
-  type: AccountKind
-  currency: string
-  opening_balance: string
-  opening_balance_date?: string
-  institution?: string
-  sort_order: number
-  archived: boolean
-  archived_at?: string
-}
+// Account/AccountKind are imported from '@/lib/api' (see the top of this
+// file) rather than declared here — issues #60/#61/#62 each independently
+// needed this same reference data on separate branches and each guessed
+// its own shape; issue #83 collapsed every copy onto the one generated
+// from internal/surface/http/openapi.json.
 
 export async function listAccounts(): Promise<Account[]> {
   return apiFetch<Account[]>('/api/v1/accounts')
@@ -100,17 +89,7 @@ export async function archiveAccount(id: string): Promise<Account> {
   return apiFetch<Account>(`/api/v1/accounts/${id}`, { method: 'DELETE' })
 }
 
-export type CategoryKind = 'expense' | 'income'
-
-export type Category = {
-  id: string
-  name: string
-  type: CategoryKind
-  parent_id?: string
-  sort_order: number
-  archived: boolean
-  archived_at?: string
-}
+// Category/CategoryKind: see the Account/AccountKind comment above.
 
 export async function listCategories(): Promise<Category[]> {
   return apiFetch<Category[]>('/api/v1/categories')
