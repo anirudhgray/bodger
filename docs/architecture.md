@@ -2,7 +2,7 @@
 
 How `bodger` is put together: the layers, the boundary each surface is allowed to touch, the milestone sequence, and where the project currently stands.
 
-For *what* the system stores, read [`data-model.md`](data-model.md) — it is the source of truth for financial semantics and was written first, deliberately. For *who it's for and how it should feel*, read [`ux-principles.md`](ux-principles.md), which every surface is held to. This document describes the machinery around it.
+For *what* the system stores, read [`data-model.md`](data-model.md) — it is the source of truth for financial semantics and was written first, deliberately. For *who it's for and how it should feel*, read [`ux-principles.md`](ux-principles.md), which every surface is held to. For the web UI's *visual* language — color, type, spacing, component primitives — read [`design-system.md`](design-system.md). This document describes the machinery around it.
 
 ---
 
