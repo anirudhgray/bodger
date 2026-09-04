@@ -199,7 +199,9 @@ Single currency per account; a cross-currency transfer is rejected with a clear 
 Two surfaces ship together deliberately: the conformance suite needs two surfaces to compare, and the normalise-once contract is far cheaper to establish now than to retrofit across four.
 
 ### M2 · The Shire — Web UI and authentication
-Fast transaction entry, transaction list with filters, account balances, settings. Session-cookie auth for the browser, hashed API tokens for CLI/MCP. Docker image and Compose file. This is the milestone where a non-technical person can use the product — ordinary folk, no accountants, which is the Shire's whole character in the Arda (M1) world.
+Fast transaction entry, transaction list with filters, account balances, settings. Session-cookie auth for the browser, hashed API tokens for CLI/MCP. This is the milestone where a non-technical person can use the product — ordinary folk, no accountants, which is the Shire's whole character in the Arda (M1) world.
+
+A Docker image and Compose file (issue #64) were built alongside this milestone but shipped as a fast-follow rather than blocking it: PR #72 is complete and verified, but held on [#93](https://github.com/anirudhgray/bodger/issues/93), a read-visibility bug that leaves a containerized instance unauthenticatable after its first-run password is set. Docker packaging isn't core to "a non-technical person can use the product" the way the web UI and auth are, so #64 was moved out of the M2 milestone rather than holding M2 open on an external bug fix; it merges whenever #93 is resolved.
 
 ### M3 — Multi-currency and FX
 Cross-currency transfers enabled. FX provider abstraction, rate storage, explicit conversion policies, reporting currency. Every converted figure carries its rate, date, source, and policy ([ADR-0004](decisions/0004-multi-currency-and-fx.md)).
@@ -224,19 +226,19 @@ Rules, scheduled occurrences, materialisation, forecasting. Occurrences never to
 ## 9. Status
 
 **M1 · Arda shipped as [v0.1.0](https://github.com/anirudhgray/bodger/releases/tag/v0.1.0).**
-M2 · The Shire is underway — see the [M2 milestone](https://github.com/anirudhgray/bodger/milestone/2)
+**M2 · The Shire is complete** — see the [M2 milestone](https://github.com/anirudhgray/bodger/milestone/2)
 for its issues. Issue #65 (auth flow and web e2e smoke tests) was the last
-unclaimed M2 item; the only remaining open one is #64 (docker-compose,
-[PR #72](https://github.com/anirudhgray/bodger/pull/72)), blocked on
-[#93](https://github.com/anirudhgray/bodger/issues/93) — a read-visibility
-bug that leaves a containerized instance unauthenticatable after its
-first-run password is set.
+milestone item; #64 (docker-compose, [PR #72](https://github.com/anirudhgray/bodger/pull/72))
+was moved out of M2 rather than holding the milestone open on
+[#93](https://github.com/anirudhgray/bodger/issues/93), a read-visibility
+bug in containerized `bodger serve` unrelated to the milestone's own goal
+— see §8. It's tracked as backlog, unmilestoned, until #93 is resolved.
 
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
 | M1 · Arda — Ledger core, CLI, REST API | ✅ Complete (v0.1.0) |
-| M2 · The Shire — Web UI and authentication | 🟨 In progress |
+| M2 · The Shire — Web UI and authentication | ✅ Complete |
 | M3 — Multi-currency and FX | ⬜ Not started |
 | M4 — Analytics and charts | ⬜ Not started |
 | M5 — Import and export | ⬜ Not started |

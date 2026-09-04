@@ -9,6 +9,30 @@ sync with each GitHub Release.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-04
+
+### Added
+
+* aa5a797c: feat(api): session-cookie + bearer-token middleware, auth endpoints (#77)
+* 08455440: feat(app): login, logout, password set, and API-token issue/list/revoke use cases (#74)
+* 30db3cde: feat(cli): auth commands (set-password, API token create/list/revoke) (#76)
+* 4e442abd: feat(cmd): wire up structured logging for error cause chains (#68)
+* df09674d: feat(persistence): sessions and api_tokens tables + password_hash on users (#70)
+* 2c2eb7b9: feat(platform): add Argon2id password hashing and token primitives (#67)
+* 566a1e67: feat(release): credit commit authors, link changelog entries and full history (#52)
+* 1ce0f23c: feat(web): React+TS+Vite scaffold, embed pipeline, dev proxy (#69)
+* 89741260: feat(web): account balances view (#79)
+* 027d8d67: feat(web): fast transaction entry (#80)
+* dfe115f8: feat(web): humanize account/category type display copy (#94)
+* 0dff3726: feat(web): login and session handling (#78)
+* 9dc2d395: feat(web): serve the dev server over HTTPS via vite-plugin-mkcert (#87)
+* 03a2783e: feat(web): settings — password, API tokens, accounts/categories CRUD (#82)
+* eec6457b: feat(web): transaction list with filters (#81)
+
+### Fixed
+
+* b3cf6a65: fix(release): re-fetch tags before reading tag annotation content (#51)
+
 ## [0.1.0] - 2026-09-02
 
 ### Added
@@ -33,5 +57,6 @@ sync with each GitHub Release.
 * 5ae7d547: fix(infra): make lint fail loudly on an incompatible golangci-lint (#23)
 * c76bd7e7: fix(infra): pre-push hook executable bit, worktree hygiene (#14)
 
-[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/anirudhgray/bodger/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/anirudhgray/bodger/releases/tag/v0.1.0
