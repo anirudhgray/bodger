@@ -464,6 +464,32 @@ Delivered so far in M2:
   `*app.Service` exists — refuses a non-loopback bind unless
   `Service.IsAuthConfigured` (a password has been set on the seeded
   user) reports true.
+- Web UI login and session handling (issue #59), replacing the `/login`
+  placeholder from issue #58's scaffold. `web/src/lib/api.ts`'s
+  `apiFetch` is the one place the web UI calls the REST API from: it
+  always sends `credentials: "include"` and always attaches the
+  `X-Bodger-CSRF` header on a non-`GET`/`HEAD` request, so no individual
+  call site has to remember issue #56's CSRF rule itself. `web/src/lib/session.ts`
+  wraps `login`, `logout`, and `checkSession` on top — there's no
+  dedicated "who am I" endpoint (adding one would be a REST API change,
+  out of scope for a web-only issue), so `checkSession` reuses
+  `GET /api/v1/auth/tokens`, a real protected route, purely as a session
+  probe, discarding its response. `web/src/routes.tsx` gives the `/`
+  layout route and the `/login` route each a data-router `loader`
+  (`requireAuth`, `redirectIfAuthenticated`) built on `checkSession`: an
+  unauthenticated visit to anything under `/` redirects to `/login`, and
+  an already-authenticated visit to `/login` redirects back — the "route
+  guard" issue #59 asks for, enforced before either route ever renders
+  rather than as an effect inside one. `web/src/pages/Login.tsx` is the
+  real login screen (password only — there's no username field, matching
+  `internal/surface/http/auth.go`'s `loginRequest`); `web/src/App.tsx`'s
+  nav bar swaps its old static "Log in" link for a working "Log out"
+  button, since everything inside `AppLayout` is already known-
+  authenticated by the loader above it. Two new shadcn-style primitives,
+  `web/src/components/ui/input.tsx` and `label.tsx` (the latter over
+  `radix-ui`'s `Label`), join the existing `button.tsx`. No client-side
+  token handling anywhere — the session credential is the `HttpOnly`
+  cookie the browser already manages.
 
 - `internal/surface/cli`'s `auth` command group (issue #57): `set-password`
   (prompts for a new password with typed input hidden via `golang.org/x/term`,
