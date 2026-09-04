@@ -47,6 +47,21 @@ func TestCreateCategory_UnknownParentRef(t *testing.T) {
 	wantErrCode(t, err, errs.NotFound)
 }
 
+func TestCreateCategory_RejectsCrossKindParent(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	salary, err := svc.CreateCategory(ctx, app.CreateCategoryCommand{ActorID: testActorID, Name: "Salary", Kind: "income"})
+	if err != nil {
+		t.Fatalf("CreateCategory(Salary): %v", err)
+	}
+
+	_, err = svc.CreateCategory(ctx, app.CreateCategoryCommand{
+		ActorID: testActorID, Name: "Dining", Kind: "expense", ParentRef: salary.Category.ID(),
+	})
+	wantErrCode(t, err, errs.InvalidInput)
+}
+
 func TestRenameCategory(t *testing.T) {
 	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
 	ctx := context.Background()
@@ -115,6 +130,34 @@ func TestReparentCategory_RejectsSelfParent(t *testing.T) {
 
 	_, err = svc.ReparentCategory(ctx, app.ReparentCategoryCommand{ActorID: testActorID, CategoryRef: food.Category.ID(), ParentRef: food.Category.ID()})
 	wantErrCode(t, err, errs.InvalidInput)
+}
+
+func TestReparentCategory_RejectsCrossKindParent(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	dining, err := svc.CreateCategory(ctx, app.CreateCategoryCommand{ActorID: testActorID, Name: "Dining", Kind: "expense"})
+	if err != nil {
+		t.Fatalf("CreateCategory(Dining): %v", err)
+	}
+	salary, err := svc.CreateCategory(ctx, app.CreateCategoryCommand{ActorID: testActorID, Name: "Salary", Kind: "income"})
+	if err != nil {
+		t.Fatalf("CreateCategory(Salary): %v", err)
+	}
+
+	_, err = svc.ReparentCategory(ctx, app.ReparentCategoryCommand{
+		ActorID: testActorID, CategoryRef: dining.Category.ID(), ParentRef: salary.Category.ID(),
+	})
+	wantErrCode(t, err, errs.InvalidInput)
+
+	// The reparent must not have gone through.
+	after, err := svc.GetCategory(ctx, app.GetCategoryQuery{ActorID: testActorID, CategoryRef: dining.Category.ID()})
+	if err != nil {
+		t.Fatalf("GetCategory: %v", err)
+	}
+	if _, ok := after.Category.ParentID(); ok {
+		t.Error("Dining should still be top-level after a rejected cross-kind reparent")
+	}
 }
 
 func TestArchiveCategory(t *testing.T) {

@@ -323,6 +323,17 @@
         ],
         "type": "object"
       },
+      "ChangePasswordRequest": {
+        "properties": {
+          "new_password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_password"
+        ],
+        "type": "object"
+      },
       "CreateAPITokenRequest": {
         "properties": {
           "expires_at": {
@@ -1054,6 +1065,38 @@
           }
         },
         "summary": "End every session the acting user has open."
+      }
+    },
+    "/api/v1/auth/password": {
+      "post": {
+        "description": "Revokes every session the acting user has open, including whichever one made this request - it will need to sign in again afterward.",
+        "operationId": "changePassword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkEnvelope"
+                }
+              }
+            },
+            "description": "The password was changed."
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Change the acting user's password."
       }
     },
     "/api/v1/auth/tokens": {

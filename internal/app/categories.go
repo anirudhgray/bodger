@@ -20,10 +20,12 @@ type CategoryResult struct {
 // CreateCategoryCommand creates a new category. ParentRef, when non-empty,
 // must resolve against one of the actor's own categories (self-parenting
 // and top-level are both expressed differently: ParentRef == "" is
-// top-level, never a self-reference). Deeper cycle detection is the
-// repository's job (internal/adapters/sqlite's checkNoCycle) — nothing
-// here can introduce one anyway, since a brand-new category has no
-// descendants yet to have accidentally become its own ancestor.
+// top-level, never a self-reference), and that category must share Kind —
+// see ReparentCategory's doc comment for why the check lives here rather
+// than in ledger.NewCategory. Deeper cycle detection is the repository's
+// job (internal/adapters/sqlite's checkNoCycle) — nothing here can
+// introduce one anyway, since a brand-new category has no descendants yet
+// to have accidentally become its own ancestor.
 type CreateCategoryCommand struct {
 	ActorID   string
 	Name      string
@@ -57,6 +59,9 @@ func (s *Service) CreateCategory(ctx context.Context, cmd CreateCategoryCommand)
 		parent, err := s.resolveOwnedCategory(ctx, cmd.ActorID, cmd.ParentRef)
 		if err != nil {
 			return CategoryResult{}, attachField(err, "parent_ref")
+		}
+		if parent.Kind() != kind {
+			return CategoryResult{}, categoryKindMismatchError(kind, parent.Kind())
 		}
 		id := parent.ID()
 		parentIDPtr = &id
@@ -129,7 +134,14 @@ type ReparentCategoryCommand struct {
 // parent) and the deeper-cycle check (a category can't be its own
 // ancestor several levels up) both happen below this method, in
 // ledger.NewCategory and the repository's checkNoCycle respectively — this
-// method doesn't duplicate either.
+// method doesn't duplicate either. The kind-match check (an expense
+// category can't end up under an income parent, or vice versa) does live
+// here: category.go's doc comment describes the tree as "one tree,
+// typed... rather than an untyped shared one, which would let 'Salary'
+// appear in an expense picker", but NewCategory only receives a parent ID,
+// not the parent's own kind to compare against — this method has already
+// resolved the full parent Category to authorise ParentRef, so it's the
+// first place either kind is available together.
 func (s *Service) ReparentCategory(ctx context.Context, cmd ReparentCategoryCommand) (CategoryResult, error) {
 	if err := requireActorID(cmd.ActorID); err != nil {
 		return CategoryResult{}, err
@@ -144,6 +156,9 @@ func (s *Service) ReparentCategory(ctx context.Context, cmd ReparentCategoryComm
 		parent, err := s.resolveOwnedCategory(ctx, cmd.ActorID, cmd.ParentRef)
 		if err != nil {
 			return CategoryResult{}, attachField(err, "parent_ref")
+		}
+		if parent.Kind() != existing.Kind() {
+			return CategoryResult{}, categoryKindMismatchError(existing.Kind(), parent.Kind())
 		}
 		id := parent.ID()
 		parentIDPtr = &id
@@ -161,6 +176,16 @@ func (s *Service) ReparentCategory(ctx context.Context, cmd ReparentCategoryComm
 		return CategoryResult{}, err
 	}
 	return CategoryResult{Category: updated}, nil
+}
+
+// categoryKindMismatchError reports that a category's would-be parent
+// doesn't share its kind (CreateCategory and ReparentCategory both call
+// this — see ReparentCategory's doc comment for why the check happens
+// here rather than in ledger.NewCategory).
+func categoryKindMismatchError(kind, parentKind ledger.CategoryKind) error {
+	return errs.New(errs.InvalidInput).
+		Explain("A %s category can't have a %s category as its parent.", kind, parentKind).
+		Field("parent_ref")
 }
 
 // ArchiveCategoryCommand hides a category from pickers while leaving

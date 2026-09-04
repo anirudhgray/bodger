@@ -268,7 +268,7 @@ curl -b cookies.txt -X POST http://127.0.0.1:8080/api/v1/transactions \
   -d '{"type":"outflow","account":"HDFC Savings","category":"groceries","amount":"800","description":"Groceries"}'
 ```
 
-`POST /api/v1/auth/logout` ends the current session; `POST /api/v1/auth/logout-all` ends every session you have open, on every device, in one call.
+`POST /api/v1/auth/logout` ends the current session; `POST /api/v1/auth/logout-all` ends every session you have open, on every device, in one call. `POST /api/v1/auth/password` changes your password from within a signed-in session (`{"new_password":"..."}`) — this also signs you out everywhere, including the request that made the change, so you'll need to sign in again with the new password afterward.
 
 For a script, a cron job, or any client that isn't a browser, an **API token** is usually easier than a cookie — it's a long-lived credential you send as `Authorization: Bearer <token>` and never needs the CSRF header:
 
@@ -290,6 +290,12 @@ With `bodger serve` running, open its address in a browser (`http://127.0.0.1:80
 **Recording a transaction** works the same way it does at the command line: pick Spend, Receive, or Move, and fill in the amount, category (or the two accounts, for a move), and account — three fields is all it takes, and if you've only got one account it's preselected for you. The date defaults to today unless you open "Add details," which also has fields for notes and tags. Nothing you've typed is lost if the server rejects the entry (a category that doesn't exist, say) — fix the problem and submit again.
 
 The **Transactions** screen lists what you've recorded, newest first. Click **Filters** to narrow it down by account, category, type, or date range — the same filters `bodger transactions list` offers, tucked one click away rather than shown by default. Click **Edit** on any row to correct it in place — as with the CLI, an edit replaces the whole transaction, so the form starts pre-filled with everything it currently has; change what's wrong and save. **Delete** removes a transaction immediately, with no confirmation prompt — same as the CLI, nothing is erased from your database, so you keep a record of what was there.
+
+The **Settings** screen covers everything about your account and ledger setup:
+
+- **Password** — change it without going back to the CLI. This signs you out everywhere, including the browser you just used, so you'll land back on the login screen afterward.
+- **API tokens** — create, list, and revoke them, the same as `bodger auth token create`/`list`/`revoke`. A newly created token's value is shown once, right there on the screen — copy it before navigating away, since it can't be shown again.
+- **Accounts and categories** — add, rename, and archive either, and move a category under a different parent (or back to the top level). This is the same CRUD the CLI's `bodger accounts` and `bodger categories` commands expose, for whenever a browser is more convenient than a terminal.
 
 ---
 
