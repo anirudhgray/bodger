@@ -67,6 +67,13 @@ export function TransactionsList() {
   const [error, setError] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const [filter, setFilter] = useState<TransactionListFilter>({})
+  // Bumped on Clear to remount the filter form below (key={formResetKey}):
+  // its account/category/type/from/to fields are uncontrolled
+  // (defaultValue={filter.x ?? ''}) so they read once from filter at mount
+  // and never re-sync when filter state changes later, only when React
+  // actually recreates the DOM nodes. A remount is what makes Clear visibly
+  // clear the form, not just the data it's fetching with.
+  const [formResetKey, setFormResetKey] = useState(0)
   const [editingID, setEditingID] = useState<string | null>(null)
 
   const accountsByID = new Map(accounts.map((a) => [a.id, a.name]))
@@ -127,6 +134,7 @@ export function TransactionsList() {
 
   function clearFilters() {
     setFilter({})
+    setFormResetKey((k) => k + 1)
     load({}, false)
   }
 
@@ -168,6 +176,7 @@ export function TransactionsList() {
 
       {showFilters && (
         <form
+          key={formResetKey}
           onSubmit={applyFilters}
           className="border-border flex flex-wrap items-end gap-3 rounded-lg border p-3"
         >

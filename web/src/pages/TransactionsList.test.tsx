@@ -133,6 +133,49 @@ describe('TransactionsList', () => {
     )
   })
 
+  it('clearing filters resets the form so a later Apply is not stale', async () => {
+    mockedListTransactions.mockResolvedValue({ data: [groceries] })
+    render(<TransactionsList />)
+    await screen.findByText('Groceries')
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }))
+    fireEvent.change(await screen.findByLabelText('Account'), {
+      target: { value: 'a1' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() =>
+      expect(mockedListTransactions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ account: 'a1' }),
+      ),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    await waitFor(() =>
+      expect(mockedListTransactions).toHaveBeenLastCalledWith({
+        account: undefined,
+        category: undefined,
+        type: undefined,
+        from: undefined,
+        to: undefined,
+      }),
+    )
+    // The bug wasn't the fetch — clearFilters() always fetched unfiltered.
+    // It was the form still displaying "a1" afterwards, so a second Apply
+    // with no further changes would silently resubmit it.
+    expect(screen.getByLabelText('Account')).toHaveValue('')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() =>
+      expect(mockedListTransactions).toHaveBeenLastCalledWith({
+        account: undefined,
+        category: undefined,
+        type: undefined,
+        from: undefined,
+        to: undefined,
+      }),
+    )
+  })
+
   it('deletes a transaction and removes it from the list', async () => {
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     mockedDeleteTransaction.mockResolvedValue(groceries)
