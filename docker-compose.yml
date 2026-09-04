@@ -1,0 +1,36 @@
+# bodger's self-hosted stack: one service, no separate database container
+# (SQLite is an embedded file, ADR-0007) and no reverse proxy (the binary
+# serves the API and the embedded web UI itself, ADR-0001).
+#
+# BODGER_HTTP_BIND_ADDR is set to a non-loopback address below so the
+# `ports:` mapping actually reaches something - the application default
+# (127.0.0.1:8080, ADR-0006) would bind inside the container's own network
+# namespace, which Docker's bridge-network port publishing can never reach
+# regardless of what `ports:` says. ADR-0006 refuses to start bound
+# non-loopback until a password is set, so the *first* `docker compose up`
+# will fail fast with an actionable error - run
+# `docker compose run --rm bodger auth set-password` once first. See
+# "Running with Docker" in docs/user-guide.md for the full first-run flow.
+services:
+  bodger:
+    build:
+      context: .
+    image: bodger:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      BODGER_HTTP_BIND_ADDR: 0.0.0.0:8080
+      # Uncomment to set your own defaults (see docs/user-guide.md):
+      # BODGER_DEFAULT_CURRENCY: USD
+      # BODGER_USER_TIMEZONE: UTC
+      BODGER_DB_PATH: /data/bodger.db
+    volumes:
+      # Named volume, not a bind mount: survives `docker compose down` and
+      # a container recreate (e.g. `docker compose pull && docker compose
+      # up -d` to upgrade, ADR-0007). Back it up the same way as any other
+      # bodger install - copy bodger.db back out - see docs/user-guide.md.
+      - bodger-data:/data
+
+volumes:
+  bodger-data:
