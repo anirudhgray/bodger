@@ -45,7 +45,7 @@ func NewServerHandler(svc *app.Service, logger *slog.Logger) http.Handler {
 func reserveAPIPrefix(h *handlers, webUI http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
-			h.respondError(w, errs.New(errs.NotFound).Explain("No such API endpoint."))
+			h.respondError(w, r, errs.New(errs.NotFound).Explain("No such API endpoint."))
 			return
 		}
 		webUI.ServeHTTP(w, r)

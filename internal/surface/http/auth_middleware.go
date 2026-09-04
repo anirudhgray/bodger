@@ -122,7 +122,7 @@ func (h *handlers) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		if token, ok := bearerToken(r); ok {
 			result, err := h.svc.AuthenticateAPIToken(r.Context(), token)
 			if err != nil {
-				h.respondError(w, err)
+				h.respondError(w, r, err)
 				return
 			}
 			next(w, withActor(r, result.ActorID, ""))
@@ -131,19 +131,19 @@ func (h *handlers) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 
 		cookie, cerr := r.Cookie(sessionCookieName)
 		if cerr != nil {
-			h.respondError(w, errs.New(errs.Unauthenticated).Explain("Authentication is required."))
+			h.respondError(w, r, errs.New(errs.Unauthenticated).Explain("Authentication is required."))
 			return
 		}
 
 		result, aerr := h.svc.AuthenticateSession(r.Context(), cookie.Value)
 		if aerr != nil {
 			clearSessionCookie(w)
-			h.respondError(w, aerr)
+			h.respondError(w, r, aerr)
 			return
 		}
 
 		if !isSafeMethod(r.Method) && r.Header.Get(csrfHeaderName) == "" {
-			h.respondError(w, errs.New(errs.NotAllowed).
+			h.respondError(w, r, errs.New(errs.NotAllowed).
 				Explain("This request needs the %s header.", csrfHeaderName))
 			return
 		}
