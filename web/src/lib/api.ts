@@ -102,3 +102,120 @@ export type Balances = {
 export function getBalances(): Promise<Balances> {
   return apiFetch<Balances>('/api/v1/balances')
 }
+
+// --- Accounts and categories (shared reference data) ----------------------
+// Three sibling issues (#60, #61, #62) each independently needed these
+// lookups; this is the single definition all three converged on after the
+// fact, matching internal/surface/http/dto.go's accountView/categoryView
+// exactly (field-for-field, including AccountKind/CategoryKind's real wire
+// values from internal/surface/http/openapi_gen.go's enum table) rather
+// than each screen's own narrower guess.
+
+export type AccountKind =
+  'bank' | 'cash' | 'credit_card' | 'wallet' | 'investment' | 'loan' | 'other'
+
+export type Account = {
+  id: string
+  name: string
+  type: AccountKind
+  currency: string
+  opening_balance: string
+  opening_balance_date?: string
+  institution?: string
+  sort_order: number
+  archived: boolean
+  archived_at?: string
+}
+
+export type CategoryKind = 'expense' | 'income'
+
+export type Category = {
+  id: string
+  name: string
+  type: CategoryKind
+  parent_id?: string
+  sort_order: number
+  archived: boolean
+  archived_at?: string
+}
+
+export function listAccounts(): Promise<Account[]> {
+  return apiFetch<Account[]>('/api/v1/accounts')
+}
+
+export function listCategories(): Promise<Category[]> {
+  return apiFetch<Category[]>('/api/v1/categories')
+}
+
+// --- issue #60: transaction recording --------------------------------
+
+// RecordTransactionInput/RecordTransferInput carry the amount, date, and
+// every other value the API normalises server-side (ADR-0005) as raw
+// strings — this file never parses or validates them, it only passes them
+// through (docs/architecture.md §3).
+export type RecordTransactionInput = {
+  account: string
+  category: string
+  amount: string
+  date?: string
+  description?: string
+  notes?: string
+  tags?: string[]
+}
+
+export type RecordTransferInput = {
+  fromAccount: string
+  toAccount: string
+  amount: string
+  date?: string
+  description?: string
+  notes?: string
+  tags?: string[]
+}
+
+export function recordOutflow(input: RecordTransactionInput): Promise<unknown> {
+  return apiFetch('/api/v1/transactions', {
+    method: 'POST',
+    body: JSON.stringify({
+      type: 'outflow',
+      account: input.account,
+      category: input.category,
+      amount: input.amount,
+      date: input.date,
+      description: input.description ?? '',
+      notes: input.notes,
+      tags: input.tags,
+    }),
+  })
+}
+
+export function recordInflow(input: RecordTransactionInput): Promise<unknown> {
+  return apiFetch('/api/v1/transactions', {
+    method: 'POST',
+    body: JSON.stringify({
+      type: 'inflow',
+      account: input.account,
+      category: input.category,
+      amount: input.amount,
+      date: input.date,
+      description: input.description ?? '',
+      notes: input.notes,
+      tags: input.tags,
+    }),
+  })
+}
+
+export function recordTransfer(input: RecordTransferInput): Promise<unknown> {
+  return apiFetch('/api/v1/transfers', {
+    method: 'POST',
+    body: JSON.stringify({
+      from_account: input.fromAccount,
+      to_account: input.toAccount,
+      amount: input.amount,
+      date: input.date,
+      description: input.description ?? '',
+      notes: input.notes,
+      tags: input.tags,
+    }),
+  })
+}

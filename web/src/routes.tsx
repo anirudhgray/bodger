@@ -16,6 +16,7 @@ import { AppLayout } from '@/App'
 import { BalancesPage } from '@/pages/Balances'
 import { Login } from '@/pages/Login'
 import { Placeholder } from '@/pages/Placeholder'
+import { TransactionEntry } from '@/pages/TransactionEntry'
 import { checkSession } from '@/lib/session'
 
 // RouteError is exported only so routes.test.tsx can mount it directly
@@ -92,12 +93,7 @@ export const routes: RouteObject[] = [
       {
         path: 'transactions/new',
         // issue #60 — fast transaction entry
-        element: (
-          <Placeholder
-            title="Add a transaction"
-            description="Fast transaction entry lands in issue #60."
-          />
-        ),
+        element: <TransactionEntry />,
       },
       {
         path: 'balances',
