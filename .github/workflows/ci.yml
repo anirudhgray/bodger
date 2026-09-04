@@ -47,6 +47,14 @@ jobs:
         if: hashFiles('web/package-lock.json') != ''
         run: cd web && npm ci
 
+      # web/e2e's smoke test (issue #65) needs a real browser binary —
+      # Chromium only, matching web/playwright.config.ts's single project.
+      # `--with-deps` also installs the OS libraries Chromium needs on a
+      # bare runner image.
+      - name: Install Playwright's Chromium browser
+        if: hashFiles('web/package-lock.json') != ''
+        run: cd web && npx playwright install --with-deps chromium
+
       # Pinned, not `latest`: a linter release that adds a check would
       # otherwise fail an unrelated PR. Bump deliberately.
       - uses: golangci/golangci-lint-action@v9
