@@ -177,7 +177,7 @@ Weighted toward the layer where correctness is decided:
 - **Persistence** — repository tests against a real temp-file SQLite database, plus a migrate-up/migrate-down cycle on every migration.
 - **Surfaces** — thin. Enough to prove decoding and encoding; the shared conformance suite covers the rest.
 - **Round-trip** — export → import → export is byte-identical modulo surrogate IDs and timestamps.
-- **Web UI** — component tests with Vitest; end-to-end kept deliberately sparse. UI tests are not where financial correctness is established.
+- **Web UI** — component tests with Vitest; end-to-end kept deliberately sparse — one Playwright smoke test (login → record a transaction → see the updated balance → logout, issue #65) run against a real build of the production binary, not a substitute for each screen's own Vitest coverage. UI tests are not where financial correctness is established.
 
 Fixtures cover multiple currencies, transfers, splits, refunds, credit cards, imported duplicates, month boundaries, and a leap day.
 
@@ -225,7 +225,10 @@ Rules, scheduled occurrences, materialisation, forecasting. Occurrences never to
 
 **M1 · Arda shipped as [v0.1.0](https://github.com/anirudhgray/bodger/releases/tag/v0.1.0).**
 M2 · The Shire is underway — see the [M2 milestone](https://github.com/anirudhgray/bodger/milestone/2)
-for its issues.
+for its issues. Issue #65 (auth flow and web e2e smoke tests) was the last
+unclaimed M2 item; the only remaining open one is #64 (docker-compose,
+[PR #72](https://github.com/anirudhgray/bodger/pull/72)), ready but held
+back at the maintainer's discretion.
 
 | Milestone | Status |
 | --- | --- |
@@ -619,6 +622,38 @@ Delivered so far in M2:
   display copy; the `<option>` elements keep the wire value as `value`
   and show the humanized label as text. The CLI has the identical gap and
   is deliberately not touched here (issue #90's own stated scope).
+- Auth flow and web e2e smoke tests (issue #65), the milestone's own
+  "sits on top of the whole milestone" last item. The API-level auth flow
+  bullet (login → session cookie → protected request succeeds → logout →
+  same cookie rejected, plus CSRF header present/absent) was already
+  fully covered by `internal/surface/http/auth_test.go`, landed as part
+  of issue #56's own PR (`TestLogin_SetsSessionCookie_AndAuthenticatesSubsequentRequests`,
+  `TestCSRF_CookiePOSTWithoutHeaderIsRejected`,
+  `TestCSRF_CookiePOSTWithHeaderSucceeds`,
+  `TestCSRF_BearerTokenPOSTIsExempt`, `TestLogout_RevokesSessionCookie`) —
+  nothing new was needed there. The web e2e smoke test itself is new:
+  `web/e2e/smoke.spec.ts` ([Playwright](https://playwright.dev)) drives a
+  real Chromium browser through log in → record a transaction → see the
+  updated balance → log out, against a real build of the production
+  binary rather than `npm run dev` (`web/e2e/global-setup.ts` runs
+  `npm run build` and a real `go build`, then seeds a temp SQLite database
+  via the CLI and starts the binary on a fixed loopback port over plain
+  HTTP) — deliberately not the dev server, since `vite-plugin-mkcert`
+  installs a local CA through an interactive `sudo` prompt on first run
+  (issues #86/#85), unusable unattended. `npm run test` runs it as its
+  last step, so it's part of `make test`/`make check`/CI, which now
+  installs Chromium first (`.github/workflows/ci.yml`). Writing this test
+  surfaced a real gap in issue #60's fast transaction entry screen: the
+  application layer requires a non-empty transaction description
+  (`internal/app/transactions_record.go`'s `resolveCommonFields`), which
+  the CLI already works around by defaulting it to the category name for
+  spend/receive (or "Transfer from X to Y" for move — `internal/surface/cli/entries.go`'s
+  `newSpendCmd` doc comment, issue #7's own flagged decision), but
+  `TransactionEntry.tsx` never replicated that default — a transaction
+  recorded without opening "Add details" and typing a description failed
+  server-side. `TransactionEntry.tsx` now has a matching
+  `defaultDescription` helper following the identical convention, fixed
+  in the same PR as the test that caught it.
 
 Not yet built: everything else in §2.
 
