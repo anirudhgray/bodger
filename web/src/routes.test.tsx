@@ -92,7 +92,6 @@ describe('routes', () => {
 
     it.each([
       ['/transactions/new', 'Add a transaction'],
-      ['/balances', 'Balances'],
       ['/settings', 'Settings'],
     ])('renders the placeholder at %s', async (path, heading) => {
       const router = createMemoryRouter(routes, { initialEntries: [path] })

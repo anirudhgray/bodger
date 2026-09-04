@@ -13,6 +13,7 @@ import {
 } from 'react-router-dom'
 
 import { AppLayout } from '@/App'
+import { BalancesPage } from '@/pages/Balances'
 import { Login } from '@/pages/Login'
 import { Placeholder } from '@/pages/Placeholder'
 import { checkSession } from '@/lib/session'
@@ -100,13 +101,7 @@ export const routes: RouteObject[] = [
       },
       {
         path: 'balances',
-        // issue #63 — account balances view
-        element: (
-          <Placeholder
-            title="Balances"
-            description="The account balances view lands in issue #63."
-          />
-        ),
+        element: <BalancesPage />,
       },
       {
         path: 'settings',
