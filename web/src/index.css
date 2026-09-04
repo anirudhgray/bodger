@@ -4,47 +4,70 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * M3 · Rivendell design tokens (docs/design-system.md). Neutrals carry a
+ * near-imperceptible cool tint (hue 240) independent of the brand accent
+ * (hue 155, a muted forest green) — the accent is deliberately reserved
+ * for one primary action per screen plus small signals (success text,
+ * focus rings), not used as a background fill.
+ */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --background: oklch(0.99 0.002 240);
+  --foreground: oklch(0.17 0.006 240);
+  --card: oklch(1 0.001 240);
+  --card-foreground: oklch(0.17 0.006 240);
+  --popover: oklch(1 0.001 240);
+  --popover-foreground: oklch(0.17 0.006 240);
+  --primary: oklch(0.32 0.05 155);
+  --primary-foreground: oklch(0.99 0.004 240);
+  --secondary: oklch(0.95 0.004 240);
+  --secondary-foreground: oklch(0.3 0.006 240);
+  --muted: oklch(0.96 0.004 240);
+  --muted-foreground: oklch(0.5 0.008 240);
+  --accent: oklch(0.96 0.004 240);
+  --accent-foreground: oklch(0.17 0.006 240);
+  --success: oklch(0.42 0.1 155);
+  --success-foreground: oklch(0.99 0.004 240);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: oklch(0.9 0.006 240);
+  --input: oklch(0.9 0.006 240);
+  --ring: oklch(0.32 0.05 155);
   --radius: 0.625rem;
+  --sidebar: oklch(0.975 0.003 240);
+  --sidebar-foreground: oklch(0.17 0.006 240);
+  --sidebar-accent: oklch(0.94 0.005 240);
+  --sidebar-accent-foreground: oklch(0.17 0.006 240);
+  --sidebar-border: oklch(0.9 0.006 240);
+  --sidebar-ring: oklch(0.32 0.05 155);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: oklch(0.16 0.005 240);
+  --foreground: oklch(0.96 0.003 240);
+  --card: oklch(0.2 0.005 240);
+  --card-foreground: oklch(0.96 0.003 240);
+  --popover: oklch(0.2 0.005 240);
+  --popover-foreground: oklch(0.96 0.003 240);
+  --primary: oklch(0.6 0.05 155);
+  --primary-foreground: oklch(0.14 0.006 240);
+  --secondary: oklch(0.27 0.005 240);
+  --secondary-foreground: oklch(0.94 0.003 240);
+  --muted: oklch(0.24 0.005 240);
+  --muted-foreground: oklch(0.68 0.008 240);
+  --accent: oklch(0.24 0.005 240);
+  --accent-foreground: oklch(0.96 0.003 240);
+  --success: oklch(0.68 0.13 155);
+  --success-foreground: oklch(0.14 0.006 240);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
+  --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: oklch(0.6 0.05 155);
+  --sidebar: oklch(0.185 0.005 240);
+  --sidebar-foreground: oklch(0.96 0.003 240);
+  --sidebar-accent: oklch(0.26 0.005 240);
+  --sidebar-accent-foreground: oklch(0.96 0.003 240);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.6 0.05 155);
 }
 
 @theme inline {
