@@ -227,8 +227,10 @@ Rules, scheduled occurrences, materialisation, forecasting. Occurrences never to
 M2 · The Shire is underway — see the [M2 milestone](https://github.com/anirudhgray/bodger/milestone/2)
 for its issues. Issue #65 (auth flow and web e2e smoke tests) was the last
 unclaimed M2 item; the only remaining open one is #64 (docker-compose,
-[PR #72](https://github.com/anirudhgray/bodger/pull/72)), ready but held
-back at the maintainer's discretion.
+[PR #72](https://github.com/anirudhgray/bodger/pull/72)), blocked on
+[#93](https://github.com/anirudhgray/bodger/issues/93) — a read-visibility
+bug that leaves a containerized instance unauthenticatable after its
+first-run password is set.
 
 | Milestone | Status |
 | --- | --- |
