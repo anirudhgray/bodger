@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -32,7 +33,8 @@ func TestRespondError_LogsInternalErrorCause(t *testing.T) {
 	err := errs.New(errs.Internal).Explain("bodger couldn't save that.").Wrap(cause)
 
 	rec := httptest.NewRecorder()
-	h.respondError(rec, err)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/transactions", nil)
+	h.respondError(rec, req, err)
 
 	if rec.Code != errs.HTTPStatus(errs.Internal) {
 		t.Errorf("status = %d, want %d", rec.Code, errs.HTTPStatus(errs.Internal))
@@ -59,6 +61,9 @@ func TestRespondError_LogsInternalErrorCause(t *testing.T) {
 	if !strings.Contains(logged, string(errs.Internal)) {
 		t.Errorf("log output is missing the error code: %s", logged)
 	}
+	if !strings.Contains(logged, `"method":"POST"`) || !strings.Contains(logged, `"path":"/api/v1/transactions"`) {
+		t.Errorf("log output is missing the failing request's method/path: %s", logged)
+	}
 }
 
 // TestRespondError_NilLoggerDoesNotPanic checks the nil-logger escape
@@ -68,7 +73,8 @@ func TestRespondError_LogsInternalErrorCause(t *testing.T) {
 func TestRespondError_NilLoggerDoesNotPanic(t *testing.T) {
 	h := &handlers{logger: nil}
 	rec := httptest.NewRecorder()
-	h.respondError(rec, errs.New(errs.NotFound).Explain("No such thing."))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/does-not-exist", nil)
+	h.respondError(rec, req, errs.New(errs.NotFound).Explain("No such thing."))
 	if rec.Code != errs.HTTPStatus(errs.NotFound) {
 		t.Errorf("status = %d, want %d", rec.Code, errs.HTTPStatus(errs.NotFound))
 	}

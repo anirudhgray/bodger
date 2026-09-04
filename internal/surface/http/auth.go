@@ -36,13 +36,13 @@ type okView struct {
 func (h *handlers) login(w http.ResponseWriter, r *http.Request) {
 	var body loginRequest
 	if err := decodeJSON(r, &body); err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 
 	result, err := h.svc.Login(r.Context(), app.LoginCommand{Password: body.Password})
 	if err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 
@@ -57,13 +57,13 @@ func (h *handlers) login(w http.ResponseWriter, r *http.Request) {
 func (h *handlers) logout(w http.ResponseWriter, r *http.Request) {
 	sid := sessionID(r)
 	if sid == "" {
-		h.respondError(w, errs.New(errs.InvalidInput).
+		h.respondError(w, r, errs.New(errs.InvalidInput).
 			Explain("Logging out requires a session; revoke an API token instead."))
 		return
 	}
 
 	if err := h.svc.Logout(r.Context(), app.LogoutCommand{ActorID: actorID(r), SessionID: sid}); err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 	clearSessionCookie(w)
@@ -76,7 +76,7 @@ func (h *handlers) logout(w http.ResponseWriter, r *http.Request) {
 // revocation follows (internal/app/auth.go's doc comment).
 func (h *handlers) logoutAll(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.LogoutAllSessions(r.Context(), app.LogoutAllSessionsCommand{ActorID: actorID(r)}); err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 	if sessionID(r) != "" {
@@ -135,7 +135,7 @@ type createAPITokenResponse struct {
 func (h *handlers) createAPIToken(w http.ResponseWriter, r *http.Request) {
 	var body createAPITokenRequest
 	if err := decodeJSON(r, &body); err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 
@@ -143,7 +143,7 @@ func (h *handlers) createAPIToken(w http.ResponseWriter, r *http.Request) {
 		ActorID: actorID(r), Name: body.Name, ExpiresAt: body.ExpiresAt,
 	})
 	if err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 
@@ -157,7 +157,7 @@ func (h *handlers) createAPIToken(w http.ResponseWriter, r *http.Request) {
 func (h *handlers) listAPITokens(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.ListAPITokens(r.Context(), app.ListAPITokensQuery{ActorID: actorID(r)})
 	if err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 	views := make([]apiTokenView, 0, len(result.Tokens))
@@ -171,7 +171,7 @@ func (h *handlers) revokeAPIToken(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.RevokeAPIToken(r.Context(), app.RevokeAPITokenCommand{
 		ActorID: actorID(r), TokenID: r.PathValue("id"),
 	}); err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 	respond(w, http.StatusOK, okView{OK: true})
