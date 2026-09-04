@@ -77,6 +77,33 @@ function parseTags(raw: string): string[] | undefined {
   return tags.length > 0 ? tags : undefined
 }
 
+// defaultDescription mirrors the CLI's own description-defaulting
+// decision (internal/surface/cli/entries.go's newSpendCmd doc comment,
+// issue #7): the application layer requires a non-empty description
+// (internal/app/transactions_record.go's resolveCommonFields), but
+// ux-principles.md §3's fast-entry budget has no room for a fourth
+// required field. The CLI resolves that by having spend/receive's
+// category argument do double duty as the description, and move's
+// description defaults to "Transfer from <from> to <to>" — this screen
+// follows the identical convention rather than inventing its own, so a
+// transaction recorded without opening "Add details" gets the same kind
+// of description a CLI user recording the same thing would.
+function defaultDescription(
+  kind: Kind,
+  accounts: Account[],
+  categories: Category[],
+  accountId: string,
+  toAccountId: string,
+  categoryId: string,
+): string {
+  if (kind === 'transfer') {
+    const fromName = accounts.find((a) => a.id === accountId)?.name ?? ''
+    const toName = accounts.find((a) => a.id === toAccountId)?.name ?? ''
+    return `Transfer from ${fromName} to ${toName}`
+  }
+  return categories.find((c) => c.id === categoryId)?.name ?? ''
+}
+
 export function TransactionEntry() {
   const [kind, setKind] = useState<Kind>('outflow')
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -155,7 +182,16 @@ export function TransactionEntry() {
       const common = {
         amount: amount.trim(),
         date: date || undefined,
-        description: description.trim() || undefined,
+        description:
+          description.trim() ||
+          defaultDescription(
+            kind,
+            accounts,
+            categories,
+            accountId,
+            toAccountId,
+            categoryId,
+          ),
         notes: notes.trim() || undefined,
         tags: parseTags(tags),
       }
