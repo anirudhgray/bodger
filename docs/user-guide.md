@@ -345,15 +345,33 @@ make docker-up
 
 This is `docker compose up --build`: it builds the image and starts one container running `bodger serve`. There's no second container for a database — your SQLite file lives in a named Docker volume (`bodger-data`), so it survives `docker compose down` and a later `docker compose up`, the same way it'd survive restarting the binary directly. Upgrading is `docker compose pull && docker compose up -d` once images are published; for now, `docker compose up --build` picks up any change and re-migrates on start, same as always.
 
-**The served API and web UI aren't reachable from the host yet — this is a known, deliberate gap, not a bug.** `bodger` refuses to bind anything but a loopback address until authentication exists (see [above](#running-the-rest-api), [ADR-0006](decisions/0006-authentication-and-multi-user-path.md)), and a process bound to loopback *inside a container's own network namespace* is never reachable through Docker's usual bridge-network port publishing — the forwarded traffic arrives on the container's other network interface, not its loopback one. So `docker-compose.yml` ships with no `ports:` mapping at all; adding one today would silently do nothing. The alternative, `network_mode: host`, would make it reachable, but it does so by giving up the container's network isolation entirely — not a trade-off to make silently in a compose file most people won't read closely. So this is pinned rather than worked around: once auth (issue #56) lands and a non-loopback bind is allowed, `docker-compose.yml` will get a real `ports:` mapping and this section will be rewritten.
+**First run will fail — this is expected.** `docker-compose.yml` sets `BODGER_HTTP_BIND_ADDR=0.0.0.0:8080` and publishes it with `ports: ["8080:8080"]`, because a loopback bind *inside a container's own network namespace* is never reachable through Docker's bridge-network port publishing no matter what `ports:` says — the forwarded traffic arrives on the container's other network interface, not its loopback one. `bodger` in turn refuses to bind non-loopback until a password is set (see [above](#running-the-rest-api), [ADR-0006](decisions/0006-authentication-and-multi-user-path.md)), so the very first `docker compose up` exits with an error telling you to set one. Do that once, against the same named volume, before starting the server:
 
-Until then, the container is still useful for one-off CLI commands against its own database:
+```sh
+docker compose run --rm bodger auth set-password
+New password:
+Confirm password:
+Password updated.
+```
+
+Then bring the server up:
+
+```sh
+make docker-up
+bodger: listening on 0.0.0.0:8080
+```
+
+```sh
+curl http://127.0.0.1:8080/healthz
+```
+
+The web UI is reachable the same way, at `http://127.0.0.1:8080` (or your Docker host's address, if you're running this on another machine) — same login screen and same password as above.
+
+The container is also useful for one-off CLI commands against its own database, whether or not the server is running:
 
 ```sh
 docker compose run --rm bodger accounts list
 ```
-
-If you want the API/web UI reachable today, run `bodger serve` directly on the host instead (see [above](#running-the-rest-api)) rather than through Docker.
 
 ---
 
