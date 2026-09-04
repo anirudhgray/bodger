@@ -24,6 +24,9 @@ internal/platform/webui/dist/*
 *.db
 *.db-wal
 *.db-shm
+# Pre-migration safety backups (internal/adapters/sqlite/migrate.go's
+# backupBeforeMigrate, ADR-0007): "<db file>.pre-<target version>.bak".
+*.db.pre-*.bak
 .env
 .env.*
 
