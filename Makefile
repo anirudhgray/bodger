@@ -78,11 +78,14 @@ ifneq ($(HAS_WEB),)
 	cd $(WEB_DIR) && npm run fmt:check
 endif
 
-## generate: run go generate (e.g. regenerate internal/surface/http/openapi.json)
+## generate: regenerate generated files (openapi.json, then its frontend types)
 .PHONY: generate
 generate:
 ifneq ($(HAS_GO),)
 	go generate $(GO_PKGS)
+endif
+ifneq ($(HAS_WEB),)
+	cd $(WEB_DIR) && npm run generate
 endif
 
 ## vet: run go vet
