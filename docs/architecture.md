@@ -607,6 +607,18 @@ Delivered so far in M2:
   side) runs as part of `npm run test`, so `make check`/CI fails on drift
   between the checked-in file and a fresh run of the generator. Compile-time
   types only, matching the Go side — no frontend runtime schema validation.
+- Account/category type display copy humanized in the web UI (issue #90).
+  `Settings.tsx`'s account-type `<select>`, account list row, and category
+  list row previously rendered `AccountKind`/`CategoryKind`'s wire values
+  (`credit_card`, `expense`) straight into user-facing text —
+  `TransactionsList.tsx`'s `kindLabel` had already solved the identical
+  problem for transaction kind but nothing carried the pattern to
+  account/category type. `Settings.tsx` now has matching
+  `accountKindLabel`/`categoryKindLabel` functions (same one-vocabulary
+  rationale, docs/ux-principles.md §7) that translate the wire enum to
+  display copy; the `<option>` elements keep the wire value as `value`
+  and show the humanized label as text. The CLI has the identical gap and
+  is deliberately not touched here (issue #90's own stated scope).
 
 Not yet built: everything else in §2.
 
