@@ -615,7 +615,17 @@ function CategoriesSection() {
                       >
                         <option value="">Top level</option>
                         {(categories ?? [])
-                          .filter((c) => c.id !== category.id)
+                          // Same kind only — an expense category can't sit
+                          // under an income parent or vice versa (one
+                          // typed tree, data-model.md §6). The app layer
+                          // (categories.go's categoryKindMismatchError)
+                          // enforces this too; filtering here just keeps
+                          // the picker from offering a choice it would
+                          // reject.
+                          .filter(
+                            (c) =>
+                              c.id !== category.id && c.type === category.type,
+                          )
                           .map((c) => (
                             <option key={c.id} value={c.id}>
                               {c.name}

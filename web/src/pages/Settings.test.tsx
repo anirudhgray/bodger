@@ -179,6 +179,44 @@ describe('Settings', () => {
     )
   })
 
+  it('only offers same-kind categories as a Parent option', async () => {
+    mockedListCategories.mockReset().mockResolvedValue([
+      {
+        id: 'cat_dining',
+        name: 'Dining',
+        type: 'expense',
+        sort_order: 0,
+        archived: false,
+      },
+      {
+        id: 'cat_groceries',
+        name: 'Groceries',
+        type: 'expense',
+        sort_order: 1,
+        archived: false,
+      },
+      {
+        id: 'cat_salary',
+        name: 'Salary',
+        type: 'income',
+        sort_order: 0,
+        archived: false,
+      },
+    ])
+    renderSettings()
+
+    const parentSelect = await screen.findByLabelText('Parent', {
+      selector: '#parent-cat_dining',
+    })
+    const optionLabels = Array.from(
+      parentSelect.querySelectorAll('option'),
+    ).map((o) => o.textContent)
+    // Dining (expense) may become top-level or sit under Groceries
+    // (expense), but never under Salary (income) — one typed tree,
+    // data-model.md §6.
+    expect(optionLabels).toEqual(['Top level', 'Groceries'])
+  })
+
   it('archives an account and removes it from the list', async () => {
     mockedListAccounts
       .mockResolvedValueOnce([
