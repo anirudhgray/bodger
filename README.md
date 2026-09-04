@@ -37,6 +37,7 @@ None of these is the "real" one. They are peers over the same application layer,
 | [Architecture](docs/architecture.md) | Layers, surface boundaries, milestones, current status |
 | [Data model](docs/data-model.md) | The financial domain — accounts, transactions, postings, budgets, currency |
 | [UX principles](docs/ux-principles.md) | Who this is for, and the expectations every surface is held to |
+| [Design system](docs/design-system.md) | The web UI's color, type, spacing, and component primitives |
 | [Decision records](docs/decisions/) | Why the load-bearing calls were made the way they were |
 | [Contributing](docs/contributing.md) | Toolchain setup, build commands, conventions |
 | [User guide](docs/user-guide.md) | Installing, first run, recording transactions, reading balances, the CLI reference |
