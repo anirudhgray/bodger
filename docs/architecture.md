@@ -589,6 +589,24 @@ Delivered so far in M2:
   so filesystem permissions on `bodger.db` are the actual boundary, and this
   command is the CLI-driven password reset ADR-0006 promises instead of an
   email flow.
+- Frontend types generated from `openapi.json`, not hand-transcribed
+  (issue #83). Reviewing #60/#61/#62 found that each had independently
+  guessed the wire shape of `Account`/`Category` — two of the three
+  guessed nonexistent account kinds (`"checking"`, `"savings"`) instead
+  of the real set, and it only compiled because `type` was a bare
+  `string` nothing checked against the real enum. `web/src/lib/api-types.ts`
+  is now generated straight from `internal/surface/http/openapi.json` via
+  [`openapi-typescript`](https://www.npmjs.com/package/openapi-typescript)
+  (`npm run generate:api-types`, wired into `make generate` alongside the
+  Go-side `openapi.json` generation it depends on), and `web/src/lib/api.ts`
+  /`settings.ts` alias `Account`/`Category`/`Transaction`/`ApiToken`/etc.
+  and their `type` enums from it instead of declaring their own — a field
+  or enum value that doesn't exist on the wire is now a `tsc` error, not a
+  silent guess. `npm run check:api-types` (`openapi-typescript --check`,
+  the same regenerate-and-diff trick `openapigen_test.go` uses on the Go
+  side) runs as part of `npm run test`, so `make check`/CI fails on drift
+  between the checked-in file and a fresh run of the generator. Compile-time
+  types only, matching the Go side — no frontend runtime schema validation.
 
 Not yet built: everything else in §2.
 
