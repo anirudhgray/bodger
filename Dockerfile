@@ -59,10 +59,10 @@ COPY --chown=65532:65532 --from=go-build /data /data
 # BODGER_DB_PATH points at the mount point docker-compose.yml's named
 # volume covers, so the SQLite file (and its pre-migration backup,
 # ADR-0007) survive a container recreate. BODGER_HTTP_BIND_ADDR is left
-# at its application default (127.0.0.1:8080, ADR-0006) - see
-# docs/user-guide.md's Docker section for why that has to stay loopback,
-# and why that currently means the served API isn't reachable from the
-# host until issue #56 (auth) lands.
+# at its application default (127.0.0.1:8080, ADR-0006) here - it's
+# docker-compose.yml's environment: that overrides it to a non-loopback
+# bind, since that's the compose-specific call (ADR-0006 requires a
+# password to be set first; see docs/user-guide.md's Docker section).
 ENV BODGER_DB_PATH=/data/bodger.db
 
 VOLUME ["/data"]
