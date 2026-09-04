@@ -100,14 +100,14 @@ type changePasswordRequest struct {
 func (h *handlers) changePassword(w http.ResponseWriter, r *http.Request) {
 	var body changePasswordRequest
 	if err := decodeJSON(r, &body); err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 
 	if err := h.svc.SetPassword(r.Context(), app.SetPasswordCommand{
 		ActorID: actorID(r), NewPassword: body.NewPassword,
 	}); err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 	if sessionID(r) != "" {
