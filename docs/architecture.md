@@ -345,7 +345,14 @@ Delivered so far in M2:
   (`web/src/routes.tsx`) with placeholder screens for the issues below to
   fill in, and `npm run dev`'s Vite dev server proxying `/api` and
   `/healthz` to a locally running `bodger serve` so frontend iteration
-  doesn't need a production build each time. `make build-web` builds
+  doesn't need a production build each time. The dev server runs over
+  `https://localhost:5173`, not plain HTTP (issue #86, `vite-plugin-mkcert`
+  in `vite.config.ts`): the session cookie is `Secure`, and Safari doesn't
+  reliably honour that attribute over `http://localhost` (a currently-open
+  WebKit inconsistency — issue #85's investigation has the detail), so
+  without real TLS here Safari can't complete login against the dev
+  server at all. First run per machine prompts once for the OS password
+  to trust the generated local CA. `make build-web` builds
   straight into `internal/platform/webui/dist`, which that package
   `go:embed`s; nothing under `dist/` is tracked except an empty
   `.gitkeep` (so `go build`/`go test`/`go vet` keep working on a Go-only

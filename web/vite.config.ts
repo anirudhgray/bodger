@@ -1,5 +1,6 @@
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import mkcert from 'vite-plugin-mkcert'
 import { defineConfig } from 'vitest/config'
 
 // bodger's REST API always binds loopback (docs/architecture.md §9,
@@ -10,7 +11,26 @@ const apiProxyTarget =
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    // Serves `npm run dev` over real localhost HTTPS (self-signed by a
+    // locally-trusted CA, via mkcert) rather than plain HTTP. Safari
+    // doesn't reliably honor the session cookie's Secure attribute over
+    // http://localhost — a real, currently-open WebKit inconsistency
+    // (issue #86, #85) — so without this, Safari can't complete login
+    // against the dev server at all.
+    //
+    // Its default `apply: 'serve'` correctly no-ops it out of
+    // `make build-web` (a real `vite build`), but Vitest also resolves
+    // this file through Vite's dev-server machinery, so `apply: 'serve'`
+    // alone still triggers it there too — installing a local CA (an
+    // interactive `sudo` prompt on first run) is not something a test run
+    // should ever need or attempt. Vitest sets process.env.VITEST, so
+    // exclude the plugin explicitly under it rather than relying on
+    // `apply` alone.
+    ...(process.env.VITEST ? [] : [mkcert()]),
+  ],
   resolve: {
     alias: {
       '@': new URL('./src', import.meta.url).pathname,
