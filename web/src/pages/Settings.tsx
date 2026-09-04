@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ApiError } from '@/lib/api'
+import { ApiError, type Account, type Category } from '@/lib/api'
 import {
   archiveAccount,
   archiveCategory,
@@ -24,9 +24,7 @@ import {
   renameCategory,
   reparentCategory,
   revokeApiToken,
-  type Account,
   type ApiToken,
-  type Category,
   type CreatedApiToken,
 } from '@/lib/settings'
 

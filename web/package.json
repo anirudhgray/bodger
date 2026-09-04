@@ -9,8 +9,11 @@
     "lint": "oxlint",
     "fmt": "prettier --write .",
     "fmt:check": "prettier --check .",
-    "test": "vitest run",
-    "preview": "vite preview"
+    "test": "vitest run && npm run check:api-types",
+    "preview": "vite preview",
+    "generate": "npm run generate:api-types",
+    "generate:api-types": "openapi-typescript ../internal/surface/http/openapi.json -o src/lib/api-types.ts",
+    "check:api-types": "openapi-typescript ../internal/surface/http/openapi.json -o src/lib/api-types.ts --check"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
@@ -33,6 +36,7 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
     "jsdom": "^30.0.1",
+    "openapi-typescript": "7.13.0",
     "oxlint": "^1.79.0",
     "prettier": "^3.9.6",
     "shadcn": "^4.19.1",
@@ -41,5 +45,10 @@
     "vite": "^8.2.2",
     "vite-plugin-mkcert": "^2.1.0",
     "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "openapi-typescript": {
+      "typescript": "$typescript"
+    }
   }
 }

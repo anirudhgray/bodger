@@ -31,7 +31,7 @@ The [`Makefile`](../Makefile) is the build contract. **CI runs `make check` and 
 | `make check` | `fmt-check` + `vet` + `lint` + `test`. Run before every push |
 | `make test` | Go tests with `-race`, plus web tests |
 | `make fmt` | Format everything in place |
-| `make generate` | Regenerate generated files (e.g. `internal/surface/http/openapi.json`) |
+| `make generate` | Regenerate generated files (`internal/surface/http/openapi.json`, then `web/src/lib/api-types.ts` from it) |
 | `make build` | Build the web UI, then the binary, into `bin/bodger` |
 | `make run` | Run the server locally |
 | `make test-cover` | Tests with a coverage profile |
@@ -178,3 +178,13 @@ make generate    # or: go generate ./...
 and commit the result alongside the code change. `openapigen_test.go`'s `TestOpenAPIDocumentMatchesGenerator` fails CI (`make check`) if `openapi.json` on disk doesn't match a fresh run of the generator, so a forgotten `go generate` is caught in CI rather than shipping a stale document — and the same package's `http_test.go` end-to-end tests validate every real response against that same document (`openapi3filter`), so a handler whose response doesn't actually match its declared schema fails there too.
 
 A DTO field's `enum`, `doc`, and `format` struct tags (see `dto.go`'s doc comment) are how the generator learns what a plain Go string actually means on the wire — a closed set of values, prose a type can't carry, or that it's a money amount or a calendar date. Add or adjust these when a new field needs the same treatment, rather than hand-editing `openapi.json` afterwards.
+
+### Regenerating the frontend's API types
+
+`web/src/lib/api-types.ts` is generated from `internal/surface/http/openapi.json`, not hand-written (issue #83) — the same discipline one level further down the chain: `web/src/lib/api.ts` and `web/src/lib/settings.ts` alias their `Account`/`Category`/`Transaction`/`ApiToken`/etc. types and `type` enums from it (`import type { components } from './api-types'; type Account = components['schemas']['Account']`) instead of hand-transcribing the DTO shape, so a field or enum value that doesn't actually exist on the wire is a `tsc` error rather than a silent guess. `make generate` regenerates both files in order — `openapi.json` first, then `api-types.ts` from it:
+
+```sh
+make generate    # or, from web/: npm run generate
+```
+
+and commit the result alongside the code change. `npm run check:api-types` ([`openapi-typescript`](https://www.npmjs.com/package/openapi-typescript)'s own `--check` flag: regenerate in memory and diff against the checked-in file) runs as part of `npm run test`, so `make check`/CI fails if `api-types.ts` doesn't match a fresh run of the generator — the same regenerate-and-diff freshness check `openapigen_test.go` does for `openapi.json` itself, extended one step further down. `api-types.ts` is excluded from `npm run fmt`/`fmt:check` (`.prettierignore`) since it's generated output, not hand-formatted code. This is compile-time types only — no frontend runtime schema validation.
