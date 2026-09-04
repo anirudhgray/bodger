@@ -155,14 +155,31 @@ throwaway local tag:
 ```sh
 git checkout main && git pull
 git tag -a v0.0.0-preview -m "preview"
+git push origin v0.0.0-preview
 goreleaser release --skip=validate --skip=publish --clean
 cat dist/CHANGELOG.md   # this is your new release's entry
 git tag -d v0.0.0-preview
+git push origin :refs/tags/v0.0.0-preview
 rm -rf dist
 ```
 
 (`--skip=validate` bypasses GoReleaser's clean-working-tree/CI-environment
 checks, which don't apply to a local preview; nothing is published.)
+
+**The throwaway tag must actually be pushed**, briefly — a purely local
+tag isn't enough. `.goreleaser.yaml`'s `changelog.use: github` resolves
+each entry's author credit via GitHub's REST compare API
+(`.../compare/vPREV...v0.0.0-preview`), which 404s on a ref that only
+exists locally. Push it, run the preview, then delete it both locally
+and on the remote (`git push origin :refs/tags/v0.0.0-preview`) — same
+throwaway spirit as before, just briefly visible on GitHub in the
+meantime. If you'd rather not push even a throwaway tag, hand-build the
+entry directly from `git log vPREV..main` instead: `sort: asc` in this
+config sorts alphabetically by commit message text (not chronologically)
+within each group, and no author suffix appears for this single-maintainer
+repo despite the template's `{{ AuthorUsername }}`/`{{ AuthorName }}`
+fallback — see any existing `CHANGELOG.md` entry for the exact format to
+match by hand.
 
 ### 2. Open the routine PR
 
@@ -236,6 +253,17 @@ Use `git tag -s` instead of `-a` if you want the tag GPG-signed (a signing
 key is already configured for this repository; it isn't required for
 every commit, but a release tag is a reasonable place to use it — pass
 `-s` in place of `-a` above, same `-m`).
+
+**`-s` needs a terminal `gpg-agent`/`pinentry` can actually prompt
+through.** In an agent-driven or otherwise non-interactive shell (no real
+TTY for pinentry to attach to), `git tag -s` hangs waiting on a prompt
+that can never be answered, then times out and can corrupt the terminal
+session outright — reported once from a Claude Code session driving this
+exact step. There's no good non-interactive workaround (this is
+`gpg-agent`/`pinentry` behavior, not something `.goreleaser.yaml` or this
+repo's tooling controls); in that situation, fall back to an unsigned `-a`
+tag rather than retrying `-s`, or have a human run the `-s` version
+themselves from a real interactive terminal.
 
 Pushing the tag triggers `release.yaml`: it builds, generates the same
 changelog as step 1 (now for real, from the real tag), and publishes the
