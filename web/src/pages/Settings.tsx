@@ -9,7 +9,13 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ApiError, type Account, type Category } from '@/lib/api'
+import {
+  ApiError,
+  type Account,
+  type AccountKind,
+  type Category,
+  type CategoryKind,
+} from '@/lib/api'
 import {
   archiveAccount,
   archiveCategory,
@@ -261,7 +267,30 @@ function ApiTokensSection() {
   )
 }
 
-const ACCOUNT_TYPES = [
+// accountKindLabel mirrors TransactionsList.tsx's kindLabel: the wire
+// vocabulary (AccountKind's snake_case enum) is never what a person reads
+// — "one vocabulary, not two" across every surface (docs/ux-principles.md
+// §7).
+function accountKindLabel(kind: AccountKind): string {
+  switch (kind) {
+    case 'bank':
+      return 'Bank'
+    case 'cash':
+      return 'Cash'
+    case 'credit_card':
+      return 'Credit card'
+    case 'wallet':
+      return 'Wallet'
+    case 'investment':
+      return 'Investment'
+    case 'loan':
+      return 'Loan'
+    case 'other':
+      return 'Other'
+  }
+}
+
+const ACCOUNT_TYPES: AccountKind[] = [
   'bank',
   'cash',
   'credit_card',
@@ -349,11 +378,11 @@ function AccountsSection() {
             id="account-type"
             className="border-input bg-background h-8 rounded-lg border px-2.5 text-sm shadow-xs"
             value={type}
-            onChange={(event) => setType(event.target.value)}
+            onChange={(event) => setType(event.target.value as AccountKind)}
           >
             {ACCOUNT_TYPES.map((t) => (
               <option key={t} value={t}>
-                {t}
+                {accountKindLabel(t)}
               </option>
             ))}
           </select>
@@ -410,7 +439,7 @@ function AccountsSection() {
                     <div>
                       <p className="font-medium">{account.name}</p>
                       <p className="text-muted-foreground text-xs">
-                        {account.type} · {account.currency}
+                        {accountKindLabel(account.type)} · {account.currency}
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -442,7 +471,18 @@ function AccountsSection() {
   )
 }
 
-const CATEGORY_TYPES = ['expense', 'income']
+// categoryKindLabel: see accountKindLabel above — same rationale, for
+// CategoryKind's expense/income wire values.
+function categoryKindLabel(kind: CategoryKind): string {
+  switch (kind) {
+    case 'expense':
+      return 'Expense'
+    case 'income':
+      return 'Income'
+  }
+}
+
+const CATEGORY_TYPES: CategoryKind[] = ['expense', 'income']
 
 function CategoriesSection() {
   const [categories, setCategories] = useState<Category[] | null>(null)
@@ -532,11 +572,11 @@ function CategoriesSection() {
             id="category-type"
             className="border-input bg-background h-8 rounded-lg border px-2.5 text-sm shadow-xs"
             value={type}
-            onChange={(event) => setType(event.target.value)}
+            onChange={(event) => setType(event.target.value as CategoryKind)}
           >
             {CATEGORY_TYPES.map((t) => (
               <option key={t} value={t}>
-                {t}
+                {categoryKindLabel(t)}
               </option>
             ))}
           </select>
@@ -593,7 +633,7 @@ function CategoriesSection() {
                     <div>
                       <p className="font-medium">{category.name}</p>
                       <p className="text-muted-foreground text-xs">
-                        {category.type}
+                        {categoryKindLabel(category.type)}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
