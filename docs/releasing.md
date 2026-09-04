@@ -48,6 +48,14 @@ GitHub API, which needs a previous tag to diff against — never true for
 the first release, and not guaranteed thereafter), otherwise the git
 author name, which is always available.
 
+Each entry's short SHA links to its commit (`changelog.format` in
+[`.goreleaser.yaml`](../.goreleaser.yaml)). The `(#N)` PR reference
+alongside it — GitHub's own squash-merge suffix, riding along inside the
+commit message text — is **not** linked: GoReleaser's changelog format
+template has no Sprig funcmap available (confirmed by hitting `function
+"regexReplaceAll" not defined` trying it), so there's no way to turn text
+embedded in `.Message` into a link from this field.
+
 Each version heading is a clickable link — `## [X.Y.Z] - YYYY-MM-DD`
 resolves via a same-named link reference at the bottom of the file
 (`[X.Y.Z]: https://github.com/anirudhgray/bodger/compare/vPREV...vX.Y.Z`,
