@@ -28,6 +28,8 @@
 //	GET/POST    /api/v1/transactions    GET/PATCH/DELETE  /api/v1/transactions/{id}
 //	POST        /api/v1/transfers
 //	GET         /api/v1/balances
+//	POST        /api/v1/auth/login      POST  /api/v1/auth/logout   POST  /api/v1/auth/logout-all
+//	GET/POST    /api/v1/auth/tokens     DELETE  /api/v1/auth/tokens/{id}
 //	GET         /healthz
 //
 // `bodger serve` (server.go's `serve` command) answers every other path
@@ -36,11 +38,12 @@
 // in this package that calls it directly, sees only the routes above;
 // only NewServerHandler adds the web UI's catch-all.
 //
-// There is no authentication yet (M1, ADR-0006): every request acts as
-// the single seeded user, ports.SeededUserID. This package binds
-// loopback only by default, and internal/platform/config refuses to load
-// a configuration that binds anywhere else — see ServeCommand and
-// internal/platform/config's validateHTTPBindAddr.
+// Every request authenticates via a session cookie or a bearer API token
+// (issue #56, ADR-0006) — auth_middleware.go's requireAuth resolves the
+// acting user before any handler but the public routes (login, healthz)
+// ever runs. This package binds loopback only by default; a non-loopback
+// bind is refused at startup unless a password has already been set on
+// the seeded user — see ServeCommand's checkBindAddr (server.go).
 //
 // One route bends the "decode, call one app method, encode" rule in a
 // narrow, documented way: PATCH on a single account or category accepts a

@@ -37,6 +37,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/platform/clock"
 	"github.com/anirudhgray/bodger/internal/platform/config"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
+	"github.com/anirudhgray/bodger/internal/ports"
 	httpsurface "github.com/anirudhgray/bodger/internal/surface/http"
 )
 
@@ -141,15 +142,40 @@ func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
 	return svc
 }
 
+// testServer bundles the real *httptest.Server every test in this file
+// exercises with a bearer API token already minted for the seeded user
+// (see newTestServer) — every route but /healthz and /api/v1/auth/login
+// requires a resolved ActorID now (issue #56), so do (below) authenticates
+// every request with it by default rather than making each test case set
+// up its own credential.
+type testServer struct {
+	*httptest.Server
+	token string
+}
+
 // newTestServer builds a real *httptest.Server serving
-// httpsurface.NewMux(svc, nil) over a newTestService.
-func newTestServer(t *testing.T, frozenAt time.Time, tz string) *httptest.Server {
+// httpsurface.NewMux(svc, nil) over a newTestService, with a password set
+// on the seeded user and a bearer API token minted for it — the
+// credential do (below) presents on every request by default. Tests that
+// specifically exercise authentication itself (auth_test.go) build their
+// own server from newTestService instead, so they control credentials
+// directly.
+func newTestServer(t *testing.T, frozenAt time.Time, tz string) *testServer {
 	t.Helper()
 
 	svc := newTestService(t, frozenAt, tz)
+	ctx := context.Background()
+	if err := svc.SetPassword(ctx, app.SetPasswordCommand{ActorID: ports.SeededUserID, NewPassword: "test-password-long-enough"}); err != nil {
+		t.Fatalf("SetPassword: %v", err)
+	}
+	tok, err := svc.CreateAPIToken(ctx, app.CreateAPITokenCommand{ActorID: ports.SeededUserID, Name: "http_test"})
+	if err != nil {
+		t.Fatalf("CreateAPIToken: %v", err)
+	}
+
 	srv := httptest.NewServer(httpsurface.NewMux(svc, nil))
 	t.Cleanup(srv.Close)
-	return srv
+	return &testServer{Server: srv, token: tok.PlaintextToken}
 }
 
 // do sends method/path (with an optional JSON body) to srv and returns
@@ -161,7 +187,7 @@ func newTestServer(t *testing.T, frozenAt time.Time, tz string) *httptest.Server
 // response also goes through validateResponse before returning, so every
 // caller gets openapi3filter's schema check for free (issue #36) without
 // asking for it.
-func do(t *testing.T, srv *httptest.Server, method, path string, body any) (int, map[string]any) {
+func do(t *testing.T, srv *testServer, method, path string, body any) (int, map[string]any) {
 	t.Helper()
 
 	var reader *bytes.Reader
@@ -182,6 +208,7 @@ func do(t *testing.T, srv *httptest.Server, method, path string, body any) (int,
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	req.Header.Set("Authorization", "Bearer "+srv.token)
 
 	resp, err := srv.Client().Do(req)
 	if err != nil {
@@ -574,6 +601,7 @@ func TestMalformedRequestBody(t *testing.T) {
 		t.Fatalf("http.NewRequest: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+srv.token)
 	resp, err := srv.Client().Do(req)
 	if err != nil {
 		t.Fatalf("Do: %v", err)

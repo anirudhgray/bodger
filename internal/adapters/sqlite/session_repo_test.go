@@ -188,3 +188,101 @@ func TestSessionRepository_Delete_NotFoundForOtherActor(t *testing.T) {
 		t.Errorf("Delete(other actor's session): err = %v, want errs.NotFound", err)
 	}
 }
+
+// TestSessionRepository_ListByUser_NewestFirstAndScopedToActor covers
+// issue #71's enumeration: only the actor's own sessions come back, newest
+// first.
+func TestSessionRepository_ListByUser_NewestFirstAndScopedToActor(t *testing.T) {
+	db, _ := newTestDB(t)
+	repo := NewSessionRepository(db)
+	ctx := context.Background()
+
+	seedOtherUser(t, db, otherUserID)
+
+	base := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+	older := mustSession("sess-older", ports.SeededUserID, "hash-older", base, base, base.Add(time.Hour))
+	newer := mustSession("sess-newer", ports.SeededUserID, "hash-newer", base.Add(time.Minute), base.Add(time.Minute), base.Add(2*time.Hour))
+	other := mustSession("sess-other", otherUserID, "hash-other", base, base, base.Add(time.Hour))
+	for _, s := range []ports.Session{older, newer} {
+		if err := repo.Create(ctx, ports.SeededUserID, s); err != nil {
+			t.Fatalf("Create(%s): %v", s.ID, err)
+		}
+	}
+	if err := repo.Create(ctx, otherUserID, other); err != nil {
+		t.Fatalf("Create(other): %v", err)
+	}
+
+	got, err := repo.ListByUser(ctx, ports.SeededUserID)
+	if err != nil {
+		t.Fatalf("ListByUser: %v", err)
+	}
+	if len(got) != 2 || got[0].ID != "sess-newer" || got[1].ID != "sess-older" {
+		t.Errorf("ListByUser = %+v, want [sess-newer, sess-older]", got)
+	}
+}
+
+func TestSessionRepository_ListByUser_EmptyForUnknownActor(t *testing.T) {
+	db, _ := newTestDB(t)
+	repo := NewSessionRepository(db)
+
+	got, err := repo.ListByUser(context.Background(), otherUserID)
+	if err != nil {
+		t.Fatalf("ListByUser: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("ListByUser(no sessions) = %+v, want empty", got)
+	}
+}
+
+// TestSessionRepository_DeleteAllByUser_RemovesOnlyThatActorsSessions
+// covers issue #71's bulk revoke: every session the actor owns is gone,
+// and another actor's session is untouched.
+func TestSessionRepository_DeleteAllByUser_RemovesOnlyThatActorsSessions(t *testing.T) {
+	db, _ := newTestDB(t)
+	repo := NewSessionRepository(db)
+	ctx := context.Background()
+
+	seedOtherUser(t, db, otherUserID)
+
+	now := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+	a := mustSession("sess-a", ports.SeededUserID, "hash-a", now, now, now.Add(time.Hour))
+	b := mustSession("sess-b", ports.SeededUserID, "hash-b", now, now, now.Add(time.Hour))
+	other := mustSession("sess-other", otherUserID, "hash-other", now, now, now.Add(time.Hour))
+	for _, s := range []ports.Session{a, b} {
+		if err := repo.Create(ctx, ports.SeededUserID, s); err != nil {
+			t.Fatalf("Create(%s): %v", s.ID, err)
+		}
+	}
+	if err := repo.Create(ctx, otherUserID, other); err != nil {
+		t.Fatalf("Create(other): %v", err)
+	}
+
+	if err := repo.DeleteAllByUser(ctx, ports.SeededUserID); err != nil {
+		t.Fatalf("DeleteAllByUser: %v", err)
+	}
+
+	got, err := repo.ListByUser(ctx, ports.SeededUserID)
+	if err != nil {
+		t.Fatalf("ListByUser: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("ListByUser after DeleteAllByUser = %+v, want empty", got)
+	}
+
+	stillThere, err := repo.GetByTokenHash(ctx, "hash-other")
+	if err != nil {
+		t.Fatalf("GetByTokenHash(other actor's session): %v", err)
+	}
+	if stillThere.ID != "sess-other" {
+		t.Errorf("other actor's session was affected: %+v", stillThere)
+	}
+}
+
+func TestSessionRepository_DeleteAllByUser_NoSessionsIsNotAnError(t *testing.T) {
+	db, _ := newTestDB(t)
+	repo := NewSessionRepository(db)
+
+	if err := repo.DeleteAllByUser(context.Background(), ports.SeededUserID); err != nil {
+		t.Errorf("DeleteAllByUser(no sessions): %v", err)
+	}
+}

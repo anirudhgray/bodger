@@ -86,6 +86,7 @@ func errorCodeValues() []string {
 var errorResponseNames = map[int]string{
 	http.StatusNotFound:            "NotFound",
 	http.StatusUnprocessableEntity: "InvalidInput",
+	http.StatusUnauthorized:        "Unauthenticated",
 }
 
 // schemaTypeName is this generator's naming rule for a Go DTO type's
@@ -403,9 +404,12 @@ func GenerateOpenAPIDocument() ([]byte, error) {
 			Version: "1.0.0",
 			Description: "bodger's read/write REST API. This is the web UI's only interface " +
 				"(milestone 2 generates its TypeScript client from this description) and is " +
-				"available to external clients and integrations. There is no authentication yet: " +
-				"the server binds a loopback address only, and refuses to start otherwise. " +
-				"Monetary values are always JSON strings, never numbers.",
+				"available to external clients and integrations. Every route but /healthz and " +
+				"POST /api/v1/auth/login requires a session cookie (from login) or an " +
+				"Authorization: Bearer API token; a cookie-authenticated state-changing request " +
+				"also needs the X-Bodger-CSRF header. The server binds a loopback address only " +
+				"unless a password has been set. Monetary values are always JSON strings, never " +
+				"numbers.",
 		},
 		Servers: openapi3.Servers{{URL: "/"}},
 		Paths:   paths,
@@ -415,8 +419,9 @@ func GenerateOpenAPIDocument() ([]byte, error) {
 				"Id": &openapi3.ParameterRef{Value: idParameter()},
 			},
 			Responses: openapi3.ResponseBodies{
-				"NotFound":     errorResponse("No such resource.", errorEnvelopeRef),
-				"InvalidInput": errorResponse("The request failed validation.", errorEnvelopeRef),
+				"NotFound":        errorResponse("No such resource.", errorEnvelopeRef),
+				"InvalidInput":    errorResponse("The request failed validation.", errorEnvelopeRef),
+				"Unauthenticated": errorResponse("No valid credential was presented.", errorEnvelopeRef),
 			},
 		},
 	}

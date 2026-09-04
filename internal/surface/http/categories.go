@@ -21,28 +21,28 @@ type createCategoryRequest struct {
 func (h *handlers) createCategory(w http.ResponseWriter, r *http.Request) {
 	var body createCategoryRequest
 	if err := decodeJSON(r, &body); err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 
 	result, err := h.svc.CreateCategory(r.Context(), app.CreateCategoryCommand{
-		ActorID:   actorID(),
+		ActorID:   actorID(r),
 		Name:      body.Name,
 		Kind:      body.Type,
 		ParentRef: body.Parent,
 		SortOrder: body.SortOrder,
 	})
 	if err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 	respond(w, http.StatusCreated, categoryViewFrom(result))
 }
 
 func (h *handlers) listCategories(w http.ResponseWriter, r *http.Request) {
-	result, err := h.svc.ListCategories(r.Context(), app.ListCategoriesQuery{ActorID: actorID()})
+	result, err := h.svc.ListCategories(r.Context(), app.ListCategoriesQuery{ActorID: actorID(r)})
 	if err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 	views := make([]categoryView, 0, len(result.Categories))
@@ -54,11 +54,11 @@ func (h *handlers) listCategories(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) getCategory(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.GetCategory(r.Context(), app.GetCategoryQuery{
-		ActorID:     actorID(),
+		ActorID:     actorID(r),
 		CategoryRef: r.PathValue("id"),
 	})
 	if err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 	respond(w, http.StatusOK, categoryViewFrom(result))
@@ -78,7 +78,7 @@ type patchCategoryRequest struct {
 func (h *handlers) patchCategory(w http.ResponseWriter, r *http.Request) {
 	var body patchCategoryRequest
 	if err := decodeJSON(r, &body); err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 
@@ -86,36 +86,36 @@ func (h *handlers) patchCategory(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case body.Name != nil && body.Parent == nil:
 		result, err := h.svc.RenameCategory(r.Context(), app.RenameCategoryCommand{
-			ActorID: actorID(), CategoryRef: id, Name: *body.Name,
+			ActorID: actorID(r), CategoryRef: id, Name: *body.Name,
 		})
 		if err != nil {
-			h.respondError(w, err)
+			h.respondError(w, r, err)
 			return
 		}
 		respond(w, http.StatusOK, categoryViewFrom(result))
 
 	case body.Parent != nil && body.Name == nil:
 		result, err := h.svc.ReparentCategory(r.Context(), app.ReparentCategoryCommand{
-			ActorID: actorID(), CategoryRef: id, ParentRef: *body.Parent,
+			ActorID: actorID(r), CategoryRef: id, ParentRef: *body.Parent,
 		})
 		if err != nil {
-			h.respondError(w, err)
+			h.respondError(w, r, err)
 			return
 		}
 		respond(w, http.StatusOK, categoryViewFrom(result))
 
 	default:
-		h.respondError(w, errs.New(errs.InvalidInput).
+		h.respondError(w, r, errs.New(errs.InvalidInput).
 			Explain("A request must set exactly one of \"name\" or \"parent\"."))
 	}
 }
 
 func (h *handlers) archiveCategory(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.ArchiveCategory(r.Context(), app.ArchiveCategoryCommand{
-		ActorID: actorID(), CategoryRef: r.PathValue("id"),
+		ActorID: actorID(r), CategoryRef: r.PathValue("id"),
 	})
 	if err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 	respond(w, http.StatusOK, categoryViewFrom(result))

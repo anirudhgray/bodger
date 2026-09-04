@@ -73,6 +73,8 @@ func (fakeSessions) GetByTokenHash(context.Context, string) (ports.Session, erro
 }
 func (fakeSessions) Touch(context.Context, string, string, time.Time, time.Time) error { return nil }
 func (fakeSessions) Delete(context.Context, string, string) error                      { return nil }
+func (fakeSessions) ListByUser(context.Context, string) ([]ports.Session, error)       { return nil, nil }
+func (fakeSessions) DeleteAllByUser(context.Context, string) error                     { return nil }
 
 type fakeAPITokens struct{}
 

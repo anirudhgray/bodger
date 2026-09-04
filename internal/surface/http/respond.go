@@ -7,17 +7,18 @@ import (
 
 	"github.com/anirudhgray/bodger/internal/app/normalize"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
-	"github.com/anirudhgray/bodger/internal/ports"
 )
 
-// actorID is every request's acting user. There is no authentication yet
-// (M1, ADR-0006): every request acts as the single seeded user, the same
-// way internal/surface/cli's commands do (see its resolveDefaultAccount).
-// A real credential replaces this call in M2 — nothing else in this
-// package needs to change when it does, since every handler already
-// threads ActorID through exactly this one place.
-func actorID() string {
-	return ports.SeededUserID
+// actorID is every request's acting user, resolved by requireAuth
+// (auth_middleware.go) from a session cookie or a bearer API token and
+// stashed on the request's context before a route's real handler ever
+// runs. Every handler in this package reaches the acting user only
+// through this one function, which is what let auth land (issue #56)
+// without touching every handler's own logic — only this function's body
+// changed, from M1's hardcoded ports.SeededUserID to a real lookup.
+func actorID(r *http.Request) string {
+	id, _ := r.Context().Value(actorIDContextKey).(string)
+	return id
 }
 
 // dataEnvelope is the one stable shape every successful JSON response in
@@ -60,20 +61,21 @@ func respond(w http.ResponseWriter, status int, data any) {
 // mistake, not a user-facing case), which is wrapped as Internal rather
 // than leaking whatever it actually says.
 //
-// Before any of that, h.logger logs e's full cause chain — logger.Error
-// dispatches to (*errs.Error).LogValue on its own
-// (internal/platform/logging's doc comment) — so the detail this
-// function is about to discard from the response (a driver message, a
-// wrapped fmt.Errorf) is captured somewhere a self-hoster can find it
-// rather than lost the moment this function returns (ADR-0011; issue
-// #43).
-func (h *handlers) respondError(w http.ResponseWriter, err error) {
+// Before any of that, h.logger logs e's full cause chain, alongside r's
+// method and path — logger.Error dispatches to (*errs.Error).LogValue on
+// its own (internal/platform/logging's doc comment) for e's own detail
+// (a driver message, a wrapped fmt.Errorf) that this function is about to
+// discard from the response, but LogValue has no request to read the
+// route from, so this function adds "method"/"path" itself. Without them
+// a log line like an expected pre-login 401 is indistinguishable from any
+// other route's, on nothing but its message text.
+func (h *handlers) respondError(w http.ResponseWriter, r *http.Request, err error) {
 	var e *errs.Error
 	if !errors.As(err, &e) {
 		e = errs.New(errs.Internal).Wrap(err)
 	}
 	if h.logger != nil {
-		h.logger.Error("request failed", "error", e)
+		h.logger.Error("request failed", "method", r.Method, "path", r.URL.Path, "error", e)
 	}
 	writeJSON(w, e.HTTPStatus(), errorEnvelope{Error: e})
 }

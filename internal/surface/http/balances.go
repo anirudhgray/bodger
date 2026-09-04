@@ -17,11 +17,11 @@ type balancesView struct {
 
 func (h *handlers) getBalances(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.AccountBalances(r.Context(), app.AccountBalancesQuery{
-		ActorID: actorID(),
+		ActorID: actorID(r),
 		AsOf:    r.URL.Query().Get("as_of"),
 	})
 	if err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 

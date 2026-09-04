@@ -105,6 +105,51 @@ func (r *SessionRepository) Delete(ctx context.Context, actorID, id string) erro
 	return nil
 }
 
+// ListByUser implements ports.SessionRepository.
+func (r *SessionRepository) ListByUser(ctx context.Context, actorID string) ([]ports.Session, error) {
+	if err := requireActorID(actorID); err != nil {
+		return nil, err
+	}
+
+	rows, err := r.db.read.QueryContext(ctx, `
+		SELECT id, user_id, token_hash, created_at, last_used_at, expires_at
+		FROM sessions
+		WHERE user_id = ?
+		ORDER BY created_at DESC, id DESC
+	`, actorID)
+	if err != nil {
+		return nil, errs.New(errs.Internal).Wrap(err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var sessions []ports.Session
+	for rows.Next() {
+		session, err := scanSession(rows)
+		if err != nil {
+			return nil, errs.New(errs.Internal).Wrap(err)
+		}
+		sessions = append(sessions, session)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errs.New(errs.Internal).Wrap(err)
+	}
+	return sessions, nil
+}
+
+// DeleteAllByUser implements ports.SessionRepository.
+func (r *SessionRepository) DeleteAllByUser(ctx context.Context, actorID string) error {
+	if err := requireActorID(actorID); err != nil {
+		return err
+	}
+
+	if _, err := r.db.write.ExecContext(ctx, `
+		DELETE FROM sessions WHERE user_id = ?
+	`, actorID); err != nil {
+		return errs.New(errs.Internal).Wrap(err)
+	}
+	return nil
+}
+
 func scanSession(row rowScanner) (ports.Session, error) {
 	var (
 		id, userID, tokenHash                     string

@@ -24,18 +24,18 @@ type createTransferRequest struct {
 func (h *handlers) createTransfer(w http.ResponseWriter, r *http.Request) {
 	var body createTransferRequest
 	if err := decodeJSON(r, &body); err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 
 	tags, terr := decodeTags(body.Tags)
 	if terr != nil {
-		h.respondError(w, terr)
+		h.respondError(w, r, terr)
 		return
 	}
 
 	result, err := h.svc.RecordTransfer(r.Context(), app.RecordTransferCommand{
-		ActorID:        actorID(),
+		ActorID:        actorID(r),
 		FromAccountRef: body.FromAccount,
 		ToAccountRef:   body.ToAccount,
 		Amount:         body.Amount,
@@ -45,7 +45,7 @@ func (h *handlers) createTransfer(w http.ResponseWriter, r *http.Request) {
 		Tags:           tags,
 	})
 	if err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 	respond(w, http.StatusCreated, transactionViewFrom(result))

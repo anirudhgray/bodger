@@ -37,12 +37,14 @@ type Config struct {
 	// against the process's working directory.
 	DBPath string
 	// HTTPBindAddr is the "host:port" address `bodger serve` (issue #8)
-	// listens on. Milestone 1 ships with no authentication at all
-	// (ADR-0006), so the only thing standing between an unauthenticated
-	// financial API and the network is which address it binds — this is
-	// validated at load time, not left to the HTTP surface to check, so
-	// there is no code path that can start a server with a bad bind
-	// address (see validateHTTPBindAddr).
+	// listens on. This package validates it's structurally a valid
+	// host:port address at load time (see validateHTTPBindAddr), so
+	// there is no code path that can start a server with an unparseable
+	// bind address. Whether a *non-loopback* bind is actually safe
+	// depends on whether authentication has been configured — database
+	// state this package has no access to — so that half of ADR-0006's
+	// rule is enforced by internal/surface/http at startup instead (see
+	// IsLoopback and internal/app.Service.IsAuthConfigured).
 	HTTPBindAddr string
 	// LogLevel is the minimum level internal/platform/logging.New's
 	// *slog.Logger emits records at: "debug", "info", "warn", or "error"
@@ -150,32 +152,33 @@ func load(lookup lookupFunc) (Config, error) {
 	return cfg, nil
 }
 
-// validateHTTPBindAddr rejects a "host:port" address that isn't loopback
-// (ADR-0006: "if configured to bind a non-loopback address while no
-// authentication is configured, the server refuses to start, with an
-// error naming the two ways to resolve it"). Milestone 1 has no
-// authentication mechanism at all yet, so the "configure authentication"
-// half of that pair doesn't exist as an option a user can actually take —
-// the error says so plainly rather than gesturing at a feature that isn't
-// there, and names the one thing that does work: bind to loopback.
-//
-// An empty host (":8080") binds every interface and is rejected the same
-// way; "localhost" and any IP net.ParseIP recognises as a loopback
-// address (127.0.0.0/8, ::1) are accepted.
+// validateHTTPBindAddr checks that addr is structurally a valid
+// "host:port" address. It used to also reject a non-loopback host
+// outright (ADR-0006's original rule), but that decision needs to know
+// whether authentication has been configured — database state this
+// package has no access to (it only reads the environment, ADR-0005) —
+// so the non-loopback half of the rule now lives in
+// internal/surface/http's startup check instead, which has a *Service to
+// ask. See IsLoopback.
 func validateHTTPBindAddr(addr string) error {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
+	if _, _, err := net.SplitHostPort(addr); err != nil {
 		return fmt.Errorf("config: %s=%q is not a valid host:port address: %w", EnvHTTPBindAddr, addr, err)
 	}
-	if isLoopbackHost(host) {
-		return nil
+	return nil
+}
+
+// IsLoopback reports whether addr's host is loopback: "localhost", or any
+// IP net.ParseIP recognises as loopback (127.0.0.0/8, ::1). An empty host
+// (":8080") binds every interface and is not loopback. This is the
+// boundary internal/surface/http's startup check (ADR-0006) uses to
+// decide whether a bind requires authentication to already be configured
+// — see that package's server.go.
+func IsLoopback(addr string) (bool, error) {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false, fmt.Errorf("config: %q is not a valid host:port address: %w", addr, err)
 	}
-	return fmt.Errorf(
-		"config: %s=%q binds a non-loopback address, and there is no authentication yet to protect it — "+
-			"bind to a loopback address instead (127.0.0.1, ::1, or localhost); binding anywhere else will "+
-			"be possible once authentication is available",
-		EnvHTTPBindAddr, addr,
-	)
+	return isLoopbackHost(host), nil
 }
 
 func isLoopbackHost(host string) bool {

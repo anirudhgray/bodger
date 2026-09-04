@@ -69,6 +69,13 @@ type route struct {
 	// document, which encoding/json always emits key-sorted regardless
 	// of insertion order).
 	Query []queryParam
+
+	// Public marks a route that skips requireAuth's credential check
+	// entirely (issue #56): /healthz (a liveness probe has no actor to
+	// authenticate as) and /api/v1/auth/login (the one route whose whole
+	// purpose is to establish a credential in the first place). Every
+	// other route needs a resolved ActorID before its handler ever runs.
+	Public bool
 }
 
 // queryParam is one query-string parameter's OpenAPI documentation:
@@ -101,6 +108,68 @@ var routeTable = []route{
 		OperationID: "healthz", Summary: "Report that the server is running.",
 		SuccessStatus: http.StatusOK, SuccessDescription: "The server is up.",
 		Response: healthzView{},
+		Public:   true,
+	},
+
+	{
+		Method: http.MethodPost, Pattern: "/api/v1/auth/login",
+		Handler: func(h *handlers) http.HandlerFunc { return h.login },
+
+		OperationID: "login", Summary: "Sign in and start a session.",
+		Description:   "On success, sets an HttpOnly session cookie the browser holds and resends automatically - the response body carries no credential to store.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "Signed in.",
+		Request: loginRequest{}, Response: authView{},
+		Errors: []int{http.StatusUnauthorized},
+		Public: true,
+	},
+	{
+		Method: http.MethodPost, Pattern: "/api/v1/auth/logout",
+		Handler: func(h *handlers) http.HandlerFunc { return h.logout },
+
+		OperationID: "logout", Summary: "End the current session.",
+		Description:   "Requires a session cookie; a bearer-token request has no session to end - revoke the API token instead.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "Signed out.",
+		Response: okView{},
+		Errors:   []int{http.StatusUnprocessableEntity},
+	},
+	{
+		Method: http.MethodPost, Pattern: "/api/v1/auth/logout-all",
+		Handler: func(h *handlers) http.HandlerFunc { return h.logoutAll },
+
+		OperationID: "logoutAllSessions", Summary: "End every session the acting user has open.",
+		Description:   "Revokes every session, including the one that made this request, if any.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "Every session was revoked.",
+		Response: okView{},
+	},
+
+	{
+		Method: http.MethodPost, Pattern: "/api/v1/auth/tokens",
+		Handler: func(h *handlers) http.HandlerFunc { return h.createAPIToken },
+
+		OperationID: "createAPIToken", Summary: "Issue a new API token.",
+		Description:   "The plaintext token is returned exactly once, in this response - it can't be retrieved again.",
+		SuccessStatus: http.StatusCreated, SuccessDescription: "The created token, including its one-time plaintext value.",
+		Request: createAPITokenRequest{}, Response: createAPITokenResponse{},
+		Errors: []int{http.StatusUnprocessableEntity},
+	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/auth/tokens",
+		Handler: func(h *handlers) http.HandlerFunc { return h.listAPITokens },
+
+		OperationID: "listAPITokens", Summary: "List every API token the acting user owns.",
+		Description:   "Includes revoked and expired tokens, for history - not only what's currently live.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "Every API token, newest first.",
+		Response: []apiTokenView{},
+	},
+	{
+		Method: http.MethodDelete, Pattern: "/api/v1/auth/tokens/{id}",
+		Handler: func(h *handlers) http.HandlerFunc { return h.revokeAPIToken },
+
+		OperationID: "revokeAPIToken", Summary: "Revoke an API token.",
+		Description:   "The token stops authenticating immediately, but remains listed (soft revocation).",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The token was revoked.",
+		Response: okView{},
+		Errors:   []int{http.StatusNotFound},
 	},
 
 	{
@@ -295,7 +364,11 @@ func NewMux(svc *app.Service, logger *slog.Logger) *http.ServeMux {
 	h := &handlers{svc: svc, logger: logger}
 	mux := http.NewServeMux()
 	for _, rt := range routeTable {
-		mux.HandleFunc(rt.Method+" "+rt.Pattern, rt.Handler(h))
+		handler := rt.Handler(h)
+		if !rt.Public {
+			handler = h.requireAuth(handler)
+		}
+		mux.HandleFunc(rt.Method+" "+rt.Pattern, handler)
 	}
 	return mux
 }

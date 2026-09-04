@@ -31,6 +31,16 @@
           }
         },
         "description": "No such resource."
+      },
+      "Unauthenticated": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        },
+        "description": "No valid credential was presented."
       }
     },
     "schemas": {
@@ -112,6 +122,77 @@
               "$ref": "#/components/schemas/Account"
             },
             "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ApiToken": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "Absent for a token that doesn't expire.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_used_at": {
+            "description": "Absent if the token has never been used.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "description": "Absent for a token that's still live.",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ApiTokenListEnvelope": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ApiToken"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "Auth": {
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor_id"
+        ],
+        "type": "object"
+      },
+      "AuthEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Auth"
           }
         },
         "required": [
@@ -235,6 +316,63 @@
               "$ref": "#/components/schemas/Category"
             },
             "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "CreateAPITokenRequest": {
+        "properties": {
+          "expires_at": {
+            "description": "Omit for a token that never expires.",
+            "format": "date",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "CreateAPITokenResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "Absent for a token that doesn't expire.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "token": {
+            "description": "The plaintext token. Shown only this once - store it now; it can't be retrieved again.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "token"
+        ],
+        "type": "object"
+      },
+      "CreateAPITokenResponseEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CreateAPITokenResponse"
           }
         },
         "required": [
@@ -525,6 +663,39 @@
         ],
         "type": "object"
       },
+      "LoginRequest": {
+        "properties": {
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "type": "object"
+      },
+      "Ok": {
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
+      "OkEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Ok"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "PatchAccountRequest": {
         "properties": {
           "name": {
@@ -670,7 +841,7 @@
     }
   },
   "info": {
-    "description": "bodger's read/write REST API. This is the web UI's only interface (milestone 2 generates its TypeScript client from this description) and is available to external clients and integrations. There is no authentication yet: the server binds a loopback address only, and refuses to start otherwise. Monetary values are always JSON strings, never numbers.",
+    "description": "bodger's read/write REST API. This is the web UI's only interface (milestone 2 generates its TypeScript client from this description) and is available to external clients and integrations. Every route but /healthz and POST /api/v1/auth/login requires a session cookie (from login) or an Authorization: Bearer API token; a cookie-authenticated state-changing request also needs the X-Bodger-CSRF header. The server binds a loopback address only unless a password has been set. Monetary values are always JSON strings, never numbers.",
     "title": "bodger REST API",
     "version": "1.0.0"
   },
@@ -810,6 +981,155 @@
           }
         },
         "summary": "Rename an account, or re-declare its opening balance."
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "description": "On success, sets an HttpOnly session cookie the browser holds and resends automatically - the response body carries no credential to store.",
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthEnvelope"
+                }
+              }
+            },
+            "description": "Signed in."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          }
+        },
+        "summary": "Sign in and start a session."
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "description": "Requires a session cookie; a bearer-token request has no session to end - revoke the API token instead.",
+        "operationId": "logout",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkEnvelope"
+                }
+              }
+            },
+            "description": "Signed out."
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "End the current session."
+      }
+    },
+    "/api/v1/auth/logout-all": {
+      "post": {
+        "description": "Revokes every session, including the one that made this request, if any.",
+        "operationId": "logoutAllSessions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkEnvelope"
+                }
+              }
+            },
+            "description": "Every session was revoked."
+          }
+        },
+        "summary": "End every session the acting user has open."
+      }
+    },
+    "/api/v1/auth/tokens": {
+      "get": {
+        "description": "Includes revoked and expired tokens, for history - not only what's currently live.",
+        "operationId": "listAPITokens",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiTokenListEnvelope"
+                }
+              }
+            },
+            "description": "Every API token, newest first."
+          }
+        },
+        "summary": "List every API token the acting user owns."
+      },
+      "post": {
+        "description": "The plaintext token is returned exactly once, in this response - it can't be retrieved again.",
+        "operationId": "createAPIToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAPITokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateAPITokenResponseEnvelope"
+                }
+              }
+            },
+            "description": "The created token, including its one-time plaintext value."
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Issue a new API token."
+      }
+    },
+    "/api/v1/auth/tokens/{id}": {
+      "delete": {
+        "description": "The token stops authenticating immediately, but remains listed (soft revocation).",
+        "operationId": "revokeAPIToken",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkEnvelope"
+                }
+              }
+            },
+            "description": "The token was revoked."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Revoke an API token."
       }
     },
     "/api/v1/balances": {

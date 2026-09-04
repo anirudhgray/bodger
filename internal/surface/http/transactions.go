@@ -36,13 +36,13 @@ type createTransactionRequest struct {
 func (h *handlers) createTransaction(w http.ResponseWriter, r *http.Request) {
 	var body createTransactionRequest
 	if err := decodeJSON(r, &body); err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 
 	tags, terr := decodeTags(body.Tags)
 	if terr != nil {
-		h.respondError(w, terr)
+		h.respondError(w, r, terr)
 		return
 	}
 
@@ -53,22 +53,22 @@ func (h *handlers) createTransaction(w http.ResponseWriter, r *http.Request) {
 	switch body.Type {
 	case transactionTypeOutflow:
 		result, err = h.svc.RecordOutflow(r.Context(), app.RecordOutflowCommand{
-			ActorID: actorID(), AccountRef: body.Account, Amount: body.Amount, Currency: body.Currency,
+			ActorID: actorID(r), AccountRef: body.Account, Amount: body.Amount, Currency: body.Currency,
 			CategoryRef: body.Category, Date: body.Date, Description: body.Description, Notes: body.Notes, Tags: tags,
 		})
 	case transactionTypeInflow:
 		result, err = h.svc.RecordInflow(r.Context(), app.RecordInflowCommand{
-			ActorID: actorID(), AccountRef: body.Account, Amount: body.Amount, Currency: body.Currency,
+			ActorID: actorID(r), AccountRef: body.Account, Amount: body.Amount, Currency: body.Currency,
 			CategoryRef: body.Category, Date: body.Date, Description: body.Description, Notes: body.Notes, Tags: tags,
 		})
 	default:
-		h.respondError(w, errs.New(errs.InvalidInput).
+		h.respondError(w, r, errs.New(errs.InvalidInput).
 			Explain("%q isn't a valid transaction type. Use \"outflow\" or \"inflow\" here, or POST /api/v1/transfers for a transfer.", body.Type).
 			Field("type"))
 		return
 	}
 	if err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 	respond(w, http.StatusCreated, transactionViewFrom(result))
@@ -76,11 +76,11 @@ func (h *handlers) createTransaction(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) getTransaction(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.GetTransaction(r.Context(), app.GetTransactionQuery{
-		ActorID:        actorID(),
+		ActorID:        actorID(r),
 		TransactionRef: r.PathValue("id"),
 	})
 	if err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 	respond(w, http.StatusOK, transactionViewFrom(result))
@@ -111,18 +111,18 @@ type editTransactionRequest struct {
 func (h *handlers) editTransaction(w http.ResponseWriter, r *http.Request) {
 	var body editTransactionRequest
 	if err := decodeJSON(r, &body); err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 
 	tags, terr := decodeTags(body.Tags)
 	if terr != nil {
-		h.respondError(w, terr)
+		h.respondError(w, r, terr)
 		return
 	}
 
 	result, err := h.svc.EditTransaction(r.Context(), app.EditTransactionCommand{
-		ActorID:        actorID(),
+		ActorID:        actorID(r),
 		TransactionRef: r.PathValue("id"),
 		AccountRef:     body.Account,
 		Currency:       body.Currency,
@@ -136,7 +136,7 @@ func (h *handlers) editTransaction(w http.ResponseWriter, r *http.Request) {
 		Tags:           tags,
 	})
 	if err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 	respond(w, http.StatusOK, transactionViewFrom(result))
@@ -144,10 +144,10 @@ func (h *handlers) editTransaction(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) deleteTransaction(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.DeleteTransaction(r.Context(), app.DeleteTransactionCommand{
-		ActorID: actorID(), TransactionRef: r.PathValue("id"),
+		ActorID: actorID(r), TransactionRef: r.PathValue("id"),
 	})
 	if err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 	respond(w, http.StatusOK, transactionViewFrom(result))
@@ -166,7 +166,7 @@ func (h *handlers) listTransactions(w http.ResponseWriter, r *http.Request) {
 
 	offset, cerr := decodeCursor(q.Get("cursor"))
 	if cerr != nil {
-		h.respondError(w, cerr)
+		h.respondError(w, r, cerr)
 		return
 	}
 
@@ -174,14 +174,14 @@ func (h *handlers) listTransactions(w http.ResponseWriter, r *http.Request) {
 	if raw := q.Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 0 {
-			h.respondError(w, errs.New(errs.InvalidInput).Explain("%q isn't a valid page size.", raw).Field("limit"))
+			h.respondError(w, r, errs.New(errs.InvalidInput).Explain("%q isn't a valid page size.", raw).Field("limit"))
 			return
 		}
 		limit = n
 	}
 
 	result, err := h.svc.ListTransactions(r.Context(), app.ListTransactionsQuery{
-		ActorID:     actorID(),
+		ActorID:     actorID(r),
 		AccountRef:  q.Get("account"),
 		CategoryRef: q.Get("category"),
 		Kind:        q.Get("type"),
@@ -191,7 +191,7 @@ func (h *handlers) listTransactions(w http.ResponseWriter, r *http.Request) {
 		Offset:      offset,
 	})
 	if err != nil {
-		h.respondError(w, err)
+		h.respondError(w, r, err)
 		return
 	}
 
