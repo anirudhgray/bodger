@@ -285,6 +285,42 @@ The `token` field is shown exactly once, in that create response — store it so
 
 ---
 
+## Setting a password and managing API tokens
+
+Set your password from the command line — there's no web sign-up form, and no email involved:
+
+```sh
+bodger auth set-password
+New password:
+Confirm password:
+Password updated.
+```
+
+Typed input is hidden. If you ever forget your password, run this same command again on the machine hosting your database — no existing password is required, so this doubles as the recovery path.
+
+Scripts, cron jobs, or a `bodger` running against a remote server authenticate with an API token instead of a password:
+
+```sh
+bodger auth token create "backup script"
+Created API token "backup script".
+id: 3f9e2b7a-...
+
+bdg_C-Uh_kszWlzzkuaYEHnGGmYU56xng9no04bVulG12A0
+
+This is the only time the token is shown. Store it now — bodger keeps only its hash.
+```
+
+The plaintext token is shown exactly once, at creation. `bodger auth token list` shows every token you've created — name, creation date, last use, expiry, and whether it's been revoked — but never the plaintext again. `bodger auth token revoke <id>` disables one immediately.
+
+```sh
+bodger auth token list
+bodger auth token revoke 3f9e2b7a-...
+```
+
+Add `--expires <date>` to `token create` to give a token a fixed expiry instead of one that lasts until you revoke it.
+
+---
+
 ## Command reference
 
 All commands default to plain-text output; add `--json` to any of them for machine-readable output instead.
@@ -310,6 +346,10 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | `bodger categories reparent <category> [--parent]` | Move a category under a different one, or to the top level |
 | `bodger categories archive <category>` | Archive a category |
 | `bodger serve` | Start the REST API server |
+| `bodger auth set-password` | Set or change your password |
+| `bodger auth token create <name> [--expires]` | Create a new API token |
+| `bodger auth token list` | List your API tokens |
+| `bodger auth token revoke <id>` | Revoke an API token |
 
 `<account>` and `<category>` accept either the name you gave it (case-insensitive) or its ID. If a name matches more than one of your accounts or categories, `bodger` lists the candidates instead of guessing. `<id>` is a transaction's own ID, which `bodger transactions list` shows in its last column.
 

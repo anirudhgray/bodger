@@ -465,6 +465,18 @@ Delivered so far in M2:
   `Service.IsAuthConfigured` (a password has been set on the seeded
   user) reports true.
 
+- `internal/surface/cli`'s `auth` command group (issue #57): `set-password`
+  (prompts for a new password with typed input hidden via `golang.org/x/term`,
+  reading a single line from stdin instead when it isn't run interactively —
+  e.g. piped in a script) and `token create`/`list`/`revoke`, wired onto
+  `internal/app/auth.go`'s use cases (issue #55) the same one-command,
+  one-application-call way as every other command in this package.
+  `set-password` has no HTTP counterpart and must not gain one (ADR-0006):
+  the in-process CLI opens the SQLite file directly and needs no credential,
+  so filesystem permissions on `bodger.db` are the actual boundary, and this
+  command is the CLI-driven password reset ADR-0006 promises instead of an
+  email flow.
+
 Not yet built: everything else in §2.
 
 This section is updated **in the same PR** as the work it describes, per CLAUDE.md — not in a later docs pass.
