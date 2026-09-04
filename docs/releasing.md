@@ -243,27 +243,29 @@ commit, not a branch tip, in the first place.
 
 ```sh
 git checkout main && git pull
-git tag -a vX.Y.Z -m "M<n> <Name>"   # omit -m, or use a plain description, for a non-milestone release
+git tag -s vX.Y.Z -m "M<n> <Name>"   # omit -m, or use a plain description, for a non-milestone release
 git push origin vX.Y.Z
 ```
 
 Add a second `-m` here for freeform release notes — see [above](#adding-freeform-notes-to-a-release).
 
-Use `git tag -s` instead of `-a` if you want the tag GPG-signed (a signing
-key is already configured for this repository; it isn't required for
-every commit, but a release tag is a reasonable place to use it — pass
-`-s` in place of `-a` above, same `-m`).
+Release tags for this repository are **always GPG-signed** (`-s`, not
+`-a` — a signing key is already configured). This isn't optional the way
+it might be for an ordinary commit; don't substitute an unsigned tag as a
+workaround for anything below.
 
-**`-s` needs a terminal `gpg-agent`/`pinentry` can actually prompt
-through.** In an agent-driven or otherwise non-interactive shell (no real
-TTY for pinentry to attach to), `git tag -s` hangs waiting on a prompt
-that can never be answered, then times out and can corrupt the terminal
-session outright — reported once from a Claude Code session driving this
-exact step. There's no good non-interactive workaround (this is
-`gpg-agent`/`pinentry` behavior, not something `.goreleaser.yaml` or this
-repo's tooling controls); in that situation, fall back to an unsigned `-a`
-tag rather than retrying `-s`, or have a human run the `-s` version
-themselves from a real interactive terminal.
+**An agent-driven or otherwise non-interactive session must not run this
+step itself — hand these two commands to a human to run from their own
+interactive terminal.** `-s` needs a terminal `gpg-agent`/`pinentry` can
+actually prompt through; with no real TTY to attach to, `git tag -s`
+hangs waiting on a prompt that can never be answered, times out, and can
+corrupt the terminal session outright — hit exactly this cutting v0.2.0
+from a Claude Code session, which then (wrongly) pushed an unsigned tag
+and a full public release off it as a workaround, both of which had to be
+deleted and redone. There's no non-interactive workaround for the hang
+(this is `gpg-agent`/`pinentry` behavior, not something `.goreleaser.yaml`
+or this repo's tooling controls) and no unsigned substitute — the fix is
+handing the two commands off, not finding a way to run them anyway.
 
 Pushing the tag triggers `release.yaml`: it builds, generates the same
 changelog as step 1 (now for real, from the real tag), and publishes the
