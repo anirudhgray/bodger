@@ -64,11 +64,19 @@ checksum:
 # it depends on GitHub API reachability), so relying on it alone would
 # render "(@)" for entries where the API never got consulted. .AuthorName
 # comes straight from git and is always populated, so it's the fallback.
+#
+# .SHA is linked to its commit; the "(#N)" PR reference embedded in
+# .Message (GitHub's own squash-merge suffix) is deliberately left
+# untouched — GoReleaser's changelog format template has no Sprig
+# funcmap (regexReplaceAll and friends aren't defined here, confirmed by
+# actually hitting "function \"regexReplaceAll\" not defined" trying it),
+# so there's no way to turn embedded message text into a link from this
+# field alone.
 changelog:
   sort: asc
   use: github
   abbrev: 8
-  format: "{{ .SHA }}: {{ .Message }} ({{ if .AuthorUsername }}@{{ .AuthorUsername }}{{ else }}{{ .AuthorName }}{{ end }})"
+  format: "[{{ .SHA }}](https://github.com/anirudhgray/bodger/commit/{{ .SHA }}): {{ .Message }} ({{ if .AuthorUsername }}@{{ .AuthorUsername }}{{ else }}{{ .AuthorName }}{{ end }})"
   groups:
     - title: "Added"
       regexp: '^.*?feat(\(.+\))??!?:.+$'

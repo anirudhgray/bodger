@@ -48,6 +48,14 @@ GitHub API, which needs a previous tag to diff against — never true for
 the first release, and not guaranteed thereafter), otherwise the git
 author name, which is always available.
 
+Each entry's short SHA links to its commit (`changelog.format` in
+[`.goreleaser.yaml`](../.goreleaser.yaml)). The `(#N)` PR reference
+alongside it — GitHub's own squash-merge suffix, riding along inside the
+commit message text — is **not** linked: GoReleaser's changelog format
+template has no Sprig funcmap available (confirmed by hitting `function
+"regexReplaceAll" not defined` trying it), so there's no way to turn text
+embedded in `.Message` into a link from this field.
+
 Each version heading is a clickable link — `## [X.Y.Z] - YYYY-MM-DD`
 resolves via a same-named link reference at the bottom of the file
 (`[X.Y.Z]: https://github.com/anirudhgray/bodger/compare/vPREV...vX.Y.Z`,
@@ -155,14 +163,31 @@ throwaway local tag:
 ```sh
 git checkout main && git pull
 git tag -a v0.0.0-preview -m "preview"
+git push origin v0.0.0-preview
 goreleaser release --skip=validate --skip=publish --clean
 cat dist/CHANGELOG.md   # this is your new release's entry
 git tag -d v0.0.0-preview
+git push origin :refs/tags/v0.0.0-preview
 rm -rf dist
 ```
 
 (`--skip=validate` bypasses GoReleaser's clean-working-tree/CI-environment
 checks, which don't apply to a local preview; nothing is published.)
+
+**The throwaway tag must actually be pushed**, briefly — a purely local
+tag isn't enough. `.goreleaser.yaml`'s `changelog.use: github` resolves
+each entry's author credit via GitHub's REST compare API
+(`.../compare/vPREV...v0.0.0-preview`), which 404s on a ref that only
+exists locally. Push it, run the preview, then delete it both locally
+and on the remote (`git push origin :refs/tags/v0.0.0-preview`) — same
+throwaway spirit as before, just briefly visible on GitHub in the
+meantime. If you'd rather not push even a throwaway tag, hand-build the
+entry directly from `git log vPREV..main` instead: `sort: asc` in this
+config sorts alphabetically by commit message text (not chronologically)
+within each group, and no author suffix appears for this single-maintainer
+repo despite the template's `{{ AuthorUsername }}`/`{{ AuthorName }}`
+fallback — see any existing `CHANGELOG.md` entry for the exact format to
+match by hand.
 
 ### 2. Open the routine PR
 
@@ -226,16 +251,29 @@ commit, not a branch tip, in the first place.
 
 ```sh
 git checkout main && git pull
-git tag -a vX.Y.Z -m "M<n> <Name>"   # omit -m, or use a plain description, for a non-milestone release
+git tag -s vX.Y.Z -m "M<n> <Name>"   # omit -m, or use a plain description, for a non-milestone release
 git push origin vX.Y.Z
 ```
 
 Add a second `-m` here for freeform release notes — see [above](#adding-freeform-notes-to-a-release).
 
-Use `git tag -s` instead of `-a` if you want the tag GPG-signed (a signing
-key is already configured for this repository; it isn't required for
-every commit, but a release tag is a reasonable place to use it — pass
-`-s` in place of `-a` above, same `-m`).
+Release tags for this repository are **always GPG-signed** (`-s`, not
+`-a` — a signing key is already configured). This isn't optional the way
+it might be for an ordinary commit; don't substitute an unsigned tag as a
+workaround for anything below.
+
+**An agent-driven or otherwise non-interactive session must not run this
+step itself — hand these two commands to a human to run from their own
+interactive terminal.** `-s` needs a terminal `gpg-agent`/`pinentry` can
+actually prompt through; with no real TTY to attach to, `git tag -s`
+hangs waiting on a prompt that can never be answered, times out, and can
+corrupt the terminal session outright — hit exactly this cutting v0.2.0
+from a Claude Code session, which then (wrongly) pushed an unsigned tag
+and a full public release off it as a workaround, both of which had to be
+deleted and redone. There's no non-interactive workaround for the hang
+(this is `gpg-agent`/`pinentry` behavior, not something `.goreleaser.yaml`
+or this repo's tooling controls) and no unsigned substitute — the fix is
+handing the two commands off, not finding a way to run them anyway.
 
 Pushing the tag triggers `release.yaml`: it builds, generates the same
 changelog as step 1 (now for real, from the real tag), and publishes the
