@@ -121,7 +121,8 @@ Primitives present as of this milestone: `button`, `input`, `label`,
 `select` (native, hand-written — see the audit note below), `card`,
 `sidebar`, `popover`, `calendar`, `tabs`, `dialog`, `alert-dialog`,
 `dropdown-menu`, `tooltip`, `separator`, `skeleton`, `spinner`, `kbd`,
-`empty`.
+`empty`, `toast` (hand-built against Radix's Toast primitive directly —
+see the note below, since it isn't in the shadcn CLI's own registry).
 
 **`cn`** (`web/src/lib/utils.ts`) re-exports the
 [`cn` npm package](https://github.com/shadcn-ui/cn) — shadcn's own
@@ -164,6 +165,44 @@ interaction swap isn't worth the risk. That remaining wiring is tracked
 in [#104](https://github.com/anirudhgray/bodger/issues/104), scoped
 separately from #101 so it isn't silently dropped. `kbd` has no call
 site yet — there's no keyboard-shortcut UI in the app to hang it on.
+
+`toast` (issue #108) is wired into every action whose own UI (a dialog,
+a row) closes or moves on before its result would otherwise be shown:
+TransactionDialog's create/edit success, transaction delete, API token
+revoke, account/category archive. It's built directly against
+`@radix-ui/react-toast` (via the `radix-ui` package, same as every other
+primitive here) rather than generated via the shadcn CLI or added as
+`sonner` — shadcn's current registry only ships a sonner-based toast,
+and adding a second toast/notification library alongside Radix for one
+component wasn't worth it. The store (`web/src/hooks/use-toast.ts`) is
+the classic pre-sonner shadcn pattern: a module-level listener list plus
+a plain `toast()` function, since call sites are as often a plain async
+event handler as a component that's already subscribed to anything.
+
+## Toasts vs. inline messages
+
+Two different places a success/error message can live, and both are
+correct for their own case:
+
+- **Inline, persistent** — form validation tied to a specific field or
+  action whose UI is still on screen: a rejected submit still showing
+  its own form, an invalid amount, a load error blocking a whole page.
+  `docs/ux-principles.md` §6 already governs this content; a toast would
+  disappear and leave the user without the field- or action-level
+  context of *what* failed. TransactionDialog's `submitError`,
+  Settings' per-section `error`, and TransactionsList's `error` all stay
+  inline for exactly this reason.
+- **Toast** — an action's own triggering UI (a dialog, a row) has
+  already closed or is about to, and the result has nowhere left to
+  land: TransactionDialog's create/edit success (the dialog closes
+  immediately), transaction delete, API token revoke, account/category
+  archive (the row's own controls are what triggered the action, and
+  stay on screen, but there was previously no feedback that anything
+  happened at all).
+
+Don't wire a toast into a form validation error — those stay inline —
+and don't retrofit every existing inline error into a toast; most are
+correctly inline already.
 
 ## Casing enum values for display
 
