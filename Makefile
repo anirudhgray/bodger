@@ -155,7 +155,11 @@ endif
 
 ## build: build the web UI and the bodger binary
 .PHONY: build
-build: build-web
+build: build-web build-bin
+
+## build-bin: build the bodger binary only, without the web UI
+.PHONY: build-bin
+build-bin:
 ifneq ($(HAS_GO),)
 	CGO_ENABLED=0 go build -trimpath -o $(BIN_DIR)/$(BINARY) $(CMD)
 endif
@@ -172,6 +176,11 @@ endif
 .PHONY: run
 run:
 	go run $(CMD) serve
+
+## seed-dev: seed a scratch dev DB with realistic accounts/categories/transactions via the real CLI (scripts/seed-dev.sh; requires BODGER_DB_PATH; pass script flags via ARGS, e.g. `make seed-dev ARGS=--force`)
+.PHONY: seed-dev
+seed-dev: build-bin
+	@./scripts/seed-dev.sh $(ARGS)
 
 ## release-dry-run: build every release target locally, no tag or publish
 .PHONY: release-dry-run
