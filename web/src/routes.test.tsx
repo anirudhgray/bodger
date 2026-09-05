@@ -41,6 +41,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 })
 
 import { checkSession } from '@/lib/session'
+import { ThemeProvider } from './hooks/use-theme'
 import { routes, RouteError } from './routes'
 
 const mockedCheckSession = vi.mocked(checkSession)
@@ -53,7 +54,11 @@ describe('routes', () => {
 
     it('redirects the root route to the transactions placeholder', async () => {
       const router = createMemoryRouter(routes, { initialEntries: ['/'] })
-      render(<RouterProvider router={router} />)
+      render(
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>,
+      )
 
       expect(
         await screen.findByRole('heading', { name: 'Transactions' }),
@@ -64,7 +69,11 @@ describe('routes', () => {
       const router = createMemoryRouter(routes, {
         initialEntries: ['/login'],
       })
-      render(<RouterProvider router={router} />)
+      render(
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>,
+      )
 
       expect(
         await screen.findByRole('heading', { name: 'Transactions' }),
@@ -81,7 +90,11 @@ describe('routes', () => {
       const router = createMemoryRouter(routes, {
         initialEntries: ['/login'],
       })
-      render(<RouterProvider router={router} />)
+      render(
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>,
+      )
 
       expect(
         await screen.findByRole('heading', { name: 'Log in' }),
@@ -91,7 +104,11 @@ describe('routes', () => {
 
     it('redirects a protected route to the login form', async () => {
       const router = createMemoryRouter(routes, { initialEntries: ['/'] })
-      render(<RouterProvider router={router} />)
+      render(
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>,
+      )
 
       expect(
         await screen.findByRole('heading', { name: 'Log in' }),
@@ -108,7 +125,11 @@ describe('routes', () => {
       'renders the placeholder at %s',
       async (path, heading) => {
         const router = createMemoryRouter(routes, { initialEntries: [path] })
-        render(<RouterProvider router={router} />)
+        render(
+          <ThemeProvider>
+            <RouterProvider router={router} />
+          </ThemeProvider>,
+        )
 
         expect(
           await screen.findByRole('heading', { name: heading }),
@@ -123,7 +144,11 @@ describe('routes', () => {
       const router = createMemoryRouter(routes, {
         initialEntries: ['/transactions/new'],
       })
-      render(<RouterProvider router={router} />)
+      render(
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>,
+      )
 
       // The kind switcher is components/ui/tabs (#101's design-system
       // audit), so its role is 'tab', not 'button'.
@@ -140,7 +165,11 @@ describe('routes', () => {
       const router = createMemoryRouter(routes, {
         initialEntries: ['/api/v1'],
       })
-      render(<RouterProvider router={router} />)
+      render(
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>,
+      )
 
       expect(
         await screen.findByRole('heading', { name: 'Page not found' }),
@@ -167,7 +196,11 @@ describe('routes', () => {
     const router = createMemoryRouter(throwingRoutes, {
       initialEntries: ['/'],
     })
-    render(<RouterProvider router={router} />)
+    render(
+      <ThemeProvider>
+        <RouterProvider router={router} />
+      </ThemeProvider>,
+    )
 
     try {
       expect(

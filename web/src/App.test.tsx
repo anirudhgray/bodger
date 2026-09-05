@@ -13,6 +13,7 @@ vi.mock('@/lib/session', () => ({
 
 import { logout } from '@/lib/session'
 import { AppLayout } from './App'
+import { ThemeProvider } from './hooks/use-theme'
 
 const mockedLogout = vi.mocked(logout)
 
@@ -27,17 +28,19 @@ describe('AppLayout', () => {
     mockedLogout.mockResolvedValue(undefined)
 
     render(
-      <MemoryRouter initialEntries={['/transactions']}>
-        <Routes>
-          <Route path="/" element={<AppLayout />}>
-            <Route
-              path="transactions"
-              element={<div>Transactions content</div>}
-            />
-          </Route>
-          <Route path="/login" element={<div>Login page</div>} />
-        </Routes>
-      </MemoryRouter>,
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/transactions']}>
+          <Routes>
+            <Route path="/" element={<AppLayout />}>
+              <Route
+                path="transactions"
+                element={<div>Transactions content</div>}
+              />
+            </Route>
+            <Route path="/login" element={<div>Login page</div>} />
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>,
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }))
@@ -60,17 +63,19 @@ describe('AppLayout', () => {
     )
 
     render(
-      <MemoryRouter initialEntries={['/transactions']}>
-        <Routes>
-          <Route path="/" element={<AppLayout />}>
-            <Route
-              path="transactions"
-              element={<div>Transactions content</div>}
-            />
-          </Route>
-          <Route path="/login" element={<div>Login page</div>} />
-        </Routes>
-      </MemoryRouter>,
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/transactions']}>
+          <Routes>
+            <Route path="/" element={<AppLayout />}>
+              <Route
+                path="transactions"
+                element={<div>Transactions content</div>}
+              />
+            </Route>
+            <Route path="/login" element={<div>Login page</div>} />
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>,
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }))
@@ -80,16 +85,18 @@ describe('AppLayout', () => {
 
   it('toggles dark mode and persists the choice', () => {
     render(
-      <MemoryRouter initialEntries={['/transactions']}>
-        <Routes>
-          <Route path="/" element={<AppLayout />}>
-            <Route
-              path="transactions"
-              element={<div>Transactions content</div>}
-            />
-          </Route>
-        </Routes>
-      </MemoryRouter>,
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/transactions']}>
+          <Routes>
+            <Route path="/" element={<AppLayout />}>
+              <Route
+                path="transactions"
+                element={<div>Transactions content</div>}
+              />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>,
     )
 
     const toggle = screen.getByRole('button', { name: 'Switch to dark mode' })
