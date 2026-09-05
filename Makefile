@@ -1,11 +1,10 @@
 # bodger - task runner.
 #
-# These targets are the project's build contract: CI runs `make check-go`,
-# `make check-web`, and `make build` (the first two gated on which paths a
-# commit touches - see .github/workflows/ci.yml), and nothing else. `make
-# check` runs both check-go and check-web unconditionally, for local use.
-# If a command isn't in this file, it isn't part of the build - see
-# docs/contributing.md.
+# These targets are the project's build contract: CI runs `make check-go`
+# and `make check-web`, gated on which paths a commit touches - see
+# .github/workflows/ci.yml - and nothing else. `make check` runs both
+# unconditionally, for local use. If a command isn't in this file, it
+# isn't part of the build - see docs/contributing.md.
 
 SHELL       := /bin/bash
 BINARY      := bodger
