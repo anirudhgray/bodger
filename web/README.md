@@ -26,3 +26,5 @@ To iterate on the UI against a real backend: `go run ./cmd/bodger serve` in one 
 ## What this layer must never do
 
 Per `docs/architecture.md` §3: no client-side balance summation, currency conversion, period arithmetic, or category rollup. This UI renders what the REST API computed — formatting a server-supplied number for display is fine, deciding what that number _is_ is not.
+
+<!-- CI isolation test (#109): a single web/-only commit against the ci/split-jobs-and-cache-playwright base should skip check-go and hit the Playwright cache. Throwaway PR, not to be merged. -->
