@@ -15,7 +15,22 @@ before:
     # that placeholder. go:embed runs at Go compile time, so one web
     # build here is picked up identically by every OS/arch in the
     # builds matrix; no per-target rebuild needed. See issue #110.
-    - cd web && npm ci
+    #
+    # GoReleaser execs each hook directly rather than through a shell
+    # (`before.hooks` only accepts a plain string, split into argv, not
+    # the {cmd, dir} object form some other GoReleaser hook fields
+    # support) — so `cd web && npm ci` as a single string doesn't do
+    # what it looks like — "web", "&&", "npm", "ci" all become literal
+    # arguments to a program named `cd`. This silently "succeeded" in
+    # local testing only because macOS ships a legacy no-op /usr/bin/cd
+    # binary that swallows bogus arguments and exits 0 (masking that
+    # npm ci never actually ran, invisible unless web/node_modules
+    # already happened to be populated some other way) — Linux has no
+    # such binary, so release.yaml's CI runner failed loudly and
+    # correctly the first time this hook actually ran for a real
+    # release (v0.3.0). npm's own `--prefix` runs it in that directory
+    # directly, no `cd`/shell needed at all.
+    - npm --prefix web ci
     - make build-web
 
 builds:
