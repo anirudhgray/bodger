@@ -12,6 +12,8 @@ import {
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { TransactionDialogProvider } from '@/components/TransactionDialog'
+
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
   return {
@@ -41,12 +43,15 @@ const mockedListCategories = vi.mocked(listCategories)
 const mockedUpdateTransaction = vi.mocked(updateTransaction)
 const mockedDeleteTransaction = vi.mocked(deleteTransaction)
 
-// The empty state links to /transactions/new (Empty's "Record a
-// transaction" CTA), which needs a router context.
+// The empty state's "Record a transaction" CTA needs a router context;
+// editing/creating a transaction (both open TransactionDialog) needs
+// TransactionDialogProvider, same as AppLayout provides for real.
 function renderPage() {
   return render(
     <MemoryRouter>
-      <TransactionsList />
+      <TransactionDialogProvider>
+        <TransactionsList />
+      </TransactionDialogProvider>
     </MemoryRouter>,
   )
 }
@@ -220,18 +225,20 @@ describe('TransactionsList', () => {
     expect(mockedDeleteTransaction).toHaveBeenCalledWith('t1')
   })
 
-  it('edits a transaction, sending the full replacement body', async () => {
+  it('edits a transaction via the dialog, sending the full replacement body', async () => {
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     mockedUpdateTransaction.mockResolvedValue({ ...groceries, amount: '50.00' })
     renderPage()
     await screen.findByText('Groceries')
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
-    const form = screen.getByRole('form', { name: 'Edit Groceries' })
-    fireEvent.change(within(form).getByLabelText('Amount'), {
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Edit transaction',
+    })
+    fireEvent.change(within(dialog).getByLabelText('Amount'), {
       target: { value: '50.00' },
     })
-    fireEvent.click(within(form).getByRole('button', { name: 'Save' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
 
     await waitFor(() =>
       expect(mockedUpdateTransaction).toHaveBeenCalledWith('t1', {
@@ -239,6 +246,7 @@ describe('TransactionsList', () => {
         description: 'Groceries',
         date: '2026-09-01',
         notes: undefined,
+        tags: undefined,
         account: 'a1',
         category: 'c1',
       }),
@@ -246,14 +254,58 @@ describe('TransactionsList', () => {
     expect(await screen.findByText('−50.00 USD')).toBeInTheDocument()
   })
 
-  it('rejects non-numeric characters in the edit form amount field', async () => {
+  it('preserves notes and tags on edit, instead of silently clearing them', async () => {
+    const withNotesAndTags: Transaction = {
+      ...groceries,
+      notes: 'Weekly shop',
+      tags: ['essential', 'weekly'],
+    }
+    mockedListTransactions.mockResolvedValue({ data: [withNotesAndTags] })
+    mockedUpdateTransaction.mockResolvedValue({
+      ...withNotesAndTags,
+      amount: '50.00',
+    })
+    renderPage()
+    await screen.findByText('Groceries')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Edit transaction',
+    })
+    // Notes/tags should already be visible and pre-filled, not hidden
+    // behind a disclosure toggle — this is what the old in-row edit form
+    // couldn't show at all, and was silently wiping on every save.
+    expect(within(dialog).getByLabelText('Notes')).toHaveValue('Weekly shop')
+    expect(within(dialog).getByLabelText('Tags')).toHaveValue(
+      'essential, weekly',
+    )
+
+    fireEvent.change(within(dialog).getByLabelText('Amount'), {
+      target: { value: '50.00' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() =>
+      expect(mockedUpdateTransaction).toHaveBeenCalledWith(
+        't1',
+        expect.objectContaining({
+          notes: 'Weekly shop',
+          tags: ['essential', 'weekly'],
+        }),
+      ),
+    )
+  })
+
+  it('rejects non-numeric characters in the edit dialog amount field', async () => {
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     renderPage()
     await screen.findByText('Groceries')
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
-    const form = screen.getByRole('form', { name: 'Edit Groceries' })
-    const amountField = within(form).getByLabelText('Amount')
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Edit transaction',
+    })
+    const amountField = within(dialog).getByLabelText('Amount')
 
     fireEvent.change(amountField, { target: { value: 'soemthing' } })
     expect(amountField).toHaveValue('')
@@ -262,7 +314,7 @@ describe('TransactionsList', () => {
     expect(amountField).toHaveValue('50.00')
   })
 
-  it('preserves the edit form and shows an error when saving fails', async () => {
+  it('preserves the edit dialog and shows an error when saving fails', async () => {
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     mockedUpdateTransaction.mockRejectedValue(
       new ApiError('invalid_input', 'That amount doesn’t look right.'),
@@ -271,23 +323,25 @@ describe('TransactionsList', () => {
     await screen.findByText('Groceries')
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
-    const form = screen.getByRole('form', { name: 'Edit Groceries' })
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Edit transaction',
+    })
     // A well-formed number, not garbage text — the amount field's own
     // client-side sanitization (a separate concern this suite tests on
     // its own) means garbage can no longer reach a submit at all. This
     // is testing the server rejecting a validly-typed value on rules the
     // client doesn't know about (the mock controls that, independent of
     // what's actually typed here).
-    fireEvent.change(within(form).getByLabelText('Amount'), {
+    fireEvent.change(within(dialog).getByLabelText('Amount'), {
       target: { value: '999999.99' },
     })
-    fireEvent.click(within(form).getByRole('button', { name: 'Save' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'That amount doesn’t look right.',
     )
-    // Partial input is preserved (ux-principles.md §5) — the form is
-    // still open with what was typed, not discarded back to the row.
-    expect(within(form).getByLabelText('Amount')).toHaveValue('999999.99')
+    // Partial input is preserved (ux-principles.md §5) — the dialog is
+    // still open with what was typed, not discarded.
+    expect(within(dialog).getByLabelText('Amount')).toHaveValue('999999.99')
   })
 })

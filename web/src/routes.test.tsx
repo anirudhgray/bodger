@@ -137,10 +137,11 @@ describe('routes', () => {
       },
     )
 
-    // /transactions/new is issue #60's real screen now, not a placeholder
-    // — TransactionEntry.test.tsx covers its actual behaviour; this just
-    // proves the route resolves to it.
-    it('renders the transaction entry screen at /transactions/new', async () => {
+    // /transactions/new used to be its own screen (issue #60); it's now
+    // TransactionDialog.test.tsx's territory, opened from the nav rather
+    // than navigated to — this just proves an old bookmark still lands
+    // somewhere real instead of the not-found placeholder.
+    it('redirects /transactions/new to the transactions list', async () => {
       const router = createMemoryRouter(routes, {
         initialEntries: ['/transactions/new'],
       })
@@ -150,10 +151,8 @@ describe('routes', () => {
         </ThemeProvider>,
       )
 
-      // The kind switcher is components/ui/tabs (#101's design-system
-      // audit), so its role is 'tab', not 'button'.
       expect(
-        await screen.findByRole('tab', { name: 'Spend' }),
+        await screen.findByRole('heading', { name: 'Transactions' }),
       ).toBeInTheDocument()
     })
 

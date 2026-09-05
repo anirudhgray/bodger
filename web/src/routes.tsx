@@ -17,7 +17,6 @@ import { BalancesPage } from '@/pages/Balances'
 import { Login } from '@/pages/Login'
 import { Placeholder } from '@/pages/Placeholder'
 import { Settings } from '@/pages/Settings'
-import { TransactionEntry } from '@/pages/TransactionEntry'
 import { TransactionsList } from '@/pages/TransactionsList'
 import { checkSession } from '@/lib/session'
 
@@ -88,9 +87,13 @@ export const routes: RouteObject[] = [
         element: <TransactionsList />,
       },
       {
+        // transactions/new used to be its own screen (issue #60) — it's
+        // now TransactionDialog, opened from anywhere via the nav's Add
+        // button rather than navigated to, but an old bookmark or link
+        // to this path should still land somewhere real rather than
+        // the not-found placeholder below.
         path: 'transactions/new',
-        // issue #60 — fast transaction entry
-        element: <TransactionEntry />,
+        element: <Navigate to="/transactions" replace />,
       },
       {
         path: 'balances',

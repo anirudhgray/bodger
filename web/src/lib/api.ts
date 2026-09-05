@@ -235,8 +235,10 @@ export type RecordTransferInput = {
   tags?: string[]
 }
 
-export function recordOutflow(input: RecordTransactionInput): Promise<unknown> {
-  return apiFetch('/api/v1/transactions', {
+export function recordOutflow(
+  input: RecordTransactionInput,
+): Promise<Transaction> {
+  return apiFetch<Transaction>('/api/v1/transactions', {
     method: 'POST',
     body: JSON.stringify({
       type: 'outflow',
@@ -251,8 +253,10 @@ export function recordOutflow(input: RecordTransactionInput): Promise<unknown> {
   })
 }
 
-export function recordInflow(input: RecordTransactionInput): Promise<unknown> {
-  return apiFetch('/api/v1/transactions', {
+export function recordInflow(
+  input: RecordTransactionInput,
+): Promise<Transaction> {
+  return apiFetch<Transaction>('/api/v1/transactions', {
     method: 'POST',
     body: JSON.stringify({
       type: 'inflow',
@@ -267,8 +271,10 @@ export function recordInflow(input: RecordTransactionInput): Promise<unknown> {
   })
 }
 
-export function recordTransfer(input: RecordTransferInput): Promise<unknown> {
-  return apiFetch('/api/v1/transfers', {
+export function recordTransfer(
+  input: RecordTransferInput,
+): Promise<Transaction> {
+  return apiFetch<Transaction>('/api/v1/transfers', {
     method: 'POST',
     body: JSON.stringify({
       from_account: input.fromAccount,

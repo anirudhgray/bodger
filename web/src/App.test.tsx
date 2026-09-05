@@ -11,15 +11,37 @@ vi.mock('@/lib/session', () => ({
   logout: vi.fn(),
 }))
 
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>()
+  return {
+    ...actual,
+    listAccounts: vi.fn().mockResolvedValue([]),
+    listCategories: vi.fn().mockResolvedValue([]),
+    recordOutflow: vi.fn(),
+  }
+})
+
 import { logout } from '@/lib/session'
+import {
+  listAccounts,
+  listCategories,
+  recordOutflow,
+  type Transaction,
+} from '@/lib/api'
 import { AppLayout } from './App'
 import { ThemeProvider } from './hooks/use-theme'
 
 const mockedLogout = vi.mocked(logout)
+const mockedRecordOutflow = vi.mocked(recordOutflow)
+const mockedListAccounts = vi.mocked(listAccounts)
+const mockedListCategories = vi.mocked(listCategories)
 
 describe('AppLayout', () => {
   beforeEach(() => {
     mockedLogout.mockReset()
+    mockedRecordOutflow.mockReset()
+    mockedListAccounts.mockReset().mockResolvedValue([])
+    mockedListCategories.mockReset().mockResolvedValue([])
     localStorage.clear()
     document.documentElement.classList.remove('dark')
   })
@@ -116,5 +138,68 @@ describe('AppLayout', () => {
 
     expect(document.documentElement.classList.contains('dark')).toBe(false)
     expect(localStorage.getItem('bodger:theme')).toBe('light')
+  })
+
+  it('opens the transaction dialog from Add, and navigates to /transactions after recording', async () => {
+    const recorded: Transaction = {
+      id: 't1',
+      type: 'outflow',
+      date: '2026-09-05',
+      description: 'Coffee',
+      amount: '5.00',
+      currency: 'USD',
+    }
+    mockedRecordOutflow.mockResolvedValue(recorded)
+    mockedListAccounts.mockResolvedValue([
+      {
+        id: 'a1',
+        name: 'Checking',
+        type: 'bank',
+        currency: 'USD',
+        opening_balance: '0.00',
+        sort_order: 0,
+        archived: false,
+      },
+    ])
+    mockedListCategories.mockResolvedValue([
+      {
+        id: 'c1',
+        name: 'Coffee',
+        type: 'expense',
+        sort_order: 0,
+        archived: false,
+      },
+    ])
+
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/balances']}>
+          <Routes>
+            <Route path="/" element={<AppLayout />}>
+              <Route path="balances" element={<div>Balances content</div>} />
+              <Route
+                path="transactions"
+                element={<div>Transactions content</div>}
+              />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    fireEvent.click(screen.getByText('Add'))
+    expect(
+      await screen.findByRole('dialog', { name: 'Add transaction' }),
+    ).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: '5.00' },
+    })
+    fireEvent.change(await screen.findByLabelText('Category'), {
+      target: { value: 'c1' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Record spend' }))
+
+    expect(await screen.findByText('Transactions content')).toBeInTheDocument()
   })
 })

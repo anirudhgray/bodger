@@ -56,3 +56,16 @@ if (typeof navigator.clipboard === 'undefined') {
 afterEach(() => {
   vi.mocked(navigator.clipboard.writeText).mockClear()
 })
+
+// jsdom doesn't implement ResizeObserver at all — Radix's Switch (used by
+// components/ui/switch.tsx, e.g. TransactionDialog's "Enter multiple"
+// toggle) measures its thumb with it internally, and throws on mount in
+// every test without a stub. A no-op is enough: nothing here asserts on
+// layout, only on state (checked/unchecked).
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}
