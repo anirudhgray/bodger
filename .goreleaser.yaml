@@ -9,6 +9,14 @@ project_name: bodger
 before:
   hooks:
     - go mod tidy
+    # internal/platform/webui go:embeds web/'s built assets (see that
+    # package's doc comment) — dist/ is gitignored except .gitkeep, so
+    # without this the release binaries below would embed nothing but
+    # that placeholder. go:embed runs at Go compile time, so one web
+    # build here is picked up identically by every OS/arch in the
+    # builds matrix; no per-target rebuild needed. See issue #110.
+    - cd web && npm ci
+    - make build-web
 
 builds:
   - id: bodger
