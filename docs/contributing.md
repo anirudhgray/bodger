@@ -24,7 +24,7 @@ make setup-hooks      # activate .githooks - once per clone
 
 ## Commands
 
-The [`Makefile`](../Makefile) is the build contract. **CI runs `make check-go`, `make check-web`, and `make build`, and nothing else** — if a check isn't reachable through a `make` target, it isn't part of the build, and there is no divergent CI-only command list to keep in sync. `check-go`/`check-web` are each gated in CI ([`ci.yml`](../.github/workflows/ci.yml)) on whether a commit actually touched that side ([`dorny/paths-filter`](https://github.com/dorny/paths-filter)) — a web-only PR doesn't pay for a Go job and vice versa. `make check` runs both unconditionally; run that locally before pushing.
+The [`Makefile`](../Makefile) is the build contract. **CI runs `make check-go` and `make check-web`, and nothing else** — if a check isn't reachable through a `make` target, it isn't part of the build, and there is no divergent CI-only command list to keep in sync. Each is gated in CI ([`ci.yml`](../.github/workflows/ci.yml)) on whether a commit actually touched that side ([`dorny/paths-filter`](https://github.com/dorny/paths-filter)) — a web-only PR doesn't pay for a Go job and vice versa. `make check` runs both unconditionally; run that locally before pushing. There is no separate `make build` job: `check-go`'s Go tests already compile `cmd/bodger`, and whenever `check-web` runs, its e2e test already does a real `npm run build` + `go build` of the production binary and runs it — a stronger check than an unrun `make build` compile.
 
 | Command | What it does |
 | --- | --- |

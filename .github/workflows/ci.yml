@@ -18,6 +18,15 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# There is deliberately no standalone `make build` job. check-go's `go
+# vet`/`go test ./...` already compiles cmd/bodger (an empty embedded
+# dist/ — just .gitkeep — doesn't stop that from succeeding), and
+# whenever check-web runs, its e2e smoke test already does a real
+# `npm run build` + `go build` of the production binary and starts it
+# against actual HTTP requests (web/e2e/global-setup.ts) — a stronger
+# proof than a bare, unrun `make build` compile. Adding a third job that
+# repeats both toolchains' setup for coverage already provided by the
+# other two isn't worth the extra Actions minutes.
 jobs:
   # A commit that only touches one side (e.g. web/ only, or internal/... only)
   # shouldn't pay for the other side's job at all. `internal/surface/http/**`
@@ -137,44 +146,3 @@ jobs:
       # identical command.
       - name: make check-web
         run: make check-web
-
-  build:
-    name: build
-    needs: [changes, check-go, check-web]
-    # `make build` builds the web UI and embeds it into the Go binary, so it
-    # always needs both toolchains regardless of which side changed — but
-    # only when something did, and only once neither check job (if it ran)
-    # failed. `always()` is required here because a skipped dependency
-    # reports as "skipped", not "success", which `if:`'s implicit
-    # success()-only default would otherwise treat as blocking.
-    if: |
-      always() &&
-      (needs.changes.outputs.go == 'true' || needs.changes.outputs.web == 'true') &&
-      needs.check-go.result != 'failure' &&
-      needs.check-web.result != 'failure'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Read toolchain versions
-        id: tools
-        run: |
-          echo "go=$(awk '/^golang /{print $2}' .tool-versions)"   >> "$GITHUB_OUTPUT"
-          echo "node=$(awk '/^nodejs /{print $2}' .tool-versions)" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ steps.tools.outputs.go }}
-          cache: true
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: ${{ steps.tools.outputs.node }}
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Install web dependencies
-        run: cd web && npm ci
-
-      - name: make build
-        run: make build
