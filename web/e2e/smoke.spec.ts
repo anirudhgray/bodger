@@ -1,4 +1,4 @@
-// The one end-to-end web test issue #65 asks for: log in, record a
+// The golden-path e2e test issue #65 asks for: log in, record a
 // transaction, see the updated balance, log out — a smoke test proving
 // the pieces integrate through a real build of the production binary
 // (global-setup.ts), not a substitute for each screen's own Vitest
@@ -6,7 +6,9 @@
 // screen's behaviour in isolation with the API mocked. Per
 // docs/architecture.md §7, e2e stays deliberately sparse — financial
 // correctness itself is established at the domain/app layer
-// (internal/domain, internal/app), not here.
+// (internal/domain, internal/app), not here. See theme.spec.ts for the
+// suite's other test, which exists for a different reason (a behaviour
+// jsdom can't exercise at all, not another user flow).
 import { expect, test } from '@playwright/test'
 
 import {

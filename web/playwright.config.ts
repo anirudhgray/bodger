@@ -1,7 +1,10 @@
-// Playwright config for issue #65's web e2e smoke test. Deliberately one
-// project (Chromium only) and one spec file — docs/architecture.md §7
-// keeps e2e "deliberately sparse", and a single golden-path smoke test
-// has no cross-browser matrix to earn.
+// Playwright config for the web e2e suite (issue #65's smoke test,
+// issue #101's dark-mode toggle test). Deliberately one project
+// (Chromium only) — docs/architecture.md §7 keeps e2e "deliberately
+// sparse", and this suite has no cross-browser matrix to earn. Sparse
+// means few, targeted spec files, not necessarily exactly one — a new
+// one earns its place for a real user flow or a behaviour Vitest's
+// jsdom can't exercise at all, not to click-test every element.
 import { defineConfig, devices } from '@playwright/test'
 
 import { E2E_BASE_URL } from './e2e/env'
