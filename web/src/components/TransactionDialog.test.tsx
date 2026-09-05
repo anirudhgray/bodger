@@ -263,7 +263,17 @@ describe('TransactionDialog (create)', () => {
       { ...account, id: 'acc-2', name: 'Checking' },
     ])
     renderAndOpen()
-    await screen.findByText('HDFC Savings')
+    // Two accounts here (unlike every other test's single-account mock,
+    // which takes the plain-text `hasSingleAccount` branch) means the
+    // Account field is a real Select — its trigger shows "HDFC Savings"
+    // via the same text Radix's hidden native form-mirror <option> also
+    // renders, so a plain findByText would match both. Scope to the
+    // visible combobox trigger instead.
+    await waitFor(() =>
+      expect(
+        screen.getByRole('combobox', { name: 'Account' }),
+      ).toHaveTextContent('HDFC Savings'),
+    )
 
     // TabsTrigger activates on mousedown (or focus), not on the
     // synthetic 'click' event fireEvent.click dispatches alone.

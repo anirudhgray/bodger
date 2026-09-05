@@ -31,7 +31,13 @@ import {
 import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
@@ -558,21 +564,50 @@ function TransactionDialogSheet({
                 </Label>
                 {hasSingleAccount ? (
                   <p className="text-sm">{accounts[0]?.name}</p>
+                ) : accounts.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">
+                    Loading accounts…
+                  </p>
                 ) : (
+                  // Rendered only once `accounts` has actually loaded: Radix
+                  // Select renders a hidden native <select> mirror whenever
+                  // its trigger sits inside a real <form> (true here,
+                  // regardless of whether a `name` prop is passed), keyed
+                  // to the set of option values. Mounting this Select
+                  // first with zero options and letting `accounts` arrive
+                  // afterward changes that key mid-lifecycle, which forces
+                  // Radix to destroy and recreate the native mirror and,
+                  // in the process, dispatch a synthetic change event that
+                  // silently resets the controlled value back to "" —
+                  // confirmed by direct reproduction against
+                  // @radix-ui/react-select's own SelectBubbleInput source,
+                  // not a jsdom-only artifact. Mounting once the real
+                  // option list is already final avoids the mid-lifecycle
+                  // key change entirely.
                   <Select
-                    id="td-account"
                     required
                     value={accountId}
-                    onChange={(e) => setAccountId(e.target.value)}
+                    onValueChange={(value) => {
+                      setAccountId(value)
+                      // A stale "to account" that now equals the new
+                      // "from account" is invalid (can't transfer to
+                      // yourself) — clear it rather than silently
+                      // submitting a transfer to/from the same account.
+                      setToAccountId((current) =>
+                        current === value ? '' : current,
+                      )
+                    }}
                   >
-                    <option value="" disabled>
-                      Choose an account
-                    </option>
-                    {accounts.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
+                    <SelectTrigger id="td-account">
+                      <SelectValue placeholder="Choose an account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                 )}
               </div>
@@ -580,23 +615,40 @@ function TransactionDialogSheet({
               {kind === 'transfer' && (
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="td-to-account">To account</Label>
-                  <Select
-                    id="td-to-account"
-                    required
-                    value={toAccountId}
-                    onChange={(e) => setToAccountId(e.target.value)}
-                  >
-                    <option value="" disabled>
-                      Choose an account
-                    </option>
-                    {accounts
-                      .filter((a) => a.id !== accountId)
-                      .map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                  </Select>
+                  {accounts.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">
+                      Loading accounts…
+                    </p>
+                  ) : (
+                    <Select
+                      // Keyed on the excluded account: this option list
+                      // changes shape every time `accountId` does (see the
+                      // "From account" comment above for why that alone
+                      // is enough to spuriously reset a Radix Select's
+                      // value through its native form-mirror). A fresh
+                      // key forces a clean remount with the final option
+                      // list already in place, rather than letting Radix
+                      // mutate an existing instance's options out from
+                      // under it.
+                      key={accountId}
+                      required
+                      value={toAccountId}
+                      onValueChange={setToAccountId}
+                    >
+                      <SelectTrigger id="td-to-account">
+                        <SelectValue placeholder="Choose an account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {accounts
+                          .filter((a) => a.id !== accountId)
+                          .map((a) => (
+                            <SelectItem key={a.id} value={a.id}>
+                              {a.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               )}
 

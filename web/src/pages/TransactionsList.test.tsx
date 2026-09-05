@@ -199,6 +199,11 @@ describe('TransactionsList', () => {
     // than scoped `within(dialog)`.
     await user.click(within(dialog).getByRole('combobox', { name: 'Category' }))
     await user.click(await screen.findByRole('option', { name: 'Food' }))
+    await waitFor(() =>
+      expect(
+        within(dialog).getByRole('combobox', { name: 'Account' }),
+      ).toHaveTextContent('Checking'),
+    )
     fireEvent.click(
       within(dialog).getByRole('button', { name: 'Record spend' }),
     )
@@ -232,7 +237,9 @@ describe('TransactionsList', () => {
     expect(
       screen.getByRole('button', { name: /Hide filters/ }),
     ).toBeInTheDocument()
-    expect(await screen.findByLabelText('Account')).toHaveValue('a1')
+    expect(
+      await screen.findByRole('combobox', { name: 'Account' }),
+    ).toHaveTextContent('Checking')
   })
 
   it('shows a nested category’s full ancestry path in the filter (issue #106)', async () => {
@@ -295,14 +302,14 @@ describe('TransactionsList', () => {
   })
 
   it('applies a filter and re-fetches with it', async () => {
+    const user = userEvent.setup()
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     renderPage()
     await screen.findByText('Groceries')
 
     fireEvent.click(screen.getByRole('button', { name: /Filters/ }))
-    fireEvent.change(await screen.findByLabelText('Account'), {
-      target: { value: 'a1' },
-    })
+    await user.click(screen.getByRole('combobox', { name: 'Account' }))
+    await user.click(await screen.findByRole('option', { name: 'Checking' }))
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
 
     await waitFor(() =>
@@ -337,33 +344,30 @@ describe('TransactionsList', () => {
   })
 
   it('title-cases the type filter options, matching the account/category type dropdowns', async () => {
+    const user = userEvent.setup()
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     renderPage()
     await screen.findByText('Groceries')
 
     fireEvent.click(screen.getByRole('button', { name: /Filters/ }))
-    const typeSelect = await screen.findByLabelText('Type')
+    await user.click(screen.getByRole('combobox', { name: 'Type' }))
 
     expect(
-      within(typeSelect).getByRole('option', { name: 'Spend' }),
+      await screen.findByRole('option', { name: 'Spend' }),
     ).toBeInTheDocument()
-    expect(
-      within(typeSelect).getByRole('option', { name: 'Receive' }),
-    ).toBeInTheDocument()
-    expect(
-      within(typeSelect).getByRole('option', { name: 'Move' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Receive' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Move' })).toBeInTheDocument()
   })
 
   it('clearing filters resets the form so a later Apply is not stale', async () => {
+    const user = userEvent.setup()
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     renderPage()
     await screen.findByText('Groceries')
 
     fireEvent.click(screen.getByRole('button', { name: /Filters/ }))
-    fireEvent.change(await screen.findByLabelText('Account'), {
-      target: { value: 'a1' },
-    })
+    await user.click(screen.getByRole('combobox', { name: 'Account' }))
+    await user.click(await screen.findByRole('option', { name: 'Checking' }))
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
     await waitFor(() =>
       expect(mockedListTransactions).toHaveBeenLastCalledWith(
@@ -382,9 +386,11 @@ describe('TransactionsList', () => {
       }),
     )
     // The bug wasn't the fetch — clearFilters() always fetched unfiltered.
-    // It was the form still displaying "a1" afterwards, so a second Apply
-    // with no further changes would silently resubmit it.
-    expect(screen.getByLabelText('Account')).toHaveValue('')
+    // It was the form still displaying "Checking" afterwards, so a second
+    // Apply with no further changes would silently resubmit it.
+    expect(screen.getByRole('combobox', { name: 'Account' })).toHaveTextContent(
+      'Any',
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
     await waitFor(() =>

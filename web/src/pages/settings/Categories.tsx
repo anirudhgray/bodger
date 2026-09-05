@@ -13,7 +13,13 @@ import { Card } from '@/components/ui/card'
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { type Category, type CategoryKind } from '@/lib/api'
 import { buildCategoryTree } from '@/lib/category-tree'
@@ -166,15 +172,19 @@ export function CategoriesSettings() {
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="category-type">Type</Label>
           <Select
-            id="category-type"
             value={type}
-            onChange={(event) => setType(event.target.value as CategoryKind)}
+            onValueChange={(value) => setType(value as CategoryKind)}
           >
-            {CATEGORY_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {categoryKindLabel(t)}
-              </option>
-            ))}
+            <SelectTrigger id="category-type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CATEGORY_TYPES.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {categoryKindLabel(t)}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </div>
         <Button type="submit" disabled={creating || name === ''}>
