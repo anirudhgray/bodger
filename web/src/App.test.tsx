@@ -202,4 +202,84 @@ describe('AppLayout', () => {
 
     expect(await screen.findByText('Transactions content')).toBeInTheDocument()
   })
+
+  describe('Settings sidebar submenu', () => {
+    // The sidebar's Settings entry (App.tsx's AppSidebar) is a second,
+    // collapsed way to reach the same four routes SettingsLayout's tab
+    // strip already covers (see AppSidebar's comment for why both exist).
+    // These assert the collapse/expand behavior itself, not the routes'
+    // own content — SettingsLayout.test.tsx already covers the tab strip.
+    function renderAt(path: string) {
+      render(
+        <ThemeProvider>
+          <MemoryRouter initialEntries={[path]}>
+            <Routes>
+              <Route path="/" element={<AppLayout />}>
+                <Route
+                  path="transactions"
+                  element={<div>Transactions content</div>}
+                />
+                <Route
+                  path="settings/accounts"
+                  element={<div>Accounts content</div>}
+                />
+                <Route
+                  path="settings/categories"
+                  element={<div>Categories content</div>}
+                />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>,
+      )
+    }
+
+    it('starts collapsed on a non-settings route', () => {
+      renderAt('/transactions')
+
+      expect(
+        screen.getByRole('button', { name: /Settings/ }),
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByRole('link', { name: 'Accounts' }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('expands to show every section on click, and collapses again', () => {
+      renderAt('/transactions')
+
+      const trigger = screen.getByRole('button', { name: /Settings/ })
+      fireEvent.click(trigger)
+
+      for (const name of ['Password', 'API tokens', 'Accounts', 'Categories']) {
+        expect(screen.getByRole('link', { name })).toHaveAttribute(
+          'href',
+          `/settings/${name === 'API tokens' ? 'tokens' : name.toLowerCase()}`,
+        )
+      }
+
+      fireEvent.click(trigger)
+      expect(
+        screen.queryByRole('link', { name: 'Accounts' }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('starts expanded when already on a settings route, with that section current', () => {
+      renderAt('/settings/accounts')
+
+      const accountsLink = screen.getByRole('link', { name: 'Accounts' })
+      expect(accountsLink).toHaveAttribute('aria-current', 'page')
+      expect(
+        screen.getByRole('link', { name: 'Categories' }),
+      ).not.toHaveAttribute('aria-current')
+    })
+
+    it('navigates when a section link is clicked', async () => {
+      renderAt('/settings/accounts')
+
+      fireEvent.click(screen.getByRole('link', { name: 'Categories' }))
+
+      expect(await screen.findByText('Categories content')).toBeInTheDocument()
+    })
+  })
 })

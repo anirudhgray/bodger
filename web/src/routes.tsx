@@ -16,7 +16,11 @@ import { AppLayout } from '@/App'
 import { BalancesPage } from '@/pages/Balances'
 import { Login } from '@/pages/Login'
 import { Placeholder } from '@/pages/Placeholder'
-import { Settings } from '@/pages/Settings'
+import { AccountsSettings } from '@/pages/settings/Accounts'
+import { ApiTokensSettings } from '@/pages/settings/ApiTokens'
+import { CategoriesSettings } from '@/pages/settings/Categories'
+import { PasswordSettings } from '@/pages/settings/Password'
+import { SettingsLayout } from '@/pages/settings/SettingsLayout'
 import { TransactionsList } from '@/pages/TransactionsList'
 import { checkSession } from '@/lib/session'
 
@@ -101,8 +105,19 @@ export const routes: RouteObject[] = [
       },
       {
         path: 'settings',
-        // issue #62 — settings: password, API tokens, accounts/categories CRUD
-        element: <Settings />,
+        // issue #62 — settings: password, API tokens, accounts/categories
+        // CRUD. issue #107 split the single stacked page into these
+        // nested subroutes, with SettingsLayout providing the shared
+        // heading and sub-nav (see that file's own comment for why a tab
+        // strip, not a second sidebar).
+        element: <SettingsLayout />,
+        children: [
+          { index: true, element: <Navigate to="password" replace /> },
+          { path: 'password', element: <PasswordSettings /> },
+          { path: 'tokens', element: <ApiTokensSettings /> },
+          { path: 'accounts', element: <AccountsSettings /> },
+          { path: 'categories', element: <CategoriesSettings /> },
+        ],
       },
       {
         // Catches anything that isn't one of the paths above — a typo'd

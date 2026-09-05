@@ -214,6 +214,29 @@ function — sonner's own API already covers what a wrapper would have
 added (stacking, per-toast auto-dismiss, a loading→success/error
 promise pattern), so there's nothing left for one to do.
 
+`tabs` (issue #107) also now backs Settings' own sub-navigation
+(`pages/settings/SettingsLayout.tsx`), split into `/settings/password`,
+`/tokens`, `/accounts`, and `/categories` routes rather than one long
+stacked page. This is a second, different use of the same primitive from
+TransactionEntry's Spend/Receive/Move switch above: there, `Tabs` swaps
+content in place within one page; here, each `TabsTrigger` is a real
+`<Link>` (via `asChild`) to its own route, so the "tabs" are actual
+navigation — the address bar, back button, and bookmarks all work
+normally.
+
+The same four routes are also reachable straight from `AppLayout`'s own
+top-level nav (#88): `AppSidebar`'s Settings entry is a `Collapsible` +
+`SidebarMenuSub` group rather than a plain link, collapsed by default
+and opened automatically when a settings route is already active. This
+isn't a second, competing nav structure — `Sidebar` and the content-area
+tab strip serve different reach: the tab strip is for someone already on
+a settings page switching sections, the sidebar submenu is for jumping
+straight to one (e.g. "Categories") from anywhere else in the app
+without a stop at `/settings/password` first. `SidebarMenuSub`'s
+trigger only expands/collapses; it doesn't navigate on its own, so
+reaching a section always means picking one from the list, the same as
+the tab strip does.
+
 ## Toasts vs. inline messages
 
 Two different places a success/error message can live, and both are
