@@ -19,6 +19,7 @@ import {
 } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import {
   Dialog,
   DialogContent,
@@ -47,6 +48,8 @@ import {
   type EditTransactionBody,
   type Transaction,
 } from '@/lib/api'
+import { buildCategoryTree } from '@/lib/category-tree'
+import { createCategory } from '@/lib/settings'
 import { sanitizeAmountInput } from '@/lib/utils'
 import {
   TransactionDialogContext,
@@ -318,6 +321,53 @@ function TransactionDialogSheet({
     [categories, kind],
   )
 
+  // Issue #106: the same parent_id tree Settings' own category list and
+  // "Parent" field show, flattened into the Combobox's option shape.
+  // Built from relevantCategories (not the raw `categories` state) so a
+  // category tree already reflects the current Spend/Receive tab's own
+  // kind filter — an expense category never shows up while entering
+  // income, matching what the old <select> already did.
+  const categoryOptions = useMemo<ComboboxOption[]>(
+    () =>
+      buildCategoryTree(relevantCategories).map(
+        ({ category, depth, path }) => ({
+          value: category.id,
+          label: category.name,
+          depth,
+          path,
+        }),
+      ),
+    [relevantCategories],
+  )
+
+  // Quick-create (issue #106): called from the Category combobox itself
+  // when the typed text matches nothing. Always creates a new top-level
+  // category of whichever kind the dialog is currently in (Spend →
+  // expense, Receive → income) — nesting it under a specific parent from
+  // here would need its own picker inside the create row, which is more
+  // than "don't abandon the transaction" calls for; a quick-created
+  // category can always be reparented later from Settings, same as any
+  // other. Errors surface as a toast rather than inline: there's no
+  // dedicated error slot inside the combobox's create row, and a toast
+  // doesn't block the transaction still mid-entry underneath it.
+  async function handleCreateCategory(name: string): Promise<ComboboxOption> {
+    try {
+      const created = await createCategory({
+        name,
+        type: kind === 'inflow' ? 'income' : 'expense',
+      })
+      setCategories((prev) => [...prev, created])
+      return { value: created.id, label: created.name, path: created.name }
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : 'Couldn’t create that category. Try again.',
+      )
+      throw err
+    }
+  }
+
   const hasSingleAccount = accounts.length === 1
   const canSubmit =
     amount.trim() !== '' &&
@@ -489,21 +539,16 @@ function TransactionDialogSheet({
               {kind !== 'transfer' && (
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="td-category">Category</Label>
-                  <Select
+                  <Combobox
                     id="td-category"
-                    required
+                    options={categoryOptions}
                     value={categoryId}
-                    onChange={(e) => setCategoryId(e.target.value)}
-                  >
-                    <option value="" disabled>
-                      Choose a category
-                    </option>
-                    {relevantCategories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </Select>
+                    onChange={setCategoryId}
+                    placeholder="Choose a category"
+                    searchPlaceholder="Search categories…"
+                    emptyText="No matching categories."
+                    onCreate={handleCreateCategory}
+                  />
                 </div>
               )}
 

@@ -175,6 +175,7 @@ describe('TransactionsList', () => {
   })
 
   it('refreshes when a transaction is created by something else entirely (e.g. the nav)', async () => {
+    const user = userEvent.setup()
     mockedListTransactions
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [groceries] })
@@ -190,9 +191,14 @@ describe('TransactionsList', () => {
     fireEvent.change(within(dialog).getByLabelText('Amount'), {
       target: { value: '42.50' },
     })
-    fireEvent.change(within(dialog).getByLabelText('Category'), {
-      target: { value: 'c1' },
-    })
+    // The Category field is a Combobox (issue #106), not a native
+    // <select> — pick it via the real interaction, same as
+    // TransactionDialog.test.tsx's own pickCategory helper. Its popover
+    // content renders in its own portal, outside `dialog`'s own DOM
+    // subtree, so the option is queried from the whole document rather
+    // than scoped `within(dialog)`.
+    await user.click(within(dialog).getByRole('combobox', { name: 'Category' }))
+    await user.click(await screen.findByRole('option', { name: 'Food' }))
     fireEvent.click(
       within(dialog).getByRole('button', { name: 'Record spend' }),
     )
@@ -229,6 +235,48 @@ describe('TransactionsList', () => {
     expect(await screen.findByLabelText('Account')).toHaveValue('a1')
   })
 
+  it('shows a nested category’s full ancestry path in the filter (issue #106)', async () => {
+    mockedListCategories.mockResolvedValue([
+      {
+        id: 'c1',
+        name: 'Food',
+        type: 'expense',
+        sort_order: 0,
+        archived: false,
+      },
+      {
+        id: 'c2',
+        name: 'Groceries',
+        type: 'expense',
+        sort_order: 0,
+        archived: false,
+        parent_id: 'c1',
+      },
+    ])
+    mockedListTransactions.mockResolvedValue({ data: [] })
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('No transactions yet')
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }))
+    await user.click(await screen.findByRole('combobox', { name: 'Category' }))
+
+    expect(
+      await screen.findByRole('option', { name: 'Food' }),
+    ).toBeInTheDocument()
+    // The child's own list label is just its name ("Groceries") — the
+    // hierarchy shows as indentation there, not a repeated path — but
+    // its full "Food > Groceries" ancestry is still findable by typing
+    // either name, per Combobox's own path-based search.
+    await user.type(
+      screen.getByRole('combobox', { name: /search/i }),
+      'Food > Groceries',
+    )
+    expect(
+      await screen.findByRole('option', { name: 'Groceries' }),
+    ).toBeInTheDocument()
+  })
+
   it('filters by category when a transaction row’s category is clicked', async () => {
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     renderPage()
@@ -241,7 +289,9 @@ describe('TransactionsList', () => {
         category: 'c1',
       }),
     )
-    expect(await screen.findByLabelText('Category')).toHaveValue('c1')
+    expect(
+      await screen.findByRole('combobox', { name: 'Category' }),
+    ).toHaveTextContent('Food')
   })
 
   it('applies a filter and re-fetches with it', async () => {

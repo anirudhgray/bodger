@@ -135,6 +135,12 @@ function Combobox({
       commit(created.value)
       setOpen(false)
       setSearch('')
+    } catch {
+      // The caller's onCreate is responsible for surfacing its own
+      // error (a toast, typically — see components/ui/combobox's
+      // callers) — swallowed here only so a rejection leaves the
+      // popover open with the typed text still in place, ready to
+      // retry, instead of becoming an unhandled promise rejection.
     } finally {
       setCreating(false)
     }

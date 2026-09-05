@@ -7,7 +7,13 @@
 // is reversible in the database... confirmation is for genuinely
 // hard-to-undo actions", ux-principles.md §5).
 import { Receipt } from 'lucide-react'
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from 'react'
 import { useLocation } from 'react-router-dom'
 
 import {
@@ -16,6 +22,7 @@ import {
 } from '@/hooks/use-transaction-dialog'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import {
   Empty,
   EmptyContent,
@@ -41,6 +48,7 @@ import {
   type TransactionKind,
   type TransactionListFilter,
 } from '@/lib/api'
+import { buildCategoryTree } from '@/lib/category-tree'
 import { capitalize } from '@/lib/utils'
 
 // kindLabel mirrors internal/surface/cli/transactions.go's
@@ -102,6 +110,23 @@ export function TransactionsList() {
 
   const accountsByID = new Map(accounts.map((a) => [a.id, a.name]))
   const categoriesByID = new Map(categories.map((c) => [c.id, c.name]))
+
+  // Issue #106: the category filter shows the same parent_id hierarchy
+  // Settings' own category list and TransactionDialog's picker do,
+  // rather than a flat alphabetical dump — "Any" stands in for the old
+  // <select>'s empty-value option, since it isn't itself a category.
+  const categoryOptions = useMemo<ComboboxOption[]>(
+    () => [
+      { value: '', label: 'Any' },
+      ...buildCategoryTree(categories).map(({ category, depth, path }) => ({
+        value: category.id,
+        label: category.name,
+        depth,
+        path,
+      })),
+    ],
+    [categories],
+  )
 
   const load = useCallback(
     async (appliedFilter: TransactionListFilter, append: boolean) => {
@@ -279,18 +304,16 @@ export function TransactionsList() {
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="filter-category">Category</Label>
-            <Select
+            <Combobox
               id="filter-category"
               name="category"
               defaultValue={filter.category ?? ''}
-            >
-              <option value="">Any</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
+              options={categoryOptions}
+              placeholder="Any"
+              searchPlaceholder="Search categories…"
+              emptyText="No matching categories."
+              className="w-44"
+            />
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="filter-type">Type</Label>
