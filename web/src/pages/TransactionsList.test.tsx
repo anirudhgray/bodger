@@ -163,6 +163,19 @@ describe('TransactionsList', () => {
     expect(await screen.findByText('No transactions yet')).toBeInTheDocument()
   })
 
+  // Regression test, from direct user feedback: the page's own root
+  // container was missing flex-1 (present on Balances.tsx's equivalent
+  // root div), so <Empty>'s own flex-1 had no extra vertical space in
+  // its flex-col parent to expand into and center within — it just sat
+  // at content height under the header instead of centered on the page.
+  it('gives the page container flex-1 so the empty state centers like Balances does', async () => {
+    mockedListTransactions.mockResolvedValue({ data: [] })
+    const { container } = renderPage()
+    await screen.findByText('No transactions yet')
+
+    expect(container.querySelector(':scope > div')).toHaveClass('flex-1')
+  })
+
   it('refreshes when a transaction is created by something else entirely (e.g. the nav)', async () => {
     mockedListTransactions
       .mockResolvedValueOnce({ data: [] })
