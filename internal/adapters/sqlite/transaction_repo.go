@@ -505,7 +505,11 @@ func buildTransaction(tr transactionRow, postings []ledger.Posting) (ledger.Tran
 	case ledger.TransactionKindInflow:
 		out, err = ledger.NewInflow(tr.id, tr.userID, bookedDate, tr.description, postings, opts...)
 	case ledger.TransactionKindTransfer:
-		out, err = ledger.NewTransfer(tr.id, tr.userID, bookedDate, tr.description, postings, opts...)
+		// The implied rate NewTransfer now also returns isn't persisted
+		// yet (issue #128/#133 wire fx_rate_used/fx_rate_source); this is
+		// a read-path reconstruction of an already-stored transaction, so
+		// there's nothing to do with it here but discard it.
+		out, _, err = ledger.NewTransfer(tr.id, tr.userID, bookedDate, tr.description, postings, opts...)
 	default:
 		return ledger.Transaction{}, fmt.Errorf("sqlite: unknown stored transaction kind %q", tr.kind)
 	}

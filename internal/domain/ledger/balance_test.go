@@ -86,7 +86,7 @@ func TestBalance(t *testing.T) {
 		t.Parallel()
 		account := mustAccount(t, "acc-1", 0, "USD")
 
-		tx, err := ledger.NewTransfer("tx-1", "user-1", mustDate(t, 2026, 8, 1), "Move money",
+		tx, _, err := ledger.NewTransfer("tx-1", "user-1", mustDate(t, 2026, 8, 1), "Move money",
 			[]ledger.Posting{
 				mustPosting(t, "post-1", "acc-1", -50000, "USD", nil),
 				mustPosting(t, "post-2", "acc-other", 50000, "USD", nil),

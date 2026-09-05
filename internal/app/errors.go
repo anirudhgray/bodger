@@ -53,10 +53,11 @@ func wrapLedgerError(err error) error {
 // gives each one a specific, user-safe message and field, falling back to
 // wrapLedgerError's generic message for anything else. By the time this
 // package calls ledger.NewTransfer, the accounts are already known
-// distinct-or-not and same-currency-or-not from data it fetched itself, so
-// in practice only ErrTransferSameAccount and
-// ErrCrossCurrencyTransferUnsupported are reachable here — but every
-// sentinel is handled so this stays correct if that ever changes.
+// distinct-or-not from data it fetched itself (and same-currency, since
+// buildTransferPostings rejects a cross-currency pair itself before ever
+// reaching ledger.NewTransfer — issue #133 lifts that), so in practice
+// only ErrTransferSameAccount is reachable here — but every sentinel is
+// handled so this stays correct if that ever changes.
 func wrapTransferError(err error) error {
 	if err == nil {
 		return nil
@@ -66,11 +67,6 @@ func wrapTransferError(err error) error {
 		return errs.New(errs.InvalidInput).
 			Explain("A transfer's two accounts must be different.").
 			Field("to_account_ref")
-	case errors.Is(err, ledger.ErrCrossCurrencyTransferUnsupported):
-		return errs.New(errs.InvalidInput).
-			Explain("Transfers between accounts with different currencies aren't supported yet.").
-			Field("to_account_ref").
-			Wrap(err)
 	case errors.Is(err, ledger.ErrTransferNotBalanced), errors.Is(err, ledger.ErrTransferPostingsMustOppose),
 		errors.Is(err, ledger.ErrTransferPostingHasCategory), errors.Is(err, ledger.ErrTransferPostingCount):
 		// These can't actually happen given how this package builds a

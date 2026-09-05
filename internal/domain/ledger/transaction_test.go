@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 )
 
@@ -203,7 +205,7 @@ func TestNewTransfer(t *testing.T) {
 			mustPosting(t, "post-1", "acc-savings", -2000000, "INR", nil),
 			mustPosting(t, "post-2", "acc-checking", 2000000, "INR", nil),
 		}
-		tx, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Move to spending account", postings)
+		tx, rate, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Move to spending account", postings)
 		if err != nil {
 			t.Fatalf("NewTransfer() = %v, want success", err)
 		}
@@ -215,6 +217,12 @@ func TestNewTransfer(t *testing.T) {
 				t.Errorf("posting %s has a category, want none on a transfer", p.ID())
 			}
 		}
+		if !rate.IsIdentity() {
+			t.Errorf("rate = %s %s/%s, want the trivial 1:1 identity rate", rate, rate.Quote(), rate.Base())
+		}
+		if rate.Base() != "INR" || rate.Quote() != "INR" {
+			t.Errorf("rate base/quote = %s/%s, want INR/INR", rate.Base(), rate.Quote())
+		}
 	})
 
 	t.Run("order of legs doesn't matter", func(t *testing.T) {
@@ -223,7 +231,7 @@ func TestNewTransfer(t *testing.T) {
 			mustPosting(t, "post-1", "acc-checking", 2000000, "INR", nil),
 			mustPosting(t, "post-2", "acc-savings", -2000000, "INR", nil),
 		}
-		if _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Move money", postings); err != nil {
+		if _, _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Move money", postings); err != nil {
 			t.Fatalf("NewTransfer() = %v, want success", err)
 		}
 	})
@@ -231,7 +239,7 @@ func TestNewTransfer(t *testing.T) {
 	t.Run("rejects anything other than two postings", func(t *testing.T) {
 		t.Parallel()
 		one := []ledger.Posting{mustPosting(t, "post-1", "acc-savings", -100, "USD", nil)}
-		if _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", one); !errors.Is(err, ledger.ErrTransferPostingCount) {
+		if _, _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", one); !errors.Is(err, ledger.ErrTransferPostingCount) {
 			t.Fatalf("NewTransfer(1 posting) error = %v, want ErrTransferPostingCount", err)
 		}
 
@@ -240,7 +248,7 @@ func TestNewTransfer(t *testing.T) {
 			mustPosting(t, "post-2", "acc-b", 50, "USD", nil),
 			mustPosting(t, "post-3", "acc-c", 50, "USD", nil),
 		}
-		if _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", three); !errors.Is(err, ledger.ErrTransferPostingCount) {
+		if _, _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", three); !errors.Is(err, ledger.ErrTransferPostingCount) {
 			t.Fatalf("NewTransfer(3 postings) error = %v, want ErrTransferPostingCount", err)
 		}
 	})
@@ -251,7 +259,7 @@ func TestNewTransfer(t *testing.T) {
 			mustPosting(t, "post-1", "acc-savings", -100, "USD", nil),
 			mustPosting(t, "post-2", "acc-savings", 100, "USD", nil),
 		}
-		_, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", postings)
+		_, _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", postings)
 		if !errors.Is(err, ledger.ErrTransferSameAccount) {
 			t.Fatalf("NewTransfer(same account) error = %v, want ErrTransferSameAccount", err)
 		}
@@ -265,7 +273,7 @@ func TestNewTransfer(t *testing.T) {
 			mustPosting(t, "post-1", "acc-savings", -100, "USD", &cat),
 			mustPosting(t, "post-2", "acc-checking", 100, "USD", nil),
 		}
-		if _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", fromHasCategory); !errors.Is(err, ledger.ErrTransferPostingHasCategory) {
+		if _, _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", fromHasCategory); !errors.Is(err, ledger.ErrTransferPostingHasCategory) {
 			t.Fatalf("NewTransfer(from has category) error = %v, want ErrTransferPostingHasCategory", err)
 		}
 
@@ -273,7 +281,7 @@ func TestNewTransfer(t *testing.T) {
 			mustPosting(t, "post-1", "acc-savings", -100, "USD", nil),
 			mustPosting(t, "post-2", "acc-checking", 100, "USD", &cat),
 		}
-		if _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", toHasCategory); !errors.Is(err, ledger.ErrTransferPostingHasCategory) {
+		if _, _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", toHasCategory); !errors.Is(err, ledger.ErrTransferPostingHasCategory) {
 			t.Fatalf("NewTransfer(to has category) error = %v, want ErrTransferPostingHasCategory", err)
 		}
 	})
@@ -284,7 +292,7 @@ func TestNewTransfer(t *testing.T) {
 			mustPosting(t, "post-1", "acc-savings", -100, "USD", nil),
 			mustPosting(t, "post-2", "acc-checking", -100, "USD", nil),
 		}
-		if _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", bothNegative); !errors.Is(err, ledger.ErrTransferPostingsMustOppose) {
+		if _, _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", bothNegative); !errors.Is(err, ledger.ErrTransferPostingsMustOppose) {
 			t.Fatalf("NewTransfer(both negative) error = %v, want ErrTransferPostingsMustOppose", err)
 		}
 
@@ -292,7 +300,7 @@ func TestNewTransfer(t *testing.T) {
 			mustPosting(t, "post-1", "acc-savings", 100, "USD", nil),
 			mustPosting(t, "post-2", "acc-checking", 100, "USD", nil),
 		}
-		if _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", bothPositive); !errors.Is(err, ledger.ErrTransferPostingsMustOppose) {
+		if _, _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", bothPositive); !errors.Is(err, ledger.ErrTransferPostingsMustOppose) {
 			t.Fatalf("NewTransfer(both positive) error = %v, want ErrTransferPostingsMustOppose", err)
 		}
 	})
@@ -303,7 +311,7 @@ func TestNewTransfer(t *testing.T) {
 			mustPosting(t, "post-1", "acc-savings", 0, "USD", nil),
 			mustPosting(t, "post-2", "acc-checking", 0, "USD", nil),
 		}
-		_, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", postings)
+		_, _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", postings)
 		if !errors.Is(err, ledger.ErrTransferPostingsMustOppose) {
 			t.Fatalf("NewTransfer(zero amounts) error = %v, want ErrTransferPostingsMustOppose", err)
 		}
@@ -315,21 +323,62 @@ func TestNewTransfer(t *testing.T) {
 			mustPosting(t, "post-1", "acc-savings", -100000, "USD", nil),
 			mustPosting(t, "post-2", "acc-checking", 90000, "USD", nil),
 		}
-		_, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", postings)
+		_, _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "Oops", postings)
 		if !errors.Is(err, ledger.ErrTransferNotBalanced) {
 			t.Fatalf("NewTransfer(unbalanced) error = %v, want ErrTransferNotBalanced", err)
 		}
 	})
 
-	t.Run("rejects a cross-currency transfer with a specific error, not a wrong number", func(t *testing.T) {
+	t.Run("accepts a cross-currency transfer and derives the implied rate", func(t *testing.T) {
 		t.Parallel()
 		postings := []ledger.Posting{
 			mustPosting(t, "post-1", "acc-hdfc-inr", -2000000, "INR", nil),
 			mustPosting(t, "post-2", "acc-chase-usd", 23000, "USD", nil),
 		}
-		_, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "FX transfer", postings)
-		if !errors.Is(err, ledger.ErrCrossCurrencyTransferUnsupported) {
-			t.Fatalf("NewTransfer(cross-currency) error = %v, want ErrCrossCurrencyTransferUnsupported", err)
+		tx, rate, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "FX transfer", postings)
+		if err != nil {
+			t.Fatalf("NewTransfer(cross-currency) = %v, want success", err)
+		}
+		if tx.Kind() != ledger.TransactionKindTransfer {
+			t.Errorf("Kind() = %s, want transfer", tx.Kind())
+		}
+		// ₹20,000 out, $230 in: 230/20000 = 0.0115 USD per INR.
+		if rate.Base() != "INR" || rate.Quote() != "USD" {
+			t.Fatalf("rate base/quote = %s/%s, want INR/USD", rate.Base(), rate.Quote())
+		}
+		want := decimal.RequireFromString("0.0115")
+		if !rate.Value().Equal(want) {
+			t.Errorf("rate value = %s, want %s", rate.Value(), want)
+		}
+	})
+
+	t.Run("order of legs doesn't matter for a cross-currency transfer either", func(t *testing.T) {
+		t.Parallel()
+		postings := []ledger.Posting{
+			mustPosting(t, "post-1", "acc-chase-usd", 23000, "USD", nil),
+			mustPosting(t, "post-2", "acc-hdfc-inr", -2000000, "INR", nil),
+		}
+		_, rate, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "FX transfer", postings)
+		if err != nil {
+			t.Fatalf("NewTransfer(cross-currency, reordered legs) = %v, want success", err)
+		}
+		want := decimal.RequireFromString("0.0115")
+		if !rate.Value().Equal(want) || rate.Base() != "INR" || rate.Quote() != "USD" {
+			t.Errorf("rate = %s %s/%s, want 0.0115 INR/USD regardless of posting order", rate, rate.Base(), rate.Quote())
+		}
+	})
+
+	t.Run("a cross-currency transfer's legs need not sum to zero", func(t *testing.T) {
+		t.Parallel()
+		// These two amounts would fail ErrTransferNotBalanced if summed
+		// as same-currency minor units — cross-currency deliberately
+		// suspends that rule (data-model.md §3/§5).
+		postings := []ledger.Posting{
+			mustPosting(t, "post-1", "acc-hdfc-inr", -2000000, "INR", nil),
+			mustPosting(t, "post-2", "acc-chase-usd", 1, "USD", nil),
+		}
+		if _, _, err := ledger.NewTransfer("tx-1", "user-1", bookedDate, "FX transfer", postings); err != nil {
+			t.Fatalf("NewTransfer(cross-currency, lopsided legs) = %v, want success (zero-sum rule suspended)", err)
 		}
 	})
 }
@@ -356,7 +405,7 @@ func TestCreditCardPurchaseAndPaymentDoNotDoubleCount(t *testing.T) {
 	}
 
 	// Paying the bill: a transfer, not an expense.
-	payment, err := ledger.NewTransfer(
+	payment, _, err := ledger.NewTransfer(
 		"tx-payment", "user-1", mustDate(t, 2026, 9, 1), "Card bill payment",
 		[]ledger.Posting{
 			mustPosting(t, "post-2", "acc-bank", -500000, "INR", nil),

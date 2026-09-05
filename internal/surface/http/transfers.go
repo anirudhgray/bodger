@@ -10,7 +10,10 @@ import (
 // no currency field: a transfer's amount is always in from_account's own
 // currency (app.RecordTransferCommand's doc comment) — the application
 // layer resolves the to-account leg's currency itself and rejects a
-// cross-currency transfer, per M1's single-currency-per-account scope.
+// cross-currency transfer for now. The domain layer (ledger.NewTransfer,
+// issue #129) supports one, deriving an implied rate; the application
+// layer doesn't wire that rate anywhere yet, so it keeps rejecting the
+// case until issue #133 does.
 type createTransferRequest struct {
 	FromAccount string   `json:"from_account" doc:"An account's ID or unique name: the account the money leaves."`
 	ToAccount   string   `json:"to_account" doc:"An account's ID or unique name: the account the money arrives in."`

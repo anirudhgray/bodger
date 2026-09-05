@@ -111,13 +111,6 @@ var (
 	// two postings aren't one negative and one positive.
 	ErrTransferPostingsMustOppose = errors.New("ledger: a transfer's two postings must have opposite signs")
 
-	// ErrCrossCurrencyTransferUnsupported is returned by NewTransfer when
-	// its two postings are in different currencies. M1 rejects
-	// cross-currency transfers outright; the exemption from the zero-sum
-	// rule and the implied-rate recording are M3 (ADR-0003 §Cross-currency
-	// transfers).
-	ErrCrossCurrencyTransferUnsupported = errors.New("ledger: cross-currency transfers are not supported yet")
-
 	// ErrTransferNotBalanced is returned by NewTransfer when a
 	// same-currency transfer's two postings don't sum to exactly zero.
 	ErrTransferNotBalanced = errors.New("ledger: a same-currency transfer's postings must sum to zero")
