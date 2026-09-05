@@ -4,7 +4,13 @@
 // round-tripping, the immutable kind label) is covered as a real
 // integration through TransactionsList.test.tsx instead of duplicated
 // here, since that's the only place edit is actually triggered from.
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -118,6 +124,70 @@ describe('TransactionDialog (create)', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
     )
+  })
+
+  // Regression test for a bug found via direct user report (no filed
+  // issue): TransactionDialogProvider keys TransactionDialogSheet as
+  // 'create' for every create open, so a second openCreate() reuses the
+  // same instance — every field's useState(initial) initializer, and
+  // the accounts/categories fetch effect, had already run once and
+  // never ran again, leaving whatever was last typed/fetched behind.
+  it('resets every field when the create dialog is closed and reopened', async () => {
+    renderAndOpen()
+    await screen.findByText('HDFC Savings')
+
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: '800' },
+    })
+    fireEvent.change(screen.getByLabelText('Category'), {
+      target: { value: 'cat-1' },
+    })
+    fireEvent.click(screen.getByText('Add details'))
+    fireEvent.change(screen.getByLabelText('Description'), {
+      target: { value: 'Leftover text' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    )
+
+    fireEvent.click(screen.getByText('Open'))
+    await screen.findByText('HDFC Savings')
+
+    expect(screen.getByLabelText('Amount')).toHaveValue('')
+    expect(screen.getByLabelText('Category')).toHaveValue('')
+    expect(screen.queryByLabelText('Description')).not.toBeInTheDocument()
+    expect(screen.getByText('Add details')).toBeInTheDocument()
+  })
+
+  // Same root cause as above, for the accounts/categories fetch: it was
+  // gated on a mount-only effect, so anything added via Settings between
+  // two opens of the same reused dialog instance never showed up.
+  it('re-fetches accounts and categories on reopen, picking up anything added since', async () => {
+    renderAndOpen()
+    await screen.findByText('HDFC Savings')
+    expect(screen.queryByText('Rent')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    )
+
+    mockedListCategories.mockResolvedValue([
+      category,
+      { ...category, id: 'cat-2', name: 'Rent' },
+    ])
+
+    fireEvent.click(screen.getByText('Open'))
+    await screen.findByText('HDFC Savings')
+
+    expect(mockedListCategories).toHaveBeenCalledTimes(2)
+    expect(
+      within(screen.getByLabelText('Category')).getByRole('option', {
+        name: 'Rent',
+      }),
+    ).toBeInTheDocument()
   })
 
   it('picks a date via the Radix date picker in "Add details" (issue #104)', async () => {
