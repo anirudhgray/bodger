@@ -8,6 +8,7 @@
 // exist until M3.
 import { useEffect, useState } from 'react'
 
+import { Card } from '@/components/ui/card'
 import { ApiError, getBalances, type Balances } from '@/lib/api'
 
 export function BalancesPage() {
@@ -68,19 +69,21 @@ export function BalancesPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Balances</h1>
         <p className="text-muted-foreground text-sm">As of {balances.as_of}</p>
       </div>
-      <ul className="divide-border border-border max-w-md divide-y rounded-lg border">
-        {balances.balances.map((b) => (
-          <li
-            key={b.account_id}
-            className="flex items-center justify-between px-4 py-3"
-          >
-            <span className="text-sm font-medium">{b.account}</span>
-            <span className="text-sm tabular-nums">
-              {b.amount} {b.currency}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <Card className="max-w-md [--card-spacing:0]">
+        <ul className="divide-border divide-y">
+          {balances.balances.map((b) => (
+            <li
+              key={b.account_id}
+              className="flex items-center justify-between px-4 py-3"
+            >
+              <span className="text-sm font-medium">{b.account}</span>
+              <span className="text-sm tabular-nums">
+                {b.amount} {b.currency}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Card>
     </div>
   )
 }
