@@ -247,7 +247,8 @@ was moved out of M2 rather than holding the milestone open on
 bug in containerized `bodger serve` unrelated to the milestone's own goal
 — see §8. It's tracked as backlog, unmilestoned, until #93 is resolved.
 
-**M3 · Rivendell is in progress.** [#100](https://github.com/anirudhgray/bodger/issues/100)
+**M3 · Rivendell is complete** — see the [M3 milestone](https://github.com/anirudhgray/bodger/milestone/3)
+for its issues. [#100](https://github.com/anirudhgray/bodger/issues/100)
 (design tokens), [#101](https://github.com/anirudhgray/bodger/issues/101)
 (auditing `components/ui` and the existing pages against them —
 `docs/design-system.md`), [#89](https://github.com/anirudhgray/bodger/issues/89)
@@ -285,7 +286,7 @@ transaction dialog's own picker — see `docs/design-system.md`'s
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
 | M1 · Arda — Ledger core, CLI, REST API | ✅ Complete (v0.1.0) |
 | M2 · The Shire — Web UI and authentication | ✅ Complete |
-| M3 · Rivendell — UI polish and design system | 🟨 In progress |
+| M3 · Rivendell — UI polish and design system | ✅ Complete |
 | M4 — Multi-currency and FX | ⬜ Not started |
 | M5 — Analytics and charts | ⬜ Not started |
 | M6 — Import and export | ⬜ Not started |
