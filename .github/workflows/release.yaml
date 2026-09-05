@@ -48,12 +48,22 @@ jobs:
       - name: Read toolchain versions
         id: tools
         run: |
-          echo "go=$(awk '/^golang /{print $2}' .tool-versions)" >> "$GITHUB_OUTPUT"
+          echo "go=$(awk '/^golang /{print $2}' .tool-versions)"   >> "$GITHUB_OUTPUT"
+          echo "node=$(awk '/^nodejs /{print $2}' .tool-versions)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ steps.tools.outputs.go }}
           cache: true
+
+      # goreleaser's before.hooks (.goreleaser.yaml) builds web/ before the
+      # cross-compile matrix runs, so the released binaries actually embed
+      # the UI (issue #110) — that hook needs npm on PATH.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ steps.tools.outputs.node }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
       # The release title includes the milestone name for a
       # milestone-completing release (docs/releasing.md): the tag's own

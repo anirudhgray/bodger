@@ -11,6 +11,14 @@ this doc is the layer on top, for the specific act of releasing.
 [GoReleaser](https://goreleaser.com/) does the mechanical work, configured
 in [`.goreleaser.yaml`](../.goreleaser.yaml):
 
+- A `before` hook builds the web UI (`npm ci && npm run build`, i.e. `make
+  build-web`) before anything else runs. `internal/platform/webui` embeds
+  `web/`'s built assets at Go compile time, and that directory is
+  gitignored except for a `.gitkeep` placeholder — without this hook, a
+  release binary would embed nothing but that placeholder and serve no
+  working frontend (issue #110). One web build here is reused for every
+  target in the matrix below, since `go:embed` runs per Go compilation,
+  not per web build.
 - Builds the `bodger` binary for `linux`/`darwin` × `amd64`/`arm64`,
   `CGO_ENABLED=0`, matching the `make build` invocation.
 - Injects the tag, commit, and build date into
@@ -289,9 +297,11 @@ attached. If a milestone was closed above, confirm it shows closed on the
 ## Local dry runs
 
 `goreleaser check` validates `.goreleaser.yaml` without building anything.
-`goreleaser release --snapshot --clean --skip=publish` builds every
-target locally without needing any tag at all (useful for checking the
-build side after touching `.goreleaser.yaml`, ldflags, or
-`internal/platform/version` — it won't generate a changelog, since
-snapshot mode has no tag to diff against; use the throwaway-tag method
-above for that).
+`make release-dry-run` (`goreleaser release --snapshot --clean
+--skip=publish`) builds every target locally without needing any tag at
+all (useful for checking the build side after touching
+`.goreleaser.yaml`, ldflags, or `internal/platform/version` — it won't
+generate a changelog, since snapshot mode has no tag to diff against;
+use the throwaway-tag method above for that). Extract one of the
+resulting `dist/*.tar.gz` archives and run the binary inside to confirm
+it actually serves the built web UI, not just that it compiles.

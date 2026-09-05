@@ -173,6 +173,11 @@ endif
 run:
 	go run $(CMD) serve
 
+## release-dry-run: build every release target locally, no tag or publish
+.PHONY: release-dry-run
+release-dry-run:
+	goreleaser release --snapshot --clean --skip=publish
+
 ## check-go: everything CI runs for a Go change - format, vet, lint, test
 .PHONY: check-go
 check-go: fmt-check-go vet lint-go test-go

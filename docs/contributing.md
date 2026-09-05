@@ -36,6 +36,7 @@ The [`Makefile`](../Makefile) is the build contract. **CI runs `make check-go` a
 | `make generate` | Regenerate generated files (`internal/surface/http/openapi.json`, then `web/src/lib/api-types.ts` from it) |
 | `make build` | Build the web UI, then the binary, into `bin/bodger` |
 | `make run` | Run the server locally |
+| `make release-dry-run` | Build every release target locally (goreleaser snapshot mode, no tag or publish) — see [`releasing.md`](releasing.md#local-dry-runs) |
 | `make test-cover` | Tests with a coverage profile |
 | `make docker-up` | Run the self-hosted stack |
 | `make help` | List everything |
