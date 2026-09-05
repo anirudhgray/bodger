@@ -9,6 +9,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -162,6 +163,19 @@ describe('TransactionsList', () => {
     expect(await screen.findByText('No transactions yet')).toBeInTheDocument()
   })
 
+  // Regression test, from direct user feedback: the page's own root
+  // container was missing flex-1 (present on Balances.tsx's equivalent
+  // root div), so <Empty>'s own flex-1 had no extra vertical space in
+  // its flex-col parent to expand into and center within — it just sat
+  // at content height under the header instead of centered on the page.
+  it('gives the page container flex-1 so the empty state centers like Balances does', async () => {
+    mockedListTransactions.mockResolvedValue({ data: [] })
+    const { container } = renderPage()
+    await screen.findByText('No transactions yet')
+
+    expect(container.querySelector(':scope > div')).toHaveClass('flex-1')
+  })
+
   it('refreshes when a transaction is created by something else entirely (e.g. the nav)', async () => {
     mockedListTransactions
       .mockResolvedValueOnce({ data: [] })
@@ -251,6 +265,26 @@ describe('TransactionsList', () => {
         from: undefined,
         to: undefined,
       }),
+    )
+  })
+
+  it('filters by a picked From date via the Radix date picker (issue #104)', async () => {
+    const user = userEvent.setup()
+    mockedListTransactions.mockResolvedValue({ data: [groceries] })
+    renderPage()
+    await screen.findByText('Groceries')
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }))
+    await user.click(screen.getByRole('button', { name: /From/ }))
+    await user.click(await screen.findByRole('button', { name: /15th, 2026/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    await waitFor(() =>
+      expect(mockedListTransactions).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          from: expect.stringMatching(/^2026-\d{2}-15$/),
+        }),
+      ),
     )
   })
 

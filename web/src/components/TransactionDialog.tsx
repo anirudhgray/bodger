@@ -29,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -277,17 +278,54 @@ function TransactionDialogSheet({
   const [submitting, setSubmitting] = useState(false)
   const [justRecorded, setJustRecorded] = useState(false)
 
+  // Runs on every open, not just this component's first mount. The
+  // TransactionDialogProvider's key (request.mode === 'edit' ?
+  // transaction.id : 'create') only forces a remount when switching
+  // *which* transaction is being edited, or between create and edit — a
+  // second openCreate() (or a second openEdit() of the very same
+  // transaction) reuses the same Sheet instance with its useState
+  // initializers already spent, so without this, every field below
+  // would still hold whatever was last typed, and accounts/categories
+  // would still hold whatever was fetched on the very first open, missing
+  // anything added via Settings since.
   useEffect(() => {
+    if (!open) return
+
+    setKind(editing?.type ?? 'outflow')
+    setAmount(editing?.amount ?? '')
+    const initialAccountId =
+      editing?.account_id ?? editing?.from_account_id ?? ''
+    const initialToAccountId = editing?.to_account_id ?? ''
+    const initialCategoryId = editing?.category_id ?? ''
+    setAccountId(initialAccountId)
+    setToAccountId(initialToAccountId)
+    setCategoryId(initialCategoryId)
+    setShowDetails(editing !== null)
+    setDate(editing?.date ?? '')
+    setDescription(editing?.description ?? '')
+    setNotes(editing?.notes ?? '')
+    setTags(formatTags(editing?.tags))
+    setEnterMultiple(false)
+    setSubmitError(null)
+    setSubmitting(false)
+    setJustRecorded(false)
+    setLoadError(null)
+
     let cancelled = false
     Promise.all([listAccounts(), listCategories()])
       .then(([loadedAccounts, loadedCategories]) => {
         if (cancelled) return
         const active = loadedAccounts.filter(
-          (a) => !a.archived || a.id === accountId || a.id === toAccountId,
+          (a) =>
+            !a.archived ||
+            a.id === initialAccountId ||
+            a.id === initialToAccountId,
         )
         setAccounts(active)
         setCategories(
-          loadedCategories.filter((c) => !c.archived || c.id === categoryId),
+          loadedCategories.filter(
+            (c) => !c.archived || c.id === initialCategoryId,
+          ),
         )
         if (request.mode === 'create') {
           setAccountId((current) => current || defaultAccountId(active))
@@ -304,12 +342,14 @@ function TransactionDialogSheet({
     return () => {
       cancelled = true
     }
-    // Runs once when this sheet mounts (it's remounted per open via its
-    // key in TransactionDialogProvider) — accountId/categoryId are read
-    // only to keep an already-archived value selectable when editing,
-    // not to re-trigger this fetch.
+    // Deliberately keyed on `open` alone: `editing`/`request` are read
+    // from the closure at the moment `open` flips true, which already
+    // reflects that open's own request (setRequest/setOpen are set
+    // together in openCreate/openEdit, so both land in the same render).
+    // Depending on them too would be redundant and would fight the
+    // eslint-exhaustive-deps rule for no benefit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [request.mode])
+  }, [open])
 
   const relevantCategories = useMemo(
     () =>
@@ -567,12 +607,7 @@ function TransactionDialogSheet({
               <div className="flex flex-col gap-4 border-t pt-4">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="td-date">Date</Label>
-                  <Input
-                    id="td-date"
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                  />
+                  <DatePicker id="td-date" value={date} onChange={setDate} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="td-description">Description</Label>
