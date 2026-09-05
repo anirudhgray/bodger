@@ -12,10 +12,15 @@ import * as React from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from 'cn'
 import { Toast as ToastPrimitive } from 'radix-ui'
-import { XIcon } from 'lucide-react'
+import { CheckCircle2Icon, Loader2Icon, XCircleIcon, XIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { dismissToast, useToast, type ToastItem } from '@/hooks/use-toast'
+import {
+  dismissToast,
+  useToast,
+  type ToastItem,
+  type ToastVariant,
+} from '@/hooks/use-toast'
 
 function ToastProvider({
   ...props
@@ -39,32 +44,49 @@ function ToastViewport({
   )
 }
 
+// Background/border stay neutral (`bg-popover`/`border-border`, the same
+// surface every other overlay in this app uses) for every variant — per
+// docs/design-system.md's "the accent is a signal, not a fill" principle,
+// color lives on the leading icon (and, matching the existing "Recorded."
+// convention, the title text) rather than washing the whole card, unlike
+// the original bg-success/10-style full tint this replaces.
 const toastVariants = cva(
-  'group/toast pointer-events-auto relative flex w-full items-start gap-3 rounded-xl border bg-popover p-4 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10 data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom-full data-[state=open]:sm:slide-in-from-right-full data-[state=closed]:animate-out data-[state=closed]:fade-out-80 data-[swipe=end]:animate-out data-[swipe=end]:fade-out-80 data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)]',
-  {
-    variants: {
-      variant: {
-        default: 'border-border',
-        success: 'border-success/20 bg-success/10 text-success',
-        destructive: 'border-destructive/20 bg-destructive/10 text-destructive',
-      },
-    },
-    defaultVariants: {
-      variant: 'default',
+  'group/toast pointer-events-auto relative flex w-full items-start gap-3 rounded-xl border border-border bg-popover p-4 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10 data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom-full data-[state=open]:sm:slide-in-from-right-full data-[state=closed]:animate-out data-[state=closed]:fade-out-80 data-[swipe=end]:animate-out data-[swipe=end]:fade-out-80 data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)]',
+)
+
+const toastTitleVariants = cva('font-medium', {
+  variants: {
+    variant: {
+      default: '',
+      success: 'text-success',
+      destructive: 'text-destructive',
+      loading: 'text-muted-foreground',
     },
   },
-)
+  defaultVariants: {
+    variant: 'default',
+  },
+})
+
+const TOAST_ICONS: Record<ToastVariant, React.ReactNode> = {
+  default: null,
+  success: <CheckCircle2Icon className="mt-0.5 size-4 shrink-0 text-success" />,
+  destructive: (
+    <XCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
+  ),
+  loading: (
+    <Loader2Icon className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" />
+  ),
+}
 
 function Toast({
   className,
-  variant,
   ...props
-}: React.ComponentProps<typeof ToastPrimitive.Root> &
-  VariantProps<typeof toastVariants>) {
+}: React.ComponentProps<typeof ToastPrimitive.Root>) {
   return (
     <ToastPrimitive.Root
       data-slot="toast"
-      className={cn(toastVariants({ variant }), className)}
+      className={cn(toastVariants(), className)}
       {...props}
     />
   )
@@ -72,12 +94,14 @@ function Toast({
 
 function ToastTitle({
   className,
+  variant,
   ...props
-}: React.ComponentProps<typeof ToastPrimitive.Title>) {
+}: React.ComponentProps<typeof ToastPrimitive.Title> &
+  VariantProps<typeof toastTitleVariants>) {
   return (
     <ToastPrimitive.Title
       data-slot="toast-title"
-      className={cn('font-medium', className)}
+      className={cn(toastTitleVariants({ variant }), className)}
       {...props}
     />
   )
@@ -114,11 +138,14 @@ function ToastClose({
   )
 }
 
-function ToastBody({ title, description }: ToastItem) {
+function ToastBody({ title, description, variant }: ToastItem) {
   return (
-    <div className="grid gap-1 pr-6">
-      {title && <ToastTitle>{title}</ToastTitle>}
-      {description && <ToastDescription>{description}</ToastDescription>}
+    <div className="flex items-start gap-2">
+      {TOAST_ICONS[variant]}
+      <div className="grid flex-1 gap-1 pr-6">
+        {title && <ToastTitle variant={variant}>{title}</ToastTitle>}
+        {description && <ToastDescription>{description}</ToastDescription>}
+      </div>
     </div>
   )
 }
@@ -131,8 +158,13 @@ function Toaster() {
     <ToastProvider>
       {toasts.map((item) => (
         <Toast
-          key={item.id}
-          variant={item.variant}
+          // Keyed on version, not just id: toast.promise updates a toast's
+          // content/variant/duration in place (see use-toast.ts) rather
+          // than creating a new one, and Radix's auto-dismiss timer only
+          // starts counting from when its Root mounts — bumping the key
+          // forces that remount so the post-update duration actually
+          // takes effect instead of inheriting the original toast's timer.
+          key={`${item.id}-${item.version}`}
           duration={item.duration}
           open={item.open}
           onOpenChange={(open) => {
