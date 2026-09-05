@@ -54,7 +54,15 @@ if (typeof navigator.clipboard === 'undefined') {
 }
 
 afterEach(() => {
-  vi.mocked(navigator.clipboard.writeText).mockClear()
+  // @testing-library/user-event's setup() (needed for Radix
+  // popover/select interaction, see the polyfills below) unconditionally
+  // installs its own clipboard stub over navigator.clipboard the first
+  // time it runs, replacing this file's vi.fn()-based one — so
+  // writeText is no longer a mock in any test file that calls
+  // userEvent.setup(), even once. Guard rather than assume.
+  if (vi.isMockFunction(navigator.clipboard?.writeText)) {
+    vi.mocked(navigator.clipboard.writeText).mockClear()
+  }
 })
 
 // jsdom doesn't implement ResizeObserver at all — Radix's Switch (used by
@@ -68,4 +76,17 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
     unobserve() {}
     disconnect() {}
   }
+}
+
+// jsdom doesn't implement Element.prototype.hasPointerCapture or
+// Element.prototype.scrollIntoView at all — Radix's Popover/Select
+// machinery (components/ui/popover.tsx, calendar.tsx's day-picker
+// buttons) calls both during pointer/keyboard interaction, and throws
+// without a stub. Neither test here asserts on capture state or scroll
+// position, so a no-op is enough.
+if (typeof Element.prototype.hasPointerCapture !== 'function') {
+  Element.prototype.hasPointerCapture = () => false
+}
+if (typeof Element.prototype.scrollIntoView !== 'function') {
+  Element.prototype.scrollIntoView = () => {}
 }
