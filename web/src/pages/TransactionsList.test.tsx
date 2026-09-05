@@ -217,6 +217,21 @@ describe('TransactionsList', () => {
     expect(await screen.findByLabelText('Account')).toHaveValue('a1')
   })
 
+  it('filters by category when a transaction row’s category is clicked', async () => {
+    mockedListTransactions.mockResolvedValue({ data: [groceries] })
+    renderPage()
+    await screen.findByText('Groceries')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }))
+
+    await waitFor(() =>
+      expect(mockedListTransactions).toHaveBeenLastCalledWith({
+        category: 'c1',
+      }),
+    )
+    expect(await screen.findByLabelText('Category')).toHaveValue('c1')
+  })
+
   it('applies a filter and re-fetches with it', async () => {
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     renderPage()

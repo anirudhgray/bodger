@@ -169,6 +169,19 @@ export function TransactionsList() {
     load({}, false)
   }
 
+  // The one other dead-ended intent the issue calls out by name: a
+  // category shown on a transaction row currently does nothing when
+  // clicked. Filters the same screen by that category rather than
+  // navigating away, since there's nowhere else for "show me this
+  // category's other transactions" to go.
+  function filterByCategory(categoryId: string) {
+    const next: TransactionListFilter = { category: categoryId }
+    setFilter(next)
+    setShowFilters(true)
+    setFormResetKey((k) => k + 1)
+    load(next, false)
+  }
+
   async function handleDelete(id: string) {
     try {
       await deleteTransaction(id)
@@ -364,9 +377,30 @@ export function TransactionsList() {
                   </div>
                   <div className="text-muted-foreground text-xs">
                     {kindLabel(t.type)}
-                    {t.type === 'transfer'
-                      ? ` · ${nameFor(t.from_account_id, accountsByID)} → ${nameFor(t.to_account_id, accountsByID)}`
-                      : ` · ${nameFor(t.account_id, accountsByID)}${t.category_id ? ` · ${nameFor(t.category_id, categoriesByID)}` : ''}`}
+                    {t.type === 'transfer' ? (
+                      <>
+                        {' · '}
+                        {nameFor(t.from_account_id, accountsByID)} →{' '}
+                        {nameFor(t.to_account_id, accountsByID)}
+                      </>
+                    ) : (
+                      <>
+                        {' · '}
+                        {nameFor(t.account_id, accountsByID)}
+                        {t.category_id && (
+                          <>
+                            {' · '}
+                            <button
+                              type="button"
+                              onClick={() => filterByCategory(t.category_id!)}
+                              className="hover:text-foreground underline-offset-2 hover:underline"
+                            >
+                              {nameFor(t.category_id, categoriesByID)}
+                            </button>
+                          </>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="text-sm font-medium tabular-nums">
