@@ -5,6 +5,26 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>bodger</title>
+    <script>
+      // Applies the persisted theme (or, absent one, prefers-color-scheme)
+      // before first paint, so there's no flash of the wrong theme while
+      // React mounts. src/lib/theme.ts's resolveTheme is the same rule,
+      // duplicated here in plain JS since this runs before any module
+      // does — keep the two in sync if the resolution rule ever changes.
+      ;(function () {
+        try {
+          var stored = localStorage.getItem('bodger:theme')
+          var dark =
+            stored === 'dark' ||
+            (stored !== 'light' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.classList.toggle('dark', dark)
+        } catch (e) {
+          // A private window or blocked site data throws here; the page
+          // just falls back to its default (light) appearance.
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

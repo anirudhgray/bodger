@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { Moon, Sun } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
+import { useTheme } from '@/hooks/use-theme'
 import { cn } from '@/lib/utils'
 import { logout } from '@/lib/session'
 
@@ -20,6 +22,7 @@ const navItems = [
 export function AppLayout() {
   const navigate = useNavigate()
   const [loggingOut, setLoggingOut] = useState(false)
+  const { theme, toggleTheme } = useTheme()
 
   async function handleLogout() {
     setLoggingOut(true)
@@ -60,9 +63,21 @@ export function AppLayout() {
             </NavLink>
           ))}
           <Button
+            size="icon-sm"
+            variant="ghost"
+            className="ml-2"
+            onClick={toggleTheme}
+          >
+            {theme === 'dark' ? <Sun /> : <Moon />}
+            <span className="sr-only">
+              {theme === 'dark'
+                ? 'Switch to light mode'
+                : 'Switch to dark mode'}
+            </span>
+          </Button>
+          <Button
             size="sm"
             variant="outline"
-            className="ml-2"
             disabled={loggingOut}
             onClick={handleLogout}
           >

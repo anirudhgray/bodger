@@ -18,3 +18,23 @@ import { cleanup } from '@testing-library/react'
 afterEach(() => {
   cleanup()
 })
+
+// jsdom doesn't implement window.matchMedia at all (not even a stub that
+// always reports no match), so anything that calls it — lib/theme.ts's
+// prefersDark, for the dark-mode toggle (issue #101) — throws in every
+// test unless something provides one first. This always reports "no
+// match": tests that care about a specific prefers-color-scheme value
+// stub it themselves (see hooks/use-theme.test.ts), and everything else
+// just needs the call not to throw.
+if (typeof window.matchMedia !== 'function') {
+  window.matchMedia = (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })
+}

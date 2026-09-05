@@ -19,6 +19,8 @@ const mockedLogout = vi.mocked(logout)
 describe('AppLayout', () => {
   beforeEach(() => {
     mockedLogout.mockReset()
+    localStorage.clear()
+    document.documentElement.classList.remove('dark')
   })
 
   it('logs out and navigates to /login on click', async () => {
@@ -74,5 +76,38 @@ describe('AppLayout', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }))
 
     expect(await screen.findByText('Login page')).toBeInTheDocument()
+  })
+
+  it('toggles dark mode and persists the choice', () => {
+    render(
+      <MemoryRouter initialEntries={['/transactions']}>
+        <Routes>
+          <Route path="/" element={<AppLayout />}>
+            <Route
+              path="transactions"
+              element={<div>Transactions content</div>}
+            />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    const toggle = screen.getByRole('button', { name: 'Switch to dark mode' })
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+
+    fireEvent.click(toggle)
+
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    expect(localStorage.getItem('bodger:theme')).toBe('dark')
+    expect(
+      screen.getByRole('button', { name: 'Switch to light mode' }),
+    ).toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Switch to light mode' }),
+    )
+
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+    expect(localStorage.getItem('bodger:theme')).toBe('light')
   })
 })
