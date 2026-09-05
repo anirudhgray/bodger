@@ -19,6 +19,7 @@ Format: **Status · Context · Decision · Alternatives considered · Consequenc
 | [0009](0009-query-and-analytics-model.md) | One filter and analytics model shared by every surface | Accepted |
 | [0010](0010-personal-finance-not-accounting-software.md) | Personal finance, not accounting software; the product philosophy constrains technical design | Accepted |
 | [0011](0011-error-model.md) | Error model: eight coarse codes and the safe/internal split | Accepted |
+| [0012](0012-fx-rate-provider.md) | FX rate provider: Frankfurter; arbitrary base/quote, no key, no triangulation | Accepted |
 
 ## On "the brief"
 
