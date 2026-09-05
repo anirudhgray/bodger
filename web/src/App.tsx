@@ -1,13 +1,18 @@
 import { useState } from 'react'
+import { Moon, Sun } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
+import {
+  TransactionDialogProvider,
+  useTransactionDialog,
+} from '@/components/TransactionDialog'
+import { useTheme } from '@/hooks/use-theme'
 import { cn } from '@/lib/utils'
 import { logout } from '@/lib/session'
 
 const navItems = [
   { to: '/transactions', label: 'Transactions' },
-  { to: '/transactions/new', label: 'Add' },
   { to: '/balances', label: 'Balances' },
   { to: '/settings', label: 'Settings' },
 ]
@@ -18,8 +23,22 @@ const navItems = [
 // an authenticated actor by the time this renders, so the only auth
 // concern this component itself owns is logging out.
 export function AppLayout() {
+  return (
+    <TransactionDialogProvider>
+      <AppShell />
+    </TransactionDialogProvider>
+  )
+}
+
+function AppShell() {
   const navigate = useNavigate()
   const [loggingOut, setLoggingOut] = useState(false)
+  const { theme, toggleTheme } = useTheme()
+  const { openCreate } = useTransactionDialog()
+
+  function handleAdd() {
+    openCreate(() => navigate('/transactions'))
+  }
 
   async function handleLogout() {
     setLoggingOut(true)
@@ -59,10 +78,29 @@ export function AppLayout() {
               {item.label}
             </NavLink>
           ))}
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground cursor-pointer rounded-md px-3 py-1.5 text-sm transition-colors"
+            onClick={handleAdd}
+          >
+            Add
+          </button>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="ml-2"
+            onClick={toggleTheme}
+          >
+            {theme === 'dark' ? <Sun /> : <Moon />}
+            <span className="sr-only">
+              {theme === 'dark'
+                ? 'Switch to light mode'
+                : 'Switch to dark mode'}
+            </span>
+          </Button>
           <Button
             size="sm"
             variant="outline"
-            className="ml-2"
             disabled={loggingOut}
             onClick={handleLogout}
           >

@@ -177,7 +177,7 @@ Weighted toward the layer where correctness is decided:
 - **Persistence** — repository tests against a real temp-file SQLite database, plus a migrate-up/migrate-down cycle on every migration.
 - **Surfaces** — thin. Enough to prove decoding and encoding; the shared conformance suite covers the rest.
 - **Round-trip** — export → import → export is byte-identical modulo surrogate IDs and timestamps.
-- **Web UI** — component tests with Vitest; end-to-end kept deliberately sparse — one Playwright smoke test (login → record a transaction → see the updated balance → logout, issue #65) run against a real build of the production binary, not a substitute for each screen's own Vitest coverage. UI tests are not where financial correctness is established.
+- **Web UI** — component tests with Vitest; end-to-end kept deliberately sparse — a small number of targeted Playwright tests, each run against a real build of the production binary, not a substitute for each screen's own Vitest coverage. A new one earns its place for a real, distinct user-facing flow through the whole stack (e.g. issue #65's login → record → balance → logout, or issue #101's dark-mode toggle surviving a real reload) — not to click-test every element, and not instead of a Vitest test for the underlying logic when one is possible. UI tests are not where financial correctness is established.
 
 Fixtures cover multiple currencies, transfers, splits, refunds, credit cards, imported duplicates, month boundaries, and a leap day.
 
@@ -247,12 +247,24 @@ was moved out of M2 rather than holding the milestone open on
 bug in containerized `bodger serve` unrelated to the milestone's own goal
 — see §8. It's tracked as backlog, unmilestoned, until #93 is resolved.
 
+**M3 · Rivendell is in progress.** [#100](https://github.com/anirudhgray/bodger/issues/100)
+(design tokens) and [#101](https://github.com/anirudhgray/bodger/issues/101)
+(auditing `components/ui` and the existing pages against them —
+`docs/design-system.md`) are done; the remaining milestone items are
+[#88](https://github.com/anirudhgray/bodger/issues/88) (responsive layout)
+and [#89](https://github.com/anirudhgray/bodger/issues/89)
+(cross-navigation), plus a deliberately-scoped follow-up from #101's audit,
+[#104](https://github.com/anirudhgray/bodger/issues/104) (wiring the
+remaining Radix-portal primitives — select, popover+calendar, dialog —
+into pages, once this project has `@testing-library/user-event` and the
+jsdom polyfills those need).
+
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
 | M1 · Arda — Ledger core, CLI, REST API | ✅ Complete (v0.1.0) |
 | M2 · The Shire — Web UI and authentication | ✅ Complete |
-| M3 · Rivendell — UI polish and design system | ⬜ Not started |
+| M3 · Rivendell — UI polish and design system | 🟨 In progress |
 | M4 — Multi-currency and FX | ⬜ Not started |
 | M5 — Analytics and charts | ⬜ Not started |
 | M6 — Import and export | ⬜ Not started |

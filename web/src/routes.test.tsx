@@ -41,6 +41,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 })
 
 import { checkSession } from '@/lib/session'
+import { ThemeProvider } from './hooks/use-theme'
 import { routes, RouteError } from './routes'
 
 const mockedCheckSession = vi.mocked(checkSession)
@@ -53,7 +54,11 @@ describe('routes', () => {
 
     it('redirects the root route to the transactions placeholder', async () => {
       const router = createMemoryRouter(routes, { initialEntries: ['/'] })
-      render(<RouterProvider router={router} />)
+      render(
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>,
+      )
 
       expect(
         await screen.findByRole('heading', { name: 'Transactions' }),
@@ -64,7 +69,11 @@ describe('routes', () => {
       const router = createMemoryRouter(routes, {
         initialEntries: ['/login'],
       })
-      render(<RouterProvider router={router} />)
+      render(
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>,
+      )
 
       expect(
         await screen.findByRole('heading', { name: 'Transactions' }),
@@ -81,7 +90,11 @@ describe('routes', () => {
       const router = createMemoryRouter(routes, {
         initialEntries: ['/login'],
       })
-      render(<RouterProvider router={router} />)
+      render(
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>,
+      )
 
       expect(
         await screen.findByRole('heading', { name: 'Log in' }),
@@ -91,7 +104,11 @@ describe('routes', () => {
 
     it('redirects a protected route to the login form', async () => {
       const router = createMemoryRouter(routes, { initialEntries: ['/'] })
-      render(<RouterProvider router={router} />)
+      render(
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>,
+      )
 
       expect(
         await screen.findByRole('heading', { name: 'Log in' }),
@@ -108,7 +125,11 @@ describe('routes', () => {
       'renders the placeholder at %s',
       async (path, heading) => {
         const router = createMemoryRouter(routes, { initialEntries: [path] })
-        render(<RouterProvider router={router} />)
+        render(
+          <ThemeProvider>
+            <RouterProvider router={router} />
+          </ThemeProvider>,
+        )
 
         expect(
           await screen.findByRole('heading', { name: heading }),
@@ -116,17 +137,22 @@ describe('routes', () => {
       },
     )
 
-    // /transactions/new is issue #60's real screen now, not a placeholder
-    // — TransactionEntry.test.tsx covers its actual behaviour; this just
-    // proves the route resolves to it.
-    it('renders the transaction entry screen at /transactions/new', async () => {
+    // /transactions/new used to be its own screen (issue #60); it's now
+    // TransactionDialog.test.tsx's territory, opened from the nav rather
+    // than navigated to — this just proves an old bookmark still lands
+    // somewhere real instead of the not-found placeholder.
+    it('redirects /transactions/new to the transactions list', async () => {
       const router = createMemoryRouter(routes, {
         initialEntries: ['/transactions/new'],
       })
-      render(<RouterProvider router={router} />)
+      render(
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>,
+      )
 
       expect(
-        await screen.findByRole('button', { name: 'Spend' }),
+        await screen.findByRole('heading', { name: 'Transactions' }),
       ).toBeInTheDocument()
     })
 
@@ -138,7 +164,11 @@ describe('routes', () => {
       const router = createMemoryRouter(routes, {
         initialEntries: ['/api/v1'],
       })
-      render(<RouterProvider router={router} />)
+      render(
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>,
+      )
 
       expect(
         await screen.findByRole('heading', { name: 'Page not found' }),
@@ -165,7 +195,11 @@ describe('routes', () => {
     const router = createMemoryRouter(throwingRoutes, {
       initialEntries: ['/'],
     })
-    render(<RouterProvider router={router} />)
+    render(
+      <ThemeProvider>
+        <RouterProvider router={router} />
+      </ThemeProvider>,
+    )
 
     try {
       expect(
