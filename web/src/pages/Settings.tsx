@@ -196,9 +196,16 @@ function ApiTokensSection() {
   async function handleRevoke(id: string) {
     setError(null)
     try {
-      await revokeApiToken(id)
-      await refresh()
-      toast({ description: 'Token revoked.' })
+      // See TransactionsList.tsx's handleDelete for why this has a
+      // loading toast but no `error` option: on failure the existing
+      // inline setError below is the single place the message lives.
+      await toast.promise(
+        (async () => {
+          await revokeApiToken(id)
+          await refresh()
+        })(),
+        { loading: 'Revoking…', success: 'Token revoked.' },
+      )
     } catch (err) {
       setError(errorMessage(err))
     }
@@ -391,9 +398,15 @@ function AccountsSection() {
   async function handleArchive(id: string) {
     setError(null)
     try {
-      await archiveAccount(id)
-      await refresh()
-      toast({ description: 'Account archived.' })
+      // See TransactionsList.tsx's handleDelete for why this has a
+      // loading toast but no `error` option.
+      await toast.promise(
+        (async () => {
+          await archiveAccount(id)
+          await refresh()
+        })(),
+        { loading: 'Archiving…', success: 'Account archived.' },
+      )
     } catch (err) {
       setError(errorMessage(err))
     }
@@ -580,9 +593,15 @@ function CategoriesSection() {
   async function handleArchive(id: string) {
     setError(null)
     try {
-      await archiveCategory(id)
-      await refresh()
-      toast({ description: 'Category archived.' })
+      // See TransactionsList.tsx's handleDelete for why this has a
+      // loading toast but no `error` option.
+      await toast.promise(
+        (async () => {
+          await archiveCategory(id)
+          await refresh()
+        })(),
+        { loading: 'Archiving…', success: 'Category archived.' },
+      )
     } catch (err) {
       setError(errorMessage(err))
     }

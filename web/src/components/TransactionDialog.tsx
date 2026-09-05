@@ -358,7 +358,7 @@ function TransactionDialogSheet({
         const updated = await updateTransaction(request.transaction.id, body)
         request.onSaved?.(updated)
         notifySaved({ mode: 'edit', transaction: updated })
-        toast({ description: 'Transaction updated.', variant: 'success' })
+        toast({ title: 'Transaction updated.', variant: 'success' })
         onOpenChange(false)
         return
       }
@@ -405,7 +405,7 @@ function TransactionDialogSheet({
         resetForNextEntry()
         setJustRecorded(true)
       } else {
-        toast({ description: 'Transaction recorded.', variant: 'success' })
+        toast({ title: 'Transaction recorded.', variant: 'success' })
         onOpenChange(false)
       }
     } catch (err) {

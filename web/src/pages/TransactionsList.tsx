@@ -151,9 +151,18 @@ export function TransactionsList() {
 
   async function handleDelete(id: string) {
     try {
-      await deleteTransaction(id)
+      // The row has no other pending affordance while this is in flight,
+      // so a loading toast covers that gap; on success the row is about
+      // to disappear so the toast also carries that confirmation. On
+      // failure the row stays and the existing inline `setError` below is
+      // the single place that message lives — no `error` option here, so
+      // the loading toast just quietly dismisses (see docs/design-system.md's
+      // toast-vs-inline convention).
+      await toast.promise(deleteTransaction(id), {
+        loading: 'Deleting transaction…',
+        success: 'Transaction deleted.',
+      })
       setTransactions((prev) => prev.filter((t) => t.id !== id))
-      toast({ description: 'Transaction deleted.' })
     } catch (err) {
       setError(
         err instanceof ApiError
