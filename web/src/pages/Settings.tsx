@@ -8,9 +8,11 @@ import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Empty, EmptyTitle } from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { Spinner } from '@/components/ui/spinner'
 import {
   ApiError,
   type Account,
@@ -232,9 +234,14 @@ function ApiTokensSection() {
       )}
 
       {tokens === null ? (
-        <p className="text-muted-foreground text-sm">Loading…</p>
+        <div className="flex items-center gap-2">
+          <Spinner />
+          <span className="text-muted-foreground text-sm">Loading…</span>
+        </div>
       ) : tokens.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No API tokens yet.</p>
+        <Empty>
+          <EmptyTitle>No API tokens yet.</EmptyTitle>
+        </Empty>
       ) : (
         <Card className="[--card-spacing:0]">
           <ul className="divide-border divide-y">
@@ -402,7 +409,10 @@ function AccountsSection() {
       )}
 
       {accounts === null ? (
-        <p className="text-muted-foreground text-sm">Loading…</p>
+        <div className="flex items-center gap-2">
+          <Spinner />
+          <span className="text-muted-foreground text-sm">Loading…</span>
+        </div>
       ) : (
         <Card className="[--card-spacing:0]">
           <ul className="divide-border divide-y">
@@ -597,7 +607,10 @@ function CategoriesSection() {
       )}
 
       {categories === null ? (
-        <p className="text-muted-foreground text-sm">Loading…</p>
+        <div className="flex items-center gap-2">
+          <Spinner />
+          <span className="text-muted-foreground text-sm">Loading…</span>
+        </div>
       ) : (
         <Card className="[--card-spacing:0]">
           <ul className="divide-border divide-y">

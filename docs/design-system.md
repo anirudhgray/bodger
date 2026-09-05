@@ -142,7 +142,10 @@ faking `role="radiogroup"`) with a real `TabsList`/`TabsTrigger`, which
 is the honest semantics for three mutually-exclusive views. `select`
 (the native one) now backs every `<select>` on `TransactionsList` and
 `Settings` that used to hand-roll the same `border-input bg-background
-...` className inline.
+...` className inline. `empty` and `spinner` replaced every page's own
+hand-rolled `<p>Loading…</p>` and `<p>No … yet.</p>` text (Balances,
+Settings' token list, TransactionsList) with the same two primitives
+everywhere a screen has nothing to show yet.
 
 `sidebar` is still **not** wired into `AppLayout`'s nav. It's the
 right primitive for that chrome eventually, but its collapsible/mobile
@@ -152,14 +155,15 @@ preempt that audit rather than support it. Converting the top nav to
 `Sidebar` is better done as part of #88, once that issue has actually
 looked at the nav at narrow widths.
 
-`select` swapped for the Radix-based version, plus `popover`+`calendar`
-and `dialog`/`alert-dialog`, are still not wired into any page: they're
-all Radix-portal-based and need `@testing-library/user-event` plus jsdom
-polyfills (`hasPointerCapture`, `scrollIntoView`) this project doesn't
-have yet — landing an untested interaction swap isn't worth the risk.
-That remaining wiring is tracked in
-[#104](https://github.com/anirudhgray/bodger/issues/104), scoped
-separately from #101 so it isn't silently dropped.
+`select` swapped for the Radix-based version, plus `popover`+`calendar`,
+`dialog`/`alert-dialog`, and `dropdown-menu`, are still not wired into
+any page: they're all Radix-portal-based and need
+`@testing-library/user-event` plus jsdom polyfills (`hasPointerCapture`,
+`scrollIntoView`) this project doesn't have yet — landing an untested
+interaction swap isn't worth the risk. That remaining wiring is tracked
+in [#104](https://github.com/anirudhgray/bodger/issues/104), scoped
+separately from #101 so it isn't silently dropped. `kbd` has no call
+site yet — there's no keyboard-shortcut UI in the app to hang it on.
 
 ## Adding a color
 

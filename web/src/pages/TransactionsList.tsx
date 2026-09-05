@@ -10,9 +10,11 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Empty, EmptyTitle } from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { Spinner } from '@/components/ui/spinner'
 import {
   ApiError,
   deleteTransaction,
@@ -266,11 +268,16 @@ export function TransactionsList() {
       )}
 
       {loading && transactions.length === 0 ? (
-        <p className="text-muted-foreground text-sm">Loading…</p>
+        <div className="flex items-center justify-center gap-2 p-12">
+          <Spinner />
+          <span className="text-muted-foreground text-sm">Loading…</span>
+        </div>
       ) : transactions.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          No transactions {hasActiveFilters ? 'match those filters' : 'yet'}.
-        </p>
+        <Empty>
+          <EmptyTitle>
+            No transactions {hasActiveFilters ? 'match those filters' : 'yet'}.
+          </EmptyTitle>
+        </Empty>
       ) : (
         <Card className="[--card-spacing:0]">
           <ul className="divide-border flex flex-col divide-y">
