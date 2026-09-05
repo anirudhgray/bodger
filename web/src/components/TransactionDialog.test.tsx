@@ -5,6 +5,7 @@
 // integration through TransactionsList.test.tsx instead of duplicated
 // here, since that's the only place edit is actually triggered from.
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -116,6 +117,35 @@ describe('TransactionDialog (create)', () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(recorded))
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    )
+  })
+
+  it('picks a date via the Radix date picker in "Add details" (issue #104)', async () => {
+    const user = userEvent.setup()
+    renderAndOpen()
+    await screen.findByText('HDFC Savings')
+
+    fireEvent.click(screen.getByText('Add details'))
+    // The date picker button's accessible name comes from its
+    // <Label htmlFor="td-date">, not its own "Pick a date" placeholder
+    // text — buttons are labelable elements, and an explicit label
+    // association takes precedence over content in accessible-name
+    // computation.
+    await user.click(screen.getByRole('button', { name: 'Date' }))
+    await user.click(await screen.findByRole('button', { name: /15th, 2026/ }))
+
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: '800' },
+    })
+    fireEvent.change(screen.getByLabelText('Category'), {
+      target: { value: 'cat-1' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Record spend' }))
+
+    await waitFor(() =>
+      expect(mockedRecordOutflow).toHaveBeenCalledWith(
+        expect.objectContaining({ date: expect.stringMatching(/-15$/) }),
+      ),
     )
   })
 

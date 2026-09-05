@@ -24,7 +24,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { Input } from '@/components/ui/input'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
@@ -292,20 +292,18 @@ export function TransactionsList() {
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="filter-from">From</Label>
-            <Input
+            <DatePicker
               id="filter-from"
               name="from"
-              type="date"
               defaultValue={filter.from ?? ''}
               className="w-36"
             />
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="filter-to">To</Label>
-            <Input
+            <DatePicker
               id="filter-to"
               name="to"
-              type="date"
               defaultValue={filter.to ?? ''}
               className="w-36"
             />

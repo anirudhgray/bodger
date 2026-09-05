@@ -9,6 +9,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -251,6 +252,26 @@ describe('TransactionsList', () => {
         from: undefined,
         to: undefined,
       }),
+    )
+  })
+
+  it('filters by a picked From date via the Radix date picker (issue #104)', async () => {
+    const user = userEvent.setup()
+    mockedListTransactions.mockResolvedValue({ data: [groceries] })
+    renderPage()
+    await screen.findByText('Groceries')
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }))
+    await user.click(screen.getByRole('button', { name: /From/ }))
+    await user.click(await screen.findByRole('button', { name: /15th, 2026/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    await waitFor(() =>
+      expect(mockedListTransactions).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          from: expect.stringMatching(/^2026-\d{2}-15$/),
+        }),
+      ),
     )
   })
 

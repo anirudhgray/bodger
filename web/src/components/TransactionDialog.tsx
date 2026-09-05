@@ -29,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -564,12 +565,7 @@ function TransactionDialogSheet({
               <div className="flex flex-col gap-4 border-t pt-4">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="td-date">Date</Label>
-                  <Input
-                    id="td-date"
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                  />
+                  <DatePicker id="td-date" value={date} onChange={setDate} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="td-description">Description</Label>
