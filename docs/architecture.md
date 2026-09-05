@@ -155,7 +155,7 @@ docs/                  architecture, data model, ADRs, guides
 
 ## 6. Enforcement
 
-Conventions that live only in a document decay. These are checked by `make check`, which is exactly what CI runs:
+Conventions that live only in a document decay. These are checked by `make check` — split into `make check-go`/`make check-web` in CI, run only for the side a commit actually touches (see [contributing.md](contributing.md#commands)):
 
 - **Layer boundaries** — an import-graph check fails the build if `domain` imports anything project-local, if a surface imports `domain` or an adapter, or if an adapter imports `app`.
 - **No wall clock outside the clock** — `time.Now()` anywhere but `internal/platform/clock` fails the build. Time is injected, which also makes date-boundary tests deterministic.
