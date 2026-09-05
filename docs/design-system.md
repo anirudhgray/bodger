@@ -111,11 +111,40 @@ in plain JS deliberately, since it has to run before any module does.
 
 `web/src/components/ui/` is managed by the [shadcn CLI](https://ui.shadcn.com)
 (`web/components.json`, style `radix-nova`, base color `neutral`, icons
-from `lucide-react`). Add a new primitive with:
+from `lucide-react`). This is a hard requirement, not a suggestion: add a
+new primitive, or refresh an existing one against the registry, with the
+CLI —
 
 ```sh
-cd web && npx shadcn@latest add <component>
+cd web && npx shadcn@latest add <component>          # new primitive
+cd web && npx shadcn@latest add <component> --overwrite  # refresh an existing one
 ```
+
+— never by hand-writing or hand-editing a primitive's own file to match
+what shadcn's site shows. `--overwrite` replaces the file outright, which
+also **discards any local fix layered onto that primitive** (PR #105's
+button `cursor-pointer` fix was lost this way while investigating #88's
+sidebar work, and had to be caught by diffing before committing) — always
+run `git diff` on the result and confirm nothing project-specific
+disappeared before keeping it, and prefer fixing a real bug via a
+`@custom-variant`/token in `index.css` (see the gotcha below) over an
+`--overwrite` when the two would conflict.
+
+**Gotcha: Tailwind's bare `data-{name}:` shorthand is presence-only, not
+value-exact.** It compiles `data-active:` to plain `[data-active]`, so it
+matches an element whether the value is `"true"` or `"false"` — and React
+renders a boolean `data-*` prop as the literal string `"false"` rather
+than omitting the attribute, so it's *always* present. `sidebar.tsx`'s
+`data-active:*` (the current-nav-item style) hits this directly: every
+item ends up "active" without an exact-value override. The same shorthand
+form also appears in the *upstream* registry's current `sheet.tsx` as
+`data-open:`/`data-closed:`, which never matches anything at all (Radix
+sets `data-state="open"|"closed"`, not a literal `data-open` attribute) —
+confirmed by pulling it via `--overwrite`, which silently dropped the
+sidebar drawer's slide/fade entrance animation. `index.css` registers
+`@custom-variant data-active`/`data-open`/`data-closed` against the exact
+Radix/prop value instead, so a primitive's classes stay an unmodified
+shadcn pull and a future re-pull doesn't reintroduce either bug.
 
 Primitives present as of this milestone: `button`, `input`, `label`,
 `select` (native, hand-written — see the audit note below), `card`,
@@ -148,13 +177,17 @@ hand-rolled `<p>Loading…</p>` and `<p>No … yet.</p>` text (Balances,
 Settings' token list, TransactionsList) with the same two primitives
 everywhere a screen has nothing to show yet.
 
-`sidebar` is still **not** wired into `AppLayout`'s nav. It's the
-right primitive for that chrome eventually, but its collapsible/mobile
-behavior (`useIsMobile`, the `Sheet` mobile drawer) *is* issue #88's
-scope (responsive layout for small screens) — wiring it now would
-preempt that audit rather than support it. Converting the top nav to
-`Sidebar` is better done as part of #88, once that issue has actually
-looked at the nav at narrow widths.
+`sidebar` (issue #88) now backs `AppLayout`'s nav, replacing the old
+`<header>`+`<nav>` bar: a static sidebar at `md` and up, an off-canvas
+`Sheet` drawer below it (`useIsMobile`'s 768px breakpoint), toggled by
+the same `SidebarTrigger` in both cases. Each nav item carries the icon
+its own screen already uses for its empty state (`Wallet` for Balances,
+`Receipt` for Transactions — reusing established vocabulary rather than
+picking new icons for the same concept) and an `aria-current="page"`
+alongside the visual active-state highlight. A mobile nav-link click
+closes the drawer via `setOpenMobile(false)` before navigating — without
+it the sheet's overlay is left covering the destination page, pinned
+down by `web/e2e/mobile-nav.spec.ts`.
 
 `select` swapped for the Radix-based version, plus `popover`+`calendar`,
 `dialog`/`alert-dialog`, and `dropdown-menu`, are still not wired into
