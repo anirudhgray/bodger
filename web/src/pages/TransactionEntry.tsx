@@ -353,7 +353,7 @@ export function TransactionEntry() {
           {!showDetails && (
             <button
               type="button"
-              className="text-muted-foreground hover:text-foreground self-start text-sm underline-offset-2 hover:underline"
+              className="text-muted-foreground hover:text-foreground cursor-pointer self-start text-sm underline-offset-2 hover:underline"
               onClick={() => setShowDetails(true)}
             >
               Add details
