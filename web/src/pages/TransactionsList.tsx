@@ -13,7 +13,7 @@ import { useLocation } from 'react-router-dom'
 import {
   useTransactionDialog,
   useTransactionSaved,
-} from '@/components/TransactionDialog'
+} from '@/hooks/use-transaction-dialog'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {

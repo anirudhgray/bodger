@@ -9,9 +9,7 @@
 // behind "Add details"); edit shows every field up front, since there's
 // no "fast path" for changing something you already recorded.
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -50,6 +48,11 @@ import {
   type Transaction,
 } from '@/lib/api'
 import { sanitizeAmountInput } from '@/lib/utils'
+import {
+  TransactionDialogContext,
+  type SavedEvent,
+  type SavedListener,
+} from '@/hooks/use-transaction-dialog'
 
 type Kind = 'outflow' | 'inflow' | 'transfer'
 
@@ -135,50 +138,6 @@ type DialogRequest =
       transaction: Transaction
       onSaved?: (updated: Transaction) => void
     }
-
-// SavedEvent fires for every successful create or edit, regardless of
-// which particular openCreate()/openEdit() call triggered it — this is
-// what lets TransactionsList refresh itself when a transaction is added
-// or edited from somewhere else entirely (the nav's global Add button,
-// which has no reference to TransactionsList's own load()/setTransactions
-// at all). A request's own per-call onSaved (above) is for a caller that
-// wants to react specifically to the request *it* made — navigating
-// after a create, say — the two aren't mutually exclusive.
-type SavedEvent =
-  | { mode: 'create'; transaction: Transaction }
-  | { mode: 'edit'; transaction: Transaction }
-type SavedListener = (event: SavedEvent) => void
-
-interface TransactionDialogContextValue {
-  openCreate: (onSaved?: (created: Transaction) => void) => void
-  openEdit: (
-    transaction: Transaction,
-    onSaved?: (updated: Transaction) => void,
-  ) => void
-  onTransactionSaved: (listener: SavedListener) => () => void
-}
-
-const TransactionDialogContext =
-  createContext<TransactionDialogContextValue | null>(null)
-
-export function useTransactionDialog(): TransactionDialogContextValue {
-  const context = useContext(TransactionDialogContext)
-  if (context === null) {
-    throw new Error(
-      'useTransactionDialog must be used within a TransactionDialogProvider',
-    )
-  }
-  return context
-}
-
-// useTransactionSaved subscribes to every create/edit, wherever it was
-// triggered from — TransactionsList uses this to refresh itself rather
-// than relying on being the one that opened the dialog in the first
-// place (see SavedEvent's own comment for why that matters).
-export function useTransactionSaved(listener: SavedListener) {
-  const { onTransactionSaved } = useTransactionDialog()
-  useEffect(() => onTransactionSaved(listener), [onTransactionSaved, listener])
-}
 
 export function TransactionDialogProvider({
   children,

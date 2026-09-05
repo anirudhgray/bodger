@@ -23,10 +23,8 @@ import {
   SidebarTrigger,
   useSidebar,
 } from '@/components/ui/sidebar'
-import {
-  TransactionDialogProvider,
-  useTransactionDialog,
-} from '@/components/TransactionDialog'
+import { TransactionDialogProvider } from '@/components/TransactionDialog'
+import { useTransactionDialog } from '@/hooks/use-transaction-dialog'
 import { useTheme } from '@/hooks/use-theme'
 import { logout } from '@/lib/session'
 

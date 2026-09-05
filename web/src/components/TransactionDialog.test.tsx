@@ -35,10 +35,8 @@ import {
   type Category,
   type Transaction,
 } from '@/lib/api'
-import {
-  TransactionDialogProvider,
-  useTransactionDialog,
-} from './TransactionDialog'
+import { TransactionDialogProvider } from './TransactionDialog'
+import { useTransactionDialog } from '@/hooks/use-transaction-dialog'
 
 const mockedListAccounts = vi.mocked(listAccounts)
 const mockedListCategories = vi.mocked(listCategories)
