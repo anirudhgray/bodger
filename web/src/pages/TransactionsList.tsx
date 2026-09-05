@@ -9,9 +9,10 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { cn } from '@/lib/utils'
+import { Select } from '@/components/ui/select'
 import {
   ApiError,
   deleteTransaction,
@@ -52,11 +53,6 @@ function nameFor(id: string | undefined, byId: Map<string, string>): string {
   if (!id) return ''
   return byId.get(id) ?? id
 }
-
-const selectClassName = cn(
-  'border-input bg-background flex h-8 w-full min-w-0 rounded-lg border px-2.5 text-sm shadow-xs',
-  'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 outline-none',
-)
 
 export function TransactionsList() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -182,11 +178,10 @@ export function TransactionsList() {
         >
           <div className="flex flex-col gap-1">
             <Label htmlFor="filter-account">Account</Label>
-            <select
+            <Select
               id="filter-account"
               name="account"
               defaultValue={filter.account ?? ''}
-              className={selectClassName}
             >
               <option value="">Any</option>
               {accounts.map((a) => (
@@ -194,15 +189,14 @@ export function TransactionsList() {
                   {a.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="filter-category">Category</Label>
-            <select
+            <Select
               id="filter-category"
               name="category"
               defaultValue={filter.category ?? ''}
-              className={selectClassName}
             >
               <option value="">Any</option>
               {categories.map((c) => (
@@ -210,15 +204,14 @@ export function TransactionsList() {
                   {c.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="filter-type">Type</Label>
-            <select
+            <Select
               id="filter-type"
               name="type"
               defaultValue={filter.type ?? ''}
-              className={selectClassName}
             >
               <option value="">Any</option>
               {KIND_OPTIONS.map((k) => (
@@ -226,7 +219,7 @@ export function TransactionsList() {
                   {k.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="filter-from">From</Label>
@@ -279,60 +272,66 @@ export function TransactionsList() {
           No transactions {hasActiveFilters ? 'match those filters' : 'yet'}.
         </p>
       ) : (
-        <ul className="border-border divide-border flex flex-col divide-y rounded-lg border">
-          {transactions.map((t) =>
-            editingID === t.id ? (
-              <EditRow
-                key={t.id}
-                transaction={t}
-                accounts={accounts}
-                categories={categories}
-                onCancel={() => setEditingID(null)}
-                onSave={(body) => handleSave(t.id, body)}
-              />
-            ) : (
-              <li
-                key={t.id}
-                className="flex items-center justify-between gap-4 px-4 py-2.5"
-              >
-                <div className="flex flex-1 flex-col gap-0.5">
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-muted-foreground">{t.date}</span>
-                    <span className="font-medium">{t.description}</span>
+        <Card className="[--card-spacing:0]">
+          <ul className="divide-border flex flex-col divide-y">
+            {transactions.map((t) =>
+              editingID === t.id ? (
+                <EditRow
+                  key={t.id}
+                  transaction={t}
+                  accounts={accounts}
+                  categories={categories}
+                  onCancel={() => setEditingID(null)}
+                  onSave={(body) => handleSave(t.id, body)}
+                />
+              ) : (
+                <li
+                  key={t.id}
+                  className="flex items-center justify-between gap-4 px-4 py-2.5"
+                >
+                  <div className="flex flex-1 flex-col gap-0.5">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">{t.date}</span>
+                      <span className="font-medium">{t.description}</span>
+                    </div>
+                    <div className="text-muted-foreground text-xs">
+                      {kindLabel(t.type)}
+                      {t.type === 'transfer'
+                        ? ` · ${nameFor(t.from_account_id, accountsByID)} → ${nameFor(t.to_account_id, accountsByID)}`
+                        : ` · ${nameFor(t.account_id, accountsByID)}${t.category_id ? ` · ${nameFor(t.category_id, categoriesByID)}` : ''}`}
+                    </div>
                   </div>
-                  <div className="text-muted-foreground text-xs">
-                    {kindLabel(t.type)}
-                    {t.type === 'transfer'
-                      ? ` · ${nameFor(t.from_account_id, accountsByID)} → ${nameFor(t.to_account_id, accountsByID)}`
-                      : ` · ${nameFor(t.account_id, accountsByID)}${t.category_id ? ` · ${nameFor(t.category_id, categoriesByID)}` : ''}`}
+                  <div className="text-sm font-medium tabular-nums">
+                    {t.type === 'inflow'
+                      ? '+'
+                      : t.type === 'outflow'
+                        ? '−'
+                        : ''}
+                    {t.amount} {t.currency}
                   </div>
-                </div>
-                <div className="text-sm font-medium tabular-nums">
-                  {t.type === 'inflow' ? '+' : t.type === 'outflow' ? '−' : ''}
-                  {t.amount} {t.currency}
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setEditingID(t.id)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDelete(t.id)}
-                  >
-                    Delete
-                  </Button>
-                </div>
-              </li>
-            ),
-          )}
-        </ul>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditingID(t.id)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDelete(t.id)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </li>
+              ),
+            )}
+          </ul>
+        </Card>
       )}
 
       {nextCursor && !loading && (
@@ -442,59 +441,55 @@ function EditRow({
           <>
             <div className="flex flex-col gap-1">
               <Label htmlFor={`from-${transaction.id}`}>From</Label>
-              <select
+              <Select
                 id={`from-${transaction.id}`}
                 name="from_account"
                 defaultValue={transaction.from_account_id}
-                className={selectClassName}
               >
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor={`to-${transaction.id}`}>To</Label>
-              <select
+              <Select
                 id={`to-${transaction.id}`}
                 name="to_account"
                 defaultValue={transaction.to_account_id}
-                className={selectClassName}
               >
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           </>
         ) : (
           <>
             <div className="flex flex-col gap-1">
               <Label htmlFor={`account-${transaction.id}`}>Account</Label>
-              <select
+              <Select
                 id={`account-${transaction.id}`}
                 name="account"
                 defaultValue={transaction.account_id}
-                className={selectClassName}
               >
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor={`category-${transaction.id}`}>Category</Label>
-              <select
+              <Select
                 id={`category-${transaction.id}`}
                 name="category"
                 defaultValue={transaction.category_id ?? ''}
-                className={selectClassName}
               >
                 <option value="">None</option>
                 {categories.map((c) => (
@@ -502,7 +497,7 @@ function EditRow({
                     {c.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           </>
         )}
