@@ -255,9 +255,10 @@ bug in containerized `bodger serve` unrelated to the milestone's own goal
 (responsive layout, including wiring `sidebar` into `AppLayout`'s nav), and
 [#107](https://github.com/anirudhgray/bodger/issues/107) (splitting Settings
 into nested subpages under `/settings`, now that #88 settled `AppLayout`'s
-own nav as a `Sidebar` — Settings' own sub-nav is a `tabs` strip instead of
-a second, nested sidebar; see `SettingsLayout.tsx`'s comment for why) are
-done. Still open: [#104](https://github.com/anirudhgray/bodger/issues/104)
+own nav as a `Sidebar` — Settings' own sub-nav is a `tabs` strip for
+switching sections once already on one, plus a collapsible `Sidebar`
+submenu for jumping to one directly; see `docs/design-system.md`'s `tabs`
+section for why both exist) are done. Still open: [#104](https://github.com/anirudhgray/bodger/issues/104)
 (wiring the remaining Radix-portal primitives into pages — the
 `popover`+`calendar` date picker landed; native-`<select>`-to-Radix,
 `dialog`, and `dropdown-menu` have not) and [#106](https://github.com/anirudhgray/bodger/issues/106)

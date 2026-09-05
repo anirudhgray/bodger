@@ -222,11 +222,20 @@ TransactionEntry's Spend/Receive/Move switch above: there, `Tabs` swaps
 content in place within one page; here, each `TabsTrigger` is a real
 `<Link>` (via `asChild`) to its own route, so the "tabs" are actual
 navigation — the address bar, back button, and bookmarks all work
-normally. `AppLayout`'s own top-level nav (#88) stayed a `Sidebar`
-rather than growing a second, nested one for these four items: they're
-flat and non-hierarchical, so a horizontal tab strip in the content area
-was the proportional choice over stacking two independent
-collapse/toggle affordances.
+normally.
+
+The same four routes are also reachable straight from `AppLayout`'s own
+top-level nav (#88): `AppSidebar`'s Settings entry is a `Collapsible` +
+`SidebarMenuSub` group rather than a plain link, collapsed by default
+and opened automatically when a settings route is already active. This
+isn't a second, competing nav structure — `Sidebar` and the content-area
+tab strip serve different reach: the tab strip is for someone already on
+a settings page switching sections, the sidebar submenu is for jumping
+straight to one (e.g. "Categories") from anywhere else in the app
+without a stop at `/settings/password` first. `SidebarMenuSub`'s
+trigger only expands/collapses; it doesn't navigate on its own, so
+reaching a section always means picking one from the list, the same as
+the tab strip does.
 
 ## Toasts vs. inline messages
 
