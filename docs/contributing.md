@@ -35,7 +35,9 @@ The [`Makefile`](../Makefile) is the build contract. **CI runs `make check-go` a
 | `make fmt` | Format everything in place |
 | `make generate` | Regenerate generated files (`internal/surface/http/openapi.json`, then `web/src/lib/api-types.ts` from it) |
 | `make build` | Build the web UI, then the binary, into `bin/bodger` |
+| `make build-bin` | Build just the `bodger` binary, without the web UI |
 | `make run` | Run the server locally |
+| `make seed-dev` | Seed a scratch dev DB with realistic accounts/categories/transactions via the real CLI ([`scripts/seed-dev.sh`](../scripts/seed-dev.sh)) - requires `BODGER_DB_PATH` pointed at a non-default file, e.g. `BODGER_DB_PATH=/tmp/bodger-dev.db make seed-dev` |
 | `make release-dry-run` | Build every release target locally (goreleaser snapshot mode, no tag or publish) — see [`releasing.md`](releasing.md#local-dry-runs) |
 | `make test-cover` | Tests with a coverage profile |
 | `make docker-up` | Run the self-hosted stack |
