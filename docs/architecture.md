@@ -261,11 +261,18 @@ submenu for jumping to one directly; see `docs/design-system.md`'s `tabs`
 section for why both exist), [#104](https://github.com/anirudhgray/bodger/issues/104)
 (wiring the remaining Radix-portal primitives into pages — `popover`+
 `calendar` landed as a real date picker in #118, and the native-`<select>`-
-to-Radix swap landed as a `command`/`combobox`-based Combobox alongside
-#106, below; `dialog`/`alert-dialog` and `dropdown-menu` were deliberately
-left unwired, per #104's own "only if a real spot turns up" scoping — no
-row's inline actions have outgrown a plain button group, and
-deletes/archives stay intentionally unconfirmed, docs/ux-principles.md
+to-Radix swap landed in two steps: a `command`/`combobox`-based Combobox
+for the three category pickers alongside #106, below, then a themed
+Radix rebuild of `components/ui/select.tsx` itself for every remaining
+`<select>` in the app (account/category type dropdowns, TransactionDialog's
+account fields, TransactionsList's account/type filters) — its native
+predecessor's open dropdown was unstyled browser chrome, the one control
+left that didn't respect the app's own theme; see `docs/design-system.md`'s
+"Select: Radix, not native" section, including a real Radix Select gotcha
+found and fixed along the way. `dialog`/`alert-dialog` and `dropdown-menu`
+were deliberately left unwired, per #104's own "only if a real spot turns
+up" scoping — no row's inline actions have outgrown a plain button group,
+and deletes/archives stay intentionally unconfirmed, docs/ux-principles.md
 §5), and [#106](https://github.com/anirudhgray/bodger/issues/106)
 (category hierarchy view + quick-create from pickers: Settings' category
 list and every category picker now show the real parent/child tree via a

@@ -193,17 +193,54 @@ down by `web/e2e/mobile-nav.spec.ts`.
 
 `popover`+`calendar` landed as a real date picker in #118
 (`components/ui/date-picker.tsx`, wired into TransactionDialog's date
-field and TransactionsList's from/to filters), and the native
-`<select>`-to-Radix swap landed in #106/#104 as a Combobox (below) for
-exactly the three category pickers that had a real payoff — see that
-section for which ones, and why the other two `<select>`s stayed
-native. `dialog`/`alert-dialog` and `dropdown-menu` are still not wired
-into any page: #104's own text frames both as "if a real spot turns
-up," and none has — Settings' rows still just have plain Rename/Archive/
+field and TransactionsList's from/to filters). The native
+`<select>`-to-Radix swap landed in two steps: #106/#104 first replaced
+it with a Combobox (below) for exactly the three category pickers that
+needed hierarchy display and search; a follow-up pass then rebuilt
+`components/ui/select.tsx` itself on Radix (`SelectTrigger`/
+`SelectContent`/`SelectItem`, not a Combobox) and moved every *other*
+`<select>` in the app onto it — see "Select: Radix, not native" below
+for why the plain native trigger wasn't good enough on its own.
+`dialog`/`alert-dialog` and `dropdown-menu` are still not wired into
+any page: #104's own text frames both as "if a real spot turns up,"
+and none has — Settings' rows still just have plain Rename/Archive/
 Revoke buttons, and deletes/archives are deliberately unconfirmed
-(`docs/ux-principles.md` §5) — so #104 is done as far as it's going to
-get without a genuine need appearing first. `kbd` has no call site
-yet — there's no keyboard-shortcut UI in the app to hang it on.
+(`docs/ux-principles.md` §5). `kbd` has no call site yet — there's no
+keyboard-shortcut UI in the app to hang it on.
+
+**Select: Radix, not native.** `components/ui/select.tsx` was
+originally a plain native `<select>` styled to match `Input` — fine for
+its closed trigger, but its *open* dropdown was unstyled native
+OS/browser chrome, the one form control left that didn't respect the
+app's own light/dark theme. It's now a themed Radix `Select`
+(`SelectTrigger`/`SelectContent`/`SelectItem`/`SelectValue`, following
+this project's usual thin-wrapper conventions), used for every flat,
+non-hierarchical, non-searchable list in the app: `settings/Accounts.tsx`'s
+account-type dropdown, `settings/Categories.tsx`'s own category-type
+(Expense/Income) dropdown, TransactionDialog's account and "to account"
+fields, and TransactionsList's filter panel's account and type fields.
+`combobox.tsx` stays reserved for pickers that need search, hierarchy,
+or quick-create — none of these do, so the lighter primitive (no `cmdk`,
+no search box) is the boring, proportional choice for them.
+
+A real Radix Select gotcha surfaced building this: its trigger renders
+a hidden native `<select>` "bubble" mirror whenever it sits inside an
+actual `<form>` (true for every field above, regardless of whether a
+`name` prop is passed for `FormData` participation), keyed to the set
+of option values. Mounting a `Select` before its options are ready and
+letting them arrive afterward (TransactionDialog's account fields start
+with zero accounts until `listAccounts()` resolves) changes that key
+mid-lifecycle, which forces Radix to destroy and recreate the mirror
+and, in the process, dispatch a synthetic `change` event that silently
+resets the controlled value back to `""` — confirmed against
+`@radix-ui/react-select`'s own `SelectBubbleInput` source, not a
+jsdom-only artifact. `TransactionDialog.tsx`'s account fields render a
+"Loading accounts…" placeholder until the real list has arrived, rather
+than mounting the `Select` early with an empty option set; the "to
+account" field additionally carries `key={accountId}` to force a clean
+remount (a fresh, complete option list from the start) whenever the
+excluded "from" account changes, since that same option-set change can
+otherwise happen again mid-session, not just on first load.
 
 `toast` (issue #108) is wired into every action whose own UI (a dialog,
 a row) closes or moves on before its result would otherwise be shown:
@@ -388,10 +425,10 @@ primitive:
   the list it's part of.
 - **`settings/Accounts.tsx`'s account-type dropdown** and
   **`settings/Categories.tsx`'s own category-type (Expense/Income)
-  dropdown** stay plain native `<select>`s — short, flat, two-or-few
-  option lists with no hierarchy and no search need, exactly the case
-  the original `select.tsx` audit note already called out as not
-  worth the swap.
+  dropdown** use the plain (non-Combobox) `Select` instead — short,
+  flat, two-or-few option lists with no hierarchy and no search need,
+  so the lighter primitive is enough; see "Select: Radix, not native"
+  above for why they moved off the *native* `<select>` even so.
 
 **Quick-create**, from the Category combobox only: typing text that
 matches no existing category's name (case-insensitively) shows an inline
