@@ -13,10 +13,8 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  TransactionDialogProvider,
-  useTransactionDialog,
-} from '@/components/TransactionDialog'
+import { TransactionDialogProvider } from '@/components/TransactionDialog'
+import { useTransactionDialog } from '@/hooks/use-transaction-dialog'
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')

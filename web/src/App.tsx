@@ -1,32 +1,107 @@
 import { useState } from 'react'
-import { Moon, Sun } from 'lucide-react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import {
+  Moon,
+  Receipt,
+  Settings as SettingsIcon,
+  Sun,
+  Wallet,
+} from 'lucide-react'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import {
-  TransactionDialogProvider,
-  useTransactionDialog,
-} from '@/components/TransactionDialog'
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from '@/components/ui/sidebar'
+import { TransactionDialogProvider } from '@/components/TransactionDialog'
+import { useTransactionDialog } from '@/hooks/use-transaction-dialog'
 import { useTheme } from '@/hooks/use-theme'
-import { cn } from '@/lib/utils'
 import { logout } from '@/lib/session'
 
+// Each item's icon matches the one its own screen already uses for its
+// empty state (TransactionsList.tsx's Receipt, Balances.tsx's Wallet) —
+// reusing that vocabulary rather than picking new icons for the same
+// concept. Settings has no single equivalent (KeyRound is scoped to its
+// API-tokens section specifically), so it gets the generic gear.
 const navItems = [
-  { to: '/transactions', label: 'Transactions' },
-  { to: '/balances', label: 'Balances' },
-  { to: '/settings', label: 'Settings' },
+  { to: '/transactions', label: 'Transactions', icon: Receipt },
+  { to: '/balances', label: 'Balances', icon: Wallet },
+  { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ]
 
-// AppLayout is the routing skeleton's shell: a nav bar and an <Outlet />
-// for whichever placeholder (soon: real screen) the current route
-// renders. Its own loader (routes.tsx's requireAuth) already guarantees
-// an authenticated actor by the time this renders, so the only auth
-// concern this component itself owns is logging out.
+// AppLayout is the routing skeleton's shell: a sidebar nav, a header, and
+// an <Outlet /> for whichever screen the current route renders. Its own
+// loader (routes.tsx's requireAuth) already guarantees an authenticated
+// actor by the time this renders, so the only auth concern this component
+// itself owns is logging out.
 export function AppLayout() {
   return (
     <TransactionDialogProvider>
-      <AppShell />
+      <SidebarProvider>
+        <AppShell />
+      </SidebarProvider>
     </TransactionDialogProvider>
+  )
+}
+
+function AppSidebar() {
+  const location = useLocation()
+  const { setOpenMobile } = useSidebar()
+
+  // On a narrow viewport the sidebar renders as an off-canvas sheet.
+  // Following a nav link navigates but doesn't close the sheet on its
+  // own — Radix's Sheet only closes on its own overlay/escape handling,
+  // not as a side effect of a click inside it that also happens to
+  // navigate — so every link closes it explicitly. Without this, the
+  // sheet's overlay is left covering the very page it just navigated to,
+  // blocking every control underneath.
+  function closeMobileSidebar() {
+    setOpenMobile(false)
+  }
+
+  return (
+    <Sidebar>
+      <SidebarHeader>
+        <span className="px-2 py-1.5 text-sm font-semibold tracking-tight">
+          bodger
+        </span>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {navItems.map((item) => {
+                const isActive = location.pathname.startsWith(item.to)
+                return (
+                  <SidebarMenuItem key={item.to}>
+                    <SidebarMenuButton asChild isActive={isActive}>
+                      <Link
+                        to={item.to}
+                        onClick={closeMobileSidebar}
+                        aria-current={isActive ? 'page' : undefined}
+                      >
+                        <item.icon />
+                        {item.label}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+    </Sidebar>
   )
 }
 
@@ -58,59 +133,51 @@ function AppShell() {
   }
 
   return (
-    <div className="flex min-h-svh flex-col">
-      <header className="border-border flex items-center justify-between border-b px-6 py-3">
-        <span className="text-sm font-semibold tracking-tight">bodger</span>
-        <nav className="flex items-center gap-1">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                cn(
-                  'rounded-md px-3 py-1.5 text-sm transition-colors',
-                  isActive
-                    ? 'bg-secondary text-secondary-foreground'
-                    : 'text-muted-foreground hover:text-foreground',
-                )
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground cursor-pointer rounded-md px-3 py-1.5 text-sm transition-colors"
-            onClick={handleAdd}
-          >
-            Add
-          </button>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            className="ml-2"
-            onClick={toggleTheme}
-          >
-            {theme === 'dark' ? <Sun /> : <Moon />}
-            <span className="sr-only">
-              {theme === 'dark'
-                ? 'Switch to light mode'
-                : 'Switch to dark mode'}
+    <>
+      <AppSidebar />
+      <SidebarInset>
+        <header className="border-border flex items-center justify-between border-b px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-2">
+            <SidebarTrigger />
+            <span className="text-sm font-semibold tracking-tight md:hidden">
+              bodger
             </span>
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={loggingOut}
-            onClick={handleLogout}
-          >
-            {loggingOut ? 'Logging out…' : 'Log out'}
-          </Button>
-        </nav>
-      </header>
-      <main className="flex flex-1 flex-col">
-        <Outlet />
-      </main>
-    </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground cursor-pointer rounded-md px-3 py-1.5 text-sm transition-colors"
+              onClick={handleAdd}
+            >
+              Add
+            </button>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className="ml-2"
+              onClick={toggleTheme}
+            >
+              {theme === 'dark' ? <Sun /> : <Moon />}
+              <span className="sr-only">
+                {theme === 'dark'
+                  ? 'Switch to light mode'
+                  : 'Switch to dark mode'}
+              </span>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={loggingOut}
+              onClick={handleLogout}
+            >
+              {loggingOut ? 'Logging out…' : 'Log out'}
+            </Button>
+          </div>
+        </header>
+        <div className="flex flex-1 flex-col">
+          <Outlet />
+        </div>
+      </SidebarInset>
+    </>
   )
 }

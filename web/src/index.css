@@ -5,6 +5,35 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
+ * Tailwind's bare `data-{name}:` shorthand matches on attribute
+ * *presence*, not value — it compiles `data-active:` to plain
+ * `[data-active]`, and would do the same for a bare `data-open:`/
+ * `data-closed:` to plain `[data-open]`/`[data-closed]`, none of which are
+ * Radix-state-aware despite the naming. React also renders boolean data-*
+ * props as the literal string "false" rather than omitting them, so
+ * `data-active` is always present regardless of value.
+ *
+ * `sidebar.tsx`'s `data-active:*` (styling the current nav item) hits this
+ * for real today: without this override it matches every item, active or
+ * not. `data-open`/`data-closed` aren't used anywhere in the tree as
+ * committed — this project's `sheet.tsx`/`dialog.tsx` correctly use the
+ * exact-match `data-[state=open]:`/`data-[state=closed]:` bracket form —
+ * but the upstream shadcn registry's *current* sheet.tsx has regressed to
+ * the bare, broken form (confirmed via `npx shadcn add sheet --overwrite`
+ * while investigating this: it silently drops the slide/fade entrance
+ * animation, since Radix sets `data-state`, not a literal `data-open`
+ * attribute). Registering these now means a future `npx shadcn` re-pull
+ * doesn't quietly reintroduce that regression.
+ *
+ * Registering the exact-match variants here, rather than editing the
+ * component files' own classes, keeps those files exact, unmodified
+ * `npx shadcn` pulls.
+ */
+@custom-variant data-active (&[data-active='true']);
+@custom-variant data-open (&[data-state='open']);
+@custom-variant data-closed (&[data-state='closed']);
+
+/*
  * M3 · Rivendell design tokens (docs/design-system.md). Neutrals carry a
  * near-imperceptible cool tint (hue 240) independent of the brand accent
  * (hue 155, a muted forest green) — the accent is deliberately reserved
@@ -92,6 +121,12 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -107,5 +142,21 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/*
+ * shadcn's own component templates (sidebar.tsx's scroll region, the
+ * dialog scrollable-content pattern) reference a `no-scrollbar` utility
+ * that neither Tailwind nor `tw-animate-css` actually ships — without
+ * this it's silently dropped, so a scrollable area gets a visible
+ * browser scrollbar instead of the intended edge-to-edge look.
+ */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    display: none;
   }
 }

@@ -248,16 +248,19 @@ bug in containerized `bodger serve` unrelated to the milestone's own goal
 — see §8. It's tracked as backlog, unmilestoned, until #93 is resolved.
 
 **M3 · Rivendell is in progress.** [#100](https://github.com/anirudhgray/bodger/issues/100)
-(design tokens) and [#101](https://github.com/anirudhgray/bodger/issues/101)
+(design tokens), [#101](https://github.com/anirudhgray/bodger/issues/101)
 (auditing `components/ui` and the existing pages against them —
-`docs/design-system.md`) are done; the remaining milestone items are
-[#88](https://github.com/anirudhgray/bodger/issues/88) (responsive layout)
-and [#89](https://github.com/anirudhgray/bodger/issues/89)
-(cross-navigation), plus a deliberately-scoped follow-up from #101's audit,
-[#104](https://github.com/anirudhgray/bodger/issues/104) (wiring the
-remaining Radix-portal primitives — select, popover+calendar, dialog —
-into pages, once this project has `@testing-library/user-event` and the
-jsdom polyfills those need).
+`docs/design-system.md`), [#89](https://github.com/anirudhgray/bodger/issues/89)
+(cross-navigation), and [#88](https://github.com/anirudhgray/bodger/issues/88)
+(responsive layout, including wiring `sidebar` into `AppLayout`'s nav) are
+done. Still open: [#104](https://github.com/anirudhgray/bodger/issues/104)
+(wiring the remaining Radix-portal primitives into pages — the
+`popover`+`calendar` date picker landed; native-`<select>`-to-Radix,
+`dialog`, and `dropdown-menu` have not), [#106](https://github.com/anirudhgray/bodger/issues/106)
+(category hierarchy view + quick-create from pickers, building on #104's
+infrastructure), and [#107](https://github.com/anirudhgray/bodger/issues/107)
+(splitting Settings into nested subpages, which depends on #88's now-settled
+sidebar shape for its own sub-navigation).
 
 | Milestone | Status |
 | --- | --- |

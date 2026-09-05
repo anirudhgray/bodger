@@ -9,9 +9,7 @@
 // behind "Add details"); edit shows every field up front, since there's
 // no "fast path" for changing something you already recorded.
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -50,6 +48,11 @@ import {
   type Transaction,
 } from '@/lib/api'
 import { sanitizeAmountInput } from '@/lib/utils'
+import {
+  TransactionDialogContext,
+  type SavedEvent,
+  type SavedListener,
+} from '@/hooks/use-transaction-dialog'
 
 type Kind = 'outflow' | 'inflow' | 'transfer'
 
@@ -135,50 +138,6 @@ type DialogRequest =
       transaction: Transaction
       onSaved?: (updated: Transaction) => void
     }
-
-// SavedEvent fires for every successful create or edit, regardless of
-// which particular openCreate()/openEdit() call triggered it — this is
-// what lets TransactionsList refresh itself when a transaction is added
-// or edited from somewhere else entirely (the nav's global Add button,
-// which has no reference to TransactionsList's own load()/setTransactions
-// at all). A request's own per-call onSaved (above) is for a caller that
-// wants to react specifically to the request *it* made — navigating
-// after a create, say — the two aren't mutually exclusive.
-type SavedEvent =
-  | { mode: 'create'; transaction: Transaction }
-  | { mode: 'edit'; transaction: Transaction }
-type SavedListener = (event: SavedEvent) => void
-
-interface TransactionDialogContextValue {
-  openCreate: (onSaved?: (created: Transaction) => void) => void
-  openEdit: (
-    transaction: Transaction,
-    onSaved?: (updated: Transaction) => void,
-  ) => void
-  onTransactionSaved: (listener: SavedListener) => () => void
-}
-
-const TransactionDialogContext =
-  createContext<TransactionDialogContextValue | null>(null)
-
-export function useTransactionDialog(): TransactionDialogContextValue {
-  const context = useContext(TransactionDialogContext)
-  if (context === null) {
-    throw new Error(
-      'useTransactionDialog must be used within a TransactionDialogProvider',
-    )
-  }
-  return context
-}
-
-// useTransactionSaved subscribes to every create/edit, wherever it was
-// triggered from — TransactionsList uses this to refresh itself rather
-// than relying on being the one that opened the dialog in the first
-// place (see SavedEvent's own comment for why that matters).
-export function useTransactionSaved(listener: SavedListener) {
-  const { onTransactionSaved } = useTransactionDialog()
-  useEffect(() => onTransactionSaved(listener), [onTransactionSaved, listener])
-}
 
 export function TransactionDialogProvider({
   children,
@@ -479,174 +438,178 @@ function TransactionDialogSheet({
           </p>
         ) : (
           <form
-            className="flex flex-col gap-4"
+            className="flex min-h-0 flex-col gap-4"
             onSubmit={handleSubmit}
             noValidate
           >
-            {request.mode === 'create' ? (
-              <Tabs
-                value={kind}
-                onValueChange={(value) => {
-                  setKind(value as Kind)
-                  setCategoryId('')
-                  setJustRecorded(false)
-                }}
-              >
-                <TabsList aria-label="Transaction type" className="w-full">
-                  {(Object.keys(KIND_LABELS) as Kind[]).map((k) => (
-                    <TabsTrigger key={k} value={k} className="flex-1">
-                      {KIND_LABELS[k]}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
-            ) : (
-              // The transaction's type isn't editable (EditTransactionBody
-              // has no field for it — spend/receive/move are structurally
-              // different operations, not just a label) — shown as
-              // context, not as a control that looks interactive but
-              // isn't.
-              <p className="text-muted-foreground text-sm">
-                Editing a {KIND_LABELS[kind].toLowerCase()}
-              </p>
-            )}
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="td-amount">Amount</Label>
-              <Input
-                id="td-amount"
-                inputMode="decimal"
-                placeholder="0.00"
-                autoFocus
-                required
-                value={amount}
-                onChange={(e) => setAmount(sanitizeAmountInput(e.target.value))}
-              />
-            </div>
-
-            {kind !== 'transfer' && (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="td-category">Category</Label>
-                <Select
-                  id="td-category"
-                  required
-                  value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value)}
+            <div className="no-scrollbar -mx-4 flex max-h-[70vh] flex-col gap-4 overflow-y-auto px-4">
+              {request.mode === 'create' ? (
+                <Tabs
+                  value={kind}
+                  onValueChange={(value) => {
+                    setKind(value as Kind)
+                    setCategoryId('')
+                    setJustRecorded(false)
+                  }}
                 >
-                  <option value="" disabled>
-                    Choose a category
-                  </option>
-                  {relevantCategories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="td-account">
-                {kind === 'transfer' ? 'From account' : 'Account'}
-              </Label>
-              {hasSingleAccount ? (
-                <p className="text-sm">{accounts[0]?.name}</p>
+                  <TabsList aria-label="Transaction type" className="w-full">
+                    {(Object.keys(KIND_LABELS) as Kind[]).map((k) => (
+                      <TabsTrigger key={k} value={k} className="flex-1">
+                        {KIND_LABELS[k]}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
               ) : (
-                <Select
-                  id="td-account"
-                  required
-                  value={accountId}
-                  onChange={(e) => setAccountId(e.target.value)}
-                >
-                  <option value="" disabled>
-                    Choose an account
-                  </option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </Select>
+                // The transaction's type isn't editable (EditTransactionBody
+                // has no field for it — spend/receive/move are structurally
+                // different operations, not just a label) — shown as
+                // context, not as a control that looks interactive but
+                // isn't.
+                <p className="text-muted-foreground text-sm">
+                  Editing a {KIND_LABELS[kind].toLowerCase()}
+                </p>
               )}
-            </div>
 
-            {kind === 'transfer' && (
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="td-to-account">To account</Label>
-                <Select
-                  id="td-to-account"
+                <Label htmlFor="td-amount">Amount</Label>
+                <Input
+                  id="td-amount"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  autoFocus
                   required
-                  value={toAccountId}
-                  onChange={(e) => setToAccountId(e.target.value)}
-                >
-                  <option value="" disabled>
-                    Choose an account
-                  </option>
-                  {accounts
-                    .filter((a) => a.id !== accountId)
-                    .map((a) => (
+                  value={amount}
+                  onChange={(e) =>
+                    setAmount(sanitizeAmountInput(e.target.value))
+                  }
+                />
+              </div>
+
+              {kind !== 'transfer' && (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="td-category">Category</Label>
+                  <Select
+                    id="td-category"
+                    required
+                    value={categoryId}
+                    onChange={(e) => setCategoryId(e.target.value)}
+                  >
+                    <option value="" disabled>
+                      Choose a category
+                    </option>
+                    {relevantCategories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="td-account">
+                  {kind === 'transfer' ? 'From account' : 'Account'}
+                </Label>
+                {hasSingleAccount ? (
+                  <p className="text-sm">{accounts[0]?.name}</p>
+                ) : (
+                  <Select
+                    id="td-account"
+                    required
+                    value={accountId}
+                    onChange={(e) => setAccountId(e.target.value)}
+                  >
+                    <option value="" disabled>
+                      Choose an account
+                    </option>
+                    {accounts.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.name}
                       </option>
                     ))}
-                </Select>
+                  </Select>
+                )}
               </div>
-            )}
 
-            {request.mode === 'create' && !showDetails && (
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-foreground cursor-pointer self-start text-sm underline-offset-2 hover:underline"
-                onClick={() => setShowDetails(true)}
-              >
-                Add details
-              </button>
-            )}
+              {kind === 'transfer' && (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="td-to-account">To account</Label>
+                  <Select
+                    id="td-to-account"
+                    required
+                    value={toAccountId}
+                    onChange={(e) => setToAccountId(e.target.value)}
+                  >
+                    <option value="" disabled>
+                      Choose an account
+                    </option>
+                    {accounts
+                      .filter((a) => a.id !== accountId)
+                      .map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                  </Select>
+                </div>
+              )}
 
-            {showDetails && (
-              <div className="flex flex-col gap-4 border-t pt-4">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="td-date">Date</Label>
-                  <DatePicker id="td-date" value={date} onChange={setDate} />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="td-description">Description</Label>
-                  <Input
-                    id="td-description"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="td-notes">Notes</Label>
-                  <Input
-                    id="td-notes"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="td-tags">Tags</Label>
-                  <Input
-                    id="td-tags"
-                    placeholder="comma, separated"
-                    value={tags}
-                    onChange={(e) => setTags(e.target.value)}
-                  />
-                </div>
-              </div>
-            )}
+              {request.mode === 'create' && !showDetails && (
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground cursor-pointer self-start text-sm underline-offset-2 hover:underline"
+                  onClick={() => setShowDetails(true)}
+                >
+                  Add details
+                </button>
+              )}
 
-            {submitError && (
-              <p role="alert" className="text-destructive text-sm">
-                {submitError}
-              </p>
-            )}
-            {justRecorded && !submitError && (
-              <p role="status" className="text-success text-sm">
-                Recorded.
-              </p>
-            )}
+              {showDetails && (
+                <div className="flex flex-col gap-4 border-t pt-4">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="td-date">Date</Label>
+                    <DatePicker id="td-date" value={date} onChange={setDate} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="td-description">Description</Label>
+                    <Input
+                      id="td-description"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="td-notes">Notes</Label>
+                    <Input
+                      id="td-notes"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="td-tags">Tags</Label>
+                    <Input
+                      id="td-tags"
+                      placeholder="comma, separated"
+                      value={tags}
+                      onChange={(e) => setTags(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {submitError && (
+                <p role="alert" className="text-destructive text-sm">
+                  {submitError}
+                </p>
+              )}
+              {justRecorded && !submitError && (
+                <p role="status" className="text-success text-sm">
+                  Recorded.
+                </p>
+              )}
+            </div>
 
             <DialogFooter
               className={
