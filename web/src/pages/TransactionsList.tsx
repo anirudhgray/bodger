@@ -6,11 +6,20 @@
 // `transactions delete` (internal/surface/cli/transactions.go: "deleting
 // is reversible in the database... confirmation is for genuinely
 // hard-to-undo actions", ux-principles.md §5).
+import { Receipt } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Empty, EmptyTitle } from '@/components/ui/empty'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -29,6 +38,7 @@ import {
   type TransactionKind,
   type TransactionListFilter,
 } from '@/lib/api'
+import { capitalize } from '@/lib/utils'
 
 // kindLabel mirrors internal/surface/cli/transactions.go's
 // transactionTypeFor: the same verb a transaction was recorded with
@@ -45,11 +55,12 @@ function kindLabel(kind: TransactionKind): string {
   }
 }
 
-const KIND_OPTIONS: { value: TransactionKind; label: string }[] = [
-  { value: 'outflow', label: 'spend' },
-  { value: 'inflow', label: 'receive' },
-  { value: 'transfer', label: 'move' },
-]
+// Title-cased for the filter dropdown — a discrete list of choices reads
+// as Title Case (matching the account/category type dropdowns), unlike
+// kindLabel's deliberately-lowercase inline sentence usage above.
+const KIND_OPTIONS: { value: TransactionKind; label: string }[] = (
+  ['outflow', 'inflow', 'transfer'] as const
+).map((value) => ({ value, label: capitalize(kindLabel(value)) }))
 
 function nameFor(id: string | undefined, byId: Map<string, string>): string {
   if (!id) return ''
@@ -274,9 +285,28 @@ export function TransactionsList() {
         </div>
       ) : transactions.length === 0 ? (
         <Empty>
-          <EmptyTitle>
-            No transactions {hasActiveFilters ? 'match those filters' : 'yet'}.
-          </EmptyTitle>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Receipt />
+            </EmptyMedia>
+            <EmptyTitle>
+              {hasActiveFilters
+                ? 'No matching transactions'
+                : 'No transactions yet'}
+            </EmptyTitle>
+            <EmptyDescription>
+              {hasActiveFilters
+                ? 'Try adjusting or clearing your filters.'
+                : 'Record your first transaction to see it here.'}
+            </EmptyDescription>
+          </EmptyHeader>
+          {!hasActiveFilters && (
+            <EmptyContent>
+              <Button asChild>
+                <Link to="/transactions/new">Record a transaction</Link>
+              </Button>
+            </EmptyContent>
+          )}
         </Empty>
       ) : (
         <Card className="[--card-spacing:0]">

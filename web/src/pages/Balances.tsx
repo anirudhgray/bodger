@@ -6,10 +6,20 @@
 // parses it as a number — docs/architecture.md §3 reserves that decision
 // for the application layer, and multi-currency conversion doesn't even
 // exist until M3.
+import { Wallet } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Empty, EmptyTitle } from '@/components/ui/empty'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Spinner } from '@/components/ui/spinner'
 import { ApiError, getBalances, type Balances } from '@/lib/api'
 
@@ -48,19 +58,35 @@ export function BalancesPage() {
 
   if (balances === null) {
     return (
-      <div className="flex flex-1 items-center justify-center gap-2 p-12">
-        <Spinner />
-        <span className="text-muted-foreground text-sm">Loading…</span>
+      <div className="flex flex-1 flex-col gap-6 p-6">
+        <h1 className="text-2xl font-semibold tracking-tight">Balances</h1>
+        <div className="flex items-center gap-2">
+          <Spinner />
+          <span className="text-muted-foreground text-sm">Loading…</span>
+        </div>
       </div>
     )
   }
 
   if (balances.balances.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 p-12 text-center">
+      <div className="flex flex-1 flex-col gap-6 p-6">
         <h1 className="text-2xl font-semibold tracking-tight">Balances</h1>
         <Empty>
-          <EmptyTitle>No accounts yet.</EmptyTitle>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Wallet />
+            </EmptyMedia>
+            <EmptyTitle>No accounts yet</EmptyTitle>
+            <EmptyDescription>
+              Add an account to start tracking balances.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button asChild>
+              <Link to="/settings">Add an account</Link>
+            </Button>
+          </EmptyContent>
         </Empty>
       </div>
     )

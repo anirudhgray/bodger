@@ -9,6 +9,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/api', async () => {
@@ -39,6 +40,16 @@ const mockedListAccounts = vi.mocked(listAccounts)
 const mockedListCategories = vi.mocked(listCategories)
 const mockedUpdateTransaction = vi.mocked(updateTransaction)
 const mockedDeleteTransaction = vi.mocked(deleteTransaction)
+
+// The empty state links to /transactions/new (Empty's "Record a
+// transaction" CTA), which needs a router context.
+function renderPage() {
+  return render(
+    <MemoryRouter>
+      <TransactionsList />
+    </MemoryRouter>,
+  )
+}
 
 const groceries: Transaction = {
   id: 't1',
@@ -95,14 +106,14 @@ describe('TransactionsList', () => {
 
   it('renders an empty state with no transactions', async () => {
     mockedListTransactions.mockResolvedValue({ data: [] })
-    render(<TransactionsList />)
+    renderPage()
 
-    expect(await screen.findByText('No transactions yet.')).toBeInTheDocument()
+    expect(await screen.findByText('No transactions yet')).toBeInTheDocument()
   })
 
   it('renders a transaction row with its account and category', async () => {
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
-    render(<TransactionsList />)
+    renderPage()
 
     expect(await screen.findByText('Groceries')).toBeInTheDocument()
     expect(screen.getByText(/spend/)).toBeInTheDocument()
@@ -113,7 +124,7 @@ describe('TransactionsList', () => {
 
   it('applies a filter and re-fetches with it', async () => {
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
-    render(<TransactionsList />)
+    renderPage()
     await screen.findByText('Groceries')
 
     fireEvent.click(screen.getByRole('button', { name: /Filters/ }))
@@ -133,9 +144,28 @@ describe('TransactionsList', () => {
     )
   })
 
+  it('title-cases the type filter options, matching the account/category type dropdowns', async () => {
+    mockedListTransactions.mockResolvedValue({ data: [groceries] })
+    renderPage()
+    await screen.findByText('Groceries')
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }))
+    const typeSelect = await screen.findByLabelText('Type')
+
+    expect(
+      within(typeSelect).getByRole('option', { name: 'Spend' }),
+    ).toBeInTheDocument()
+    expect(
+      within(typeSelect).getByRole('option', { name: 'Receive' }),
+    ).toBeInTheDocument()
+    expect(
+      within(typeSelect).getByRole('option', { name: 'Move' }),
+    ).toBeInTheDocument()
+  })
+
   it('clearing filters resets the form so a later Apply is not stale', async () => {
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
-    render(<TransactionsList />)
+    renderPage()
     await screen.findByText('Groceries')
 
     fireEvent.click(screen.getByRole('button', { name: /Filters/ }))
@@ -179,7 +209,7 @@ describe('TransactionsList', () => {
   it('deletes a transaction and removes it from the list', async () => {
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     mockedDeleteTransaction.mockResolvedValue(groceries)
-    render(<TransactionsList />)
+    renderPage()
     await screen.findByText('Groceries')
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
@@ -193,7 +223,7 @@ describe('TransactionsList', () => {
   it('edits a transaction, sending the full replacement body', async () => {
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     mockedUpdateTransaction.mockResolvedValue({ ...groceries, amount: '50.00' })
-    render(<TransactionsList />)
+    renderPage()
     await screen.findByText('Groceries')
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
@@ -221,7 +251,7 @@ describe('TransactionsList', () => {
     mockedUpdateTransaction.mockRejectedValue(
       new ApiError('invalid_input', 'That amount doesn’t look right.'),
     )
-    render(<TransactionsList />)
+    renderPage()
     await screen.findByText('Groceries')
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))

@@ -165,6 +165,32 @@ in [#104](https://github.com/anirudhgray/bodger/issues/104), scoped
 separately from #101 so it isn't silently dropped. `kbd` has no call
 site yet — there's no keyboard-shortcut UI in the app to hang it on.
 
+## Casing enum values for display
+
+The same underlying value can read differently depending on where it
+appears, and both are correct for their own context — but each context's
+render must come from the *same* underlying label, not a second
+hand-written copy:
+
+- **A discrete list of choices** — a `<select>` option, a filter, a
+  dropdown item — reads as Title Case: "Bank", "Credit card", "Spend".
+- **Inline in a sentence** may deliberately stay lowercase to read
+  naturally, or follow a different surface's own vocabulary on purpose
+  (`docs/ux-principles.md` §7) — TransactionsList's `kindLabel` mirrors
+  the CLI's own verb ("spend", not "Spend") for text like "spend $42.50
+  from Checking".
+
+When both are needed for the same value, derive one from the other —
+`web/src/lib/utils.ts`'s `capitalize()` for the simple "just capitalize
+the first letter" case (`TransactionsList`'s `KIND_OPTIONS`, built from
+`kindLabel` rather than a third hand-written lowercase string) — rather
+than writing a new literal string that can silently drift from the
+others. A value that needs real word substitution, not just
+capitalization (`credit_card` → "Credit card"), still gets its own
+mapping function (`accountKindLabel`, `categoryKindLabel` in
+`Settings.tsx`), but that function is the *only* place that value's
+display text is written.
+
 ## Adding a color
 
 Never invent a color outside this system. A new accent hue: same
