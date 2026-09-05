@@ -14,6 +14,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -133,12 +134,26 @@ type DialogRequest =
       onSaved?: (updated: Transaction) => void
     }
 
+// SavedEvent fires for every successful create or edit, regardless of
+// which particular openCreate()/openEdit() call triggered it — this is
+// what lets TransactionsList refresh itself when a transaction is added
+// or edited from somewhere else entirely (the nav's global Add button,
+// which has no reference to TransactionsList's own load()/setTransactions
+// at all). A request's own per-call onSaved (above) is for a caller that
+// wants to react specifically to the request *it* made — navigating
+// after a create, say — the two aren't mutually exclusive.
+type SavedEvent =
+  | { mode: 'create'; transaction: Transaction }
+  | { mode: 'edit'; transaction: Transaction }
+type SavedListener = (event: SavedEvent) => void
+
 interface TransactionDialogContextValue {
   openCreate: (onSaved?: (created: Transaction) => void) => void
   openEdit: (
     transaction: Transaction,
     onSaved?: (updated: Transaction) => void,
   ) => void
+  onTransactionSaved: (listener: SavedListener) => () => void
 }
 
 const TransactionDialogContext =
@@ -154,6 +169,15 @@ export function useTransactionDialog(): TransactionDialogContextValue {
   return context
 }
 
+// useTransactionSaved subscribes to every create/edit, wherever it was
+// triggered from — TransactionsList uses this to refresh itself rather
+// than relying on being the one that opened the dialog in the first
+// place (see SavedEvent's own comment for why that matters).
+export function useTransactionSaved(listener: SavedListener) {
+  const { onTransactionSaved } = useTransactionDialog()
+  useEffect(() => onTransactionSaved(listener), [onTransactionSaved, listener])
+}
+
 export function TransactionDialogProvider({
   children,
 }: {
@@ -165,6 +189,7 @@ export function TransactionDialogProvider({
   // dialog already accepts).
   const [request, setRequest] = useState<DialogRequest | null>(null)
   const [open, setOpen] = useState(false)
+  const listenersRef = useRef<Set<SavedListener>>(new Set())
 
   const openCreate = useCallback((onSaved?: (created: Transaction) => void) => {
     setRequest({ mode: 'create', onSaved })
@@ -179,9 +204,20 @@ export function TransactionDialogProvider({
     [],
   )
 
+  const onTransactionSaved = useCallback((listener: SavedListener) => {
+    listenersRef.current.add(listener)
+    return () => {
+      listenersRef.current.delete(listener)
+    }
+  }, [])
+
+  const notifySaved = useCallback((event: SavedEvent) => {
+    for (const listener of listenersRef.current) listener(event)
+  }, [])
+
   const value = useMemo(
-    () => ({ openCreate, openEdit }),
-    [openCreate, openEdit],
+    () => ({ openCreate, openEdit, onTransactionSaved }),
+    [openCreate, openEdit, onTransactionSaved],
   )
 
   return (
@@ -193,6 +229,7 @@ export function TransactionDialogProvider({
           request={request}
           open={open}
           onOpenChange={setOpen}
+          notifySaved={notifySaved}
         />
       )}
     </TransactionDialogContext.Provider>
@@ -203,10 +240,12 @@ function TransactionDialogSheet({
   request,
   open,
   onOpenChange,
+  notifySaved,
 }: {
   request: DialogRequest
   open: boolean
   onOpenChange: (open: boolean) => void
+  notifySaved: (event: SavedEvent) => void
 }) {
   const editing = request.mode === 'edit' ? request.transaction : null
 
@@ -317,6 +356,7 @@ function TransactionDialogSheet({
         }
         const updated = await updateTransaction(request.transaction.id, body)
         request.onSaved?.(updated)
+        notifySaved({ mode: 'edit', transaction: updated })
         onOpenChange(false)
         return
       }
@@ -353,6 +393,7 @@ function TransactionDialogSheet({
 
       rememberAccount(accountId)
       request.onSaved?.(created)
+      notifySaved({ mode: 'create', transaction: created })
 
       if (enterMultiple) {
         // Amount, category, and the progressive-disclosure fields reset

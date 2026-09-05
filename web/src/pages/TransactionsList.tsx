@@ -9,7 +9,10 @@
 import { Receipt } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
-import { useTransactionDialog } from '@/components/TransactionDialog'
+import {
+  useTransactionDialog,
+  useTransactionSaved,
+} from '@/components/TransactionDialog'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
@@ -159,12 +162,31 @@ export function TransactionsList() {
   }
 
   function handleEdit(transaction: Transaction) {
-    openEdit(transaction, (updated) => {
-      setTransactions((prev) =>
-        prev.map((t) => (t.id === updated.id ? updated : t)),
-      )
-    })
+    openEdit(transaction)
   }
+
+  // Fires for every create/edit, wherever it was triggered from — not
+  // just one this screen's own openCreate()/openEdit() calls made. The
+  // nav's global Add button has no reference to this screen's load() or
+  // setTransactions at all, so without this, a transaction added while
+  // already on this page would silently not appear until a manual
+  // reload.
+  useTransactionSaved(
+    useCallback(
+      (event) => {
+        if (event.mode === 'edit') {
+          setTransactions((prev) =>
+            prev.map((t) =>
+              t.id === event.transaction.id ? event.transaction : t,
+            ),
+          )
+        } else {
+          load(filter, false)
+        }
+      },
+      [load, filter],
+    ),
+  )
 
   const hasActiveFilters = Object.values(filter).some(Boolean)
 
@@ -302,9 +324,7 @@ export function TransactionsList() {
           </EmptyHeader>
           {!hasActiveFilters && (
             <EmptyContent>
-              <Button onClick={() => openCreate(() => load({}, false))}>
-                Record a transaction
-              </Button>
+              <Button onClick={() => openCreate()}>Record a transaction</Button>
             </EmptyContent>
           )}
         </Empty>

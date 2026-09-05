@@ -12,7 +12,10 @@ import {
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { TransactionDialogProvider } from '@/components/TransactionDialog'
+import {
+  TransactionDialogProvider,
+  useTransactionDialog,
+} from '@/components/TransactionDialog'
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
@@ -23,6 +26,7 @@ vi.mock('@/lib/api', async () => {
     listCategories: vi.fn(),
     updateTransaction: vi.fn(),
     deleteTransaction: vi.fn(),
+    recordOutflow: vi.fn(),
   }
 })
 
@@ -32,6 +36,7 @@ import {
   listAccounts,
   listCategories,
   listTransactions,
+  recordOutflow,
   updateTransaction,
   type Transaction,
 } from '@/lib/api'
@@ -42,6 +47,7 @@ const mockedListAccounts = vi.mocked(listAccounts)
 const mockedListCategories = vi.mocked(listCategories)
 const mockedUpdateTransaction = vi.mocked(updateTransaction)
 const mockedDeleteTransaction = vi.mocked(deleteTransaction)
+const mockedRecordOutflow = vi.mocked(recordOutflow)
 
 // The empty state's "Record a transaction" CTA needs a router context;
 // editing/creating a transaction (both open TransactionDialog) needs
@@ -50,6 +56,29 @@ function renderPage() {
   return render(
     <MemoryRouter>
       <TransactionDialogProvider>
+        <TransactionsList />
+      </TransactionDialogProvider>
+    </MemoryRouter>,
+  )
+}
+
+// Stands in for the nav's global Add button — something that opens the
+// same shared dialog but has no reference to this screen's own load() or
+// setTransactions, the way the real nav button doesn't either.
+function ExternalAddTrigger() {
+  const { openCreate } = useTransactionDialog()
+  return (
+    <button type="button" onClick={() => openCreate()}>
+      External add
+    </button>
+  )
+}
+
+function renderPageWithExternalTrigger() {
+  return render(
+    <MemoryRouter>
+      <TransactionDialogProvider>
+        <ExternalAddTrigger />
         <TransactionsList />
       </TransactionDialogProvider>
     </MemoryRouter>,
@@ -106,6 +135,7 @@ describe('TransactionsList', () => {
     mockedListCategories.mockReset()
     mockedUpdateTransaction.mockReset()
     mockedDeleteTransaction.mockReset()
+    mockedRecordOutflow.mockReset()
     stubLookups()
   })
 
@@ -114,6 +144,37 @@ describe('TransactionsList', () => {
     renderPage()
 
     expect(await screen.findByText('No transactions yet')).toBeInTheDocument()
+  })
+
+  it('refreshes when a transaction is created by something else entirely (e.g. the nav)', async () => {
+    mockedListTransactions
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({ data: [groceries] })
+    mockedRecordOutflow.mockResolvedValue(groceries)
+    renderPageWithExternalTrigger()
+
+    await screen.findByText('No transactions yet')
+
+    fireEvent.click(screen.getByText('External add'))
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Add transaction',
+    })
+    fireEvent.change(within(dialog).getByLabelText('Amount'), {
+      target: { value: '42.50' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Category'), {
+      target: { value: 'c1' },
+    })
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Record spend' }),
+    )
+
+    // This is the actual bug: without TransactionsList subscribing to
+    // saves from *any* source, this screen — which had no part in
+    // opening this particular dialog — never re-fetches, and the new
+    // transaction silently doesn't appear until a manual reload.
+    expect(await screen.findByText('Groceries')).toBeInTheDocument()
+    expect(mockedListTransactions).toHaveBeenCalledTimes(2)
   })
 
   it('renders a transaction row with its account and category', async () => {
