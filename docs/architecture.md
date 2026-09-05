@@ -247,12 +247,24 @@ was moved out of M2 rather than holding the milestone open on
 bug in containerized `bodger serve` unrelated to the milestone's own goal
 — see §8. It's tracked as backlog, unmilestoned, until #93 is resolved.
 
+**M3 · Rivendell is in progress.** [#100](https://github.com/anirudhgray/bodger/issues/100)
+(design tokens) and [#101](https://github.com/anirudhgray/bodger/issues/101)
+(auditing `components/ui` and the existing pages against them —
+`docs/design-system.md`) are done; the remaining milestone items are
+[#88](https://github.com/anirudhgray/bodger/issues/88) (responsive layout)
+and [#89](https://github.com/anirudhgray/bodger/issues/89)
+(cross-navigation), plus a deliberately-scoped follow-up from #101's audit,
+[#104](https://github.com/anirudhgray/bodger/issues/104) (wiring the
+remaining Radix-portal primitives — select, popover+calendar, dialog —
+into pages, once this project has `@testing-library/user-event` and the
+jsdom polyfills those need).
+
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
 | M1 · Arda — Ledger core, CLI, REST API | ✅ Complete (v0.1.0) |
 | M2 · The Shire — Web UI and authentication | ✅ Complete |
-| M3 · Rivendell — UI polish and design system | ⬜ Not started |
+| M3 · Rivendell — UI polish and design system | 🟨 In progress |
 | M4 — Multi-currency and FX | ⬜ Not started |
 | M5 — Analytics and charts | ⬜ Not started |
 | M6 — Import and export | ⬜ Not started |

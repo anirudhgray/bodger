@@ -90,10 +90,16 @@ Unchanged from the original scaffold (`--radius: 0.625rem`, i.e. 10px):
 
 ## Dark mode
 
-`.dark` carries a full set of overrides for every token above. Wiring an
-actual toggle (rather than `prefers-color-scheme`-only) is a deliberate
-decision, not a default — tracked as part of
-[#101](https://github.com/anirudhgray/bodger/issues/101).
+`.dark` carries a full set of overrides for every token above. A real
+toggle (issue #101), not just `prefers-color-scheme`, lives in
+`AppLayout`'s nav (`web/src/App.tsx`): `web/src/lib/theme.ts` resolves
+and persists the choice (`localStorage`, key `bodger:theme` — the stored
+value always wins once set), `web/src/hooks/use-theme.ts` wires that into
+React, and `index.html` carries a small inline script that applies the
+same resolution before first paint, so there's no flash of the wrong
+theme while the bundle loads. Keep that script's resolution rule in sync
+with `lib/theme.ts`'s `resolveTheme` if it ever changes — it's duplicated
+in plain JS deliberately, since it has to run before any module does.
 
 ## Component primitives
 
@@ -119,14 +125,35 @@ hand-written primitives (`label.tsx`) import it via `@/lib/utils` instead;
 both resolve to the same function, so there's one merge behavior in the
 codebase, not two.
 
-**Wiring these into pages is tracked separately, not done wholesale in
-this pass.** `select`, `popover`+`calendar`, `dialog`, and `alert-dialog`
-are all Radix-portal-based and need `@testing-library/user-event` plus
-jsdom polyfills (`hasPointerCapture`, `scrollIntoView`) this project
-doesn't have yet — landing an untested interaction swap isn't worth the
-risk. `sidebar`, `card`, and `tabs` are ready to use as-is; see
-[#101](https://github.com/anirudhgray/bodger/issues/101) for the
-per-page audit.
+**Wiring status, after #101's audit.** `card` now houses every grouped
+list and callout that used to be a hand-rolled `border rounded-lg`
+`<div>`/`<ul>` (Balances' account list, the transaction list, and
+Settings' token/account/category lists and "token created" callout) —
+`card.tsx` itself picked up the `shadow-sm` elevation this doc already
+called for but the primitive was missing. `tabs` replaced
+TransactionEntry's hand-rolled Spend/Receive/Move switch (a `Button` row
+faking `role="radiogroup"`) with a real `TabsList`/`TabsTrigger`, which
+is the honest semantics for three mutually-exclusive views. `select`
+(the native one) now backs every `<select>` on `TransactionsList` and
+`Settings` that used to hand-roll the same `border-input bg-background
+...` className inline.
+
+`sidebar` is still **not** wired into `AppLayout`'s nav. It's the
+right primitive for that chrome eventually, but its collapsible/mobile
+behavior (`useIsMobile`, the `Sheet` mobile drawer) *is* issue #88's
+scope (responsive layout for small screens) — wiring it now would
+preempt that audit rather than support it. Converting the top nav to
+`Sidebar` is better done as part of #88, once that issue has actually
+looked at the nav at narrow widths.
+
+`select` swapped for the Radix-based version, plus `popover`+`calendar`
+and `dialog`/`alert-dialog`, are still not wired into any page: they're
+all Radix-portal-based and need `@testing-library/user-event` plus jsdom
+polyfills (`hasPointerCapture`, `scrollIntoView`) this project doesn't
+have yet — landing an untested interaction swap isn't worth the risk.
+That remaining wiring is tracked in
+[#104](https://github.com/anirudhgray/bodger/issues/104), scoped
+separately from #101 so it isn't silently dropped.
 
 ## Adding a color
 
