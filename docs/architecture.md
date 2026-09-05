@@ -177,7 +177,7 @@ Weighted toward the layer where correctness is decided:
 - **Persistence** — repository tests against a real temp-file SQLite database, plus a migrate-up/migrate-down cycle on every migration.
 - **Surfaces** — thin. Enough to prove decoding and encoding; the shared conformance suite covers the rest.
 - **Round-trip** — export → import → export is byte-identical modulo surrogate IDs and timestamps.
-- **Web UI** — component tests with Vitest; end-to-end kept deliberately sparse — one Playwright smoke test (login → record a transaction → see the updated balance → logout, issue #65) run against a real build of the production binary, not a substitute for each screen's own Vitest coverage. UI tests are not where financial correctness is established.
+- **Web UI** — component tests with Vitest; end-to-end kept deliberately sparse — a small number of targeted Playwright tests, each run against a real build of the production binary, not a substitute for each screen's own Vitest coverage. A new one earns its place for a real, distinct user-facing flow through the whole stack (e.g. issue #65's login → record → balance → logout, or issue #101's dark-mode toggle surviving a real reload) — not to click-test every element, and not instead of a Vitest test for the underlying logic when one is possible. UI tests are not where financial correctness is established.
 
 Fixtures cover multiple currencies, transfers, splits, refunds, credit cards, imported duplicates, month boundaries, and a leap day.
 
