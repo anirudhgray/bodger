@@ -8,7 +8,7 @@
 // exist until M3.
 import { Wallet } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -26,6 +26,7 @@ import { ApiError, getBalances, type Balances } from '@/lib/api'
 export function BalancesPage() {
   const [balances, setBalances] = useState<Balances | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const navigate = useNavigate()
 
   useEffect(() => {
     let cancelled = false
@@ -101,14 +102,21 @@ export function BalancesPage() {
       <Card className="max-w-md [--card-spacing:0]">
         <ul className="divide-border divide-y">
           {balances.balances.map((b) => (
-            <li
-              key={b.account_id}
-              className="flex items-center justify-between px-4 py-3"
-            >
-              <span className="text-sm font-medium">{b.account}</span>
-              <span className="text-sm tabular-nums">
-                {b.amount} {b.currency}
-              </span>
+            <li key={b.account_id}>
+              <button
+                type="button"
+                onClick={() =>
+                  navigate('/transactions', {
+                    state: { filter: { account: b.account_id } },
+                  })
+                }
+                className="hover:bg-accent/50 flex w-full items-center justify-between px-4 py-3 text-left transition-colors"
+              >
+                <span className="text-sm font-medium">{b.account}</span>
+                <span className="text-sm tabular-nums">
+                  {b.amount} {b.currency}
+                </span>
+              </button>
             </li>
           ))}
         </ul>

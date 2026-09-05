@@ -8,6 +8,7 @@
 // hard-to-undo actions", ux-principles.md §5).
 import { Receipt } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useLocation } from 'react-router-dom'
 
 import {
   useTransactionDialog,
@@ -69,14 +70,26 @@ function nameFor(id: string | undefined, byId: Map<string, string>): string {
 }
 
 export function TransactionsList() {
+  // Cross-navigation (issue #89) hands an initial filter in via router
+  // state — e.g. clicking an account on Balances — rather than a
+  // shareable query-string, which is a separate, larger piece of work
+  // (deep-linking every filter combination) this issue deliberately
+  // doesn't take on.
+  const location = useLocation()
+  const initialFilter = (
+    location.state as { filter?: TransactionListFilter } | null
+  )?.filter
+
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [nextCursor, setNextCursor] = useState<string | undefined>()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showFilters, setShowFilters] = useState(false)
-  const [filter, setFilter] = useState<TransactionListFilter>({})
+  const [showFilters, setShowFilters] = useState(Boolean(initialFilter))
+  const [filter, setFilter] = useState<TransactionListFilter>(
+    initialFilter ?? {},
+  )
   // Bumped on Clear to remount the filter form below (key={formResetKey}):
   // its account/category/type/from/to fields are uncontrolled
   // (defaultValue={filter.x ?? ''}) so they read once from filter at mount
@@ -113,19 +126,27 @@ export function TransactionsList() {
   )
 
   useEffect(() => {
-    listAccounts()
-      .then(setAccounts)
-      .catch(() => {})
-    listCategories()
-      .then(setCategories)
-      .catch(() => {})
-    load({}, false)
+    Promise.allSettled([
+      listAccounts().then(setAccounts),
+      listCategories().then(setCategories),
+    ]).then(() => {
+      // The account/category <select>s' defaultValue is read once at
+      // mount; if an initial filter (from cross-navigation, issue #89)
+      // named an account/category whose <option> hadn't loaded yet, the
+      // form never shows it as selected even though the fetch below used
+      // it correctly. Remount the form once real options exist so
+      // defaultValue is re-applied against them.
+      if (initialFilter) setFormResetKey((k) => k + 1)
+    })
+    load(initialFilter ?? {}, false)
     // Runs once on mount only (load's own useCallback has an empty
     // dependency array, so it's stable) — applyFilters/clearFilters below
     // re-fetch directly from the event that changed the filter, rather
     // than this effect reacting to filter state (oxlint's
     // set-state-in-effect: derive from the event that caused the change,
-    // don't loop through an effect).
+    // don't loop through an effect). initialFilter is read once from
+    // location.state on the initial render and intentionally left out of
+    // the dependency array for the same reason.
   }, [load])
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
@@ -146,6 +167,19 @@ export function TransactionsList() {
     setFilter({})
     setFormResetKey((k) => k + 1)
     load({}, false)
+  }
+
+  // The one other dead-ended intent the issue calls out by name: a
+  // category shown on a transaction row currently does nothing when
+  // clicked. Filters the same screen by that category rather than
+  // navigating away, since there's nowhere else for "show me this
+  // category's other transactions" to go.
+  function filterByCategory(categoryId: string) {
+    const next: TransactionListFilter = { category: categoryId }
+    setFilter(next)
+    setShowFilters(true)
+    setFormResetKey((k) => k + 1)
+    load(next, false)
   }
 
   async function handleDelete(id: string) {
@@ -343,9 +377,30 @@ export function TransactionsList() {
                   </div>
                   <div className="text-muted-foreground text-xs">
                     {kindLabel(t.type)}
-                    {t.type === 'transfer'
-                      ? ` · ${nameFor(t.from_account_id, accountsByID)} → ${nameFor(t.to_account_id, accountsByID)}`
-                      : ` · ${nameFor(t.account_id, accountsByID)}${t.category_id ? ` · ${nameFor(t.category_id, categoriesByID)}` : ''}`}
+                    {t.type === 'transfer' ? (
+                      <>
+                        {' · '}
+                        {nameFor(t.from_account_id, accountsByID)} →{' '}
+                        {nameFor(t.to_account_id, accountsByID)}
+                      </>
+                    ) : (
+                      <>
+                        {' · '}
+                        {nameFor(t.account_id, accountsByID)}
+                        {t.category_id && (
+                          <>
+                            {' · '}
+                            <button
+                              type="button"
+                              onClick={() => filterByCategory(t.category_id!)}
+                              className="hover:text-foreground underline-offset-2 hover:underline"
+                            >
+                              {nameFor(t.category_id, categoriesByID)}
+                            </button>
+                          </>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="text-sm font-medium tabular-nums">

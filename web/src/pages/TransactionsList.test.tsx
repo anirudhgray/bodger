@@ -39,6 +39,7 @@ import {
   recordOutflow,
   updateTransaction,
   type Transaction,
+  type TransactionListFilter,
 } from '@/lib/api'
 import { TransactionsList } from './TransactionsList'
 
@@ -71,6 +72,21 @@ function ExternalAddTrigger() {
     <button type="button" onClick={() => openCreate()}>
       External add
     </button>
+  )
+}
+
+// Stands in for arriving via cross-navigation (issue #89) — e.g. clicking
+// an account on Balances — which hands the initial filter in through
+// router state, not a query string.
+function renderPageWithInitialFilter(filter: TransactionListFilter) {
+  return render(
+    <MemoryRouter
+      initialEntries={[{ pathname: '/transactions', state: { filter } }]}
+    >
+      <TransactionDialogProvider>
+        <TransactionsList />
+      </TransactionDialogProvider>
+    </MemoryRouter>,
   )
 }
 
@@ -186,6 +202,34 @@ describe('TransactionsList', () => {
     expect(screen.getByText(/Checking/)).toBeInTheDocument()
     expect(screen.getByText(/Food/)).toBeInTheDocument()
     expect(screen.getByText('−42.50 USD')).toBeInTheDocument()
+  })
+
+  it('loads with an initial filter handed in via cross-navigation and shows it applied', async () => {
+    mockedListTransactions.mockResolvedValue({ data: [groceries] })
+    renderPageWithInitialFilter({ account: 'a1' })
+
+    await waitFor(() =>
+      expect(mockedListTransactions).toHaveBeenCalledWith({ account: 'a1' }),
+    )
+    expect(
+      screen.getByRole('button', { name: /Hide filters/ }),
+    ).toBeInTheDocument()
+    expect(await screen.findByLabelText('Account')).toHaveValue('a1')
+  })
+
+  it('filters by category when a transaction row’s category is clicked', async () => {
+    mockedListTransactions.mockResolvedValue({ data: [groceries] })
+    renderPage()
+    await screen.findByText('Groceries')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }))
+
+    await waitFor(() =>
+      expect(mockedListTransactions).toHaveBeenLastCalledWith({
+        category: 'c1',
+      }),
+    )
+    expect(await screen.findByLabelText('Category')).toHaveValue('c1')
   })
 
   it('applies a filter and re-fetches with it', async () => {
