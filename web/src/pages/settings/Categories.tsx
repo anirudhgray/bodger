@@ -1,19 +1,22 @@
 // The Categories subpage of Settings (issue #107, split out of the old
-// Settings.tsx). No behavior change from the original CategoriesSection —
-// only its own route now, rendered inside SettingsLayout's <Outlet />.
-// The category hierarchy display itself (tree/indentation) is #106's
-// scope, not this issue's — this flat list is deliberately left as-is,
-// just relocated.
+// Settings.tsx). Its list and "Parent" field now show the real
+// parent_id hierarchy (issue #106) via lib/category-tree.ts's
+// buildCategoryTree — the same helper TransactionDialog's and
+// TransactionsList's category pickers use, so all three agree on what
+// the tree looks like. Everything else (create/rename/archive/reparent
+// themselves) is unchanged from the original CategoriesSection.
 import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { type Category, type CategoryKind } from '@/lib/api'
+import { buildCategoryTree } from '@/lib/category-tree'
 import {
   archiveCategory,
   createCategory,
@@ -35,6 +38,34 @@ function categoryKindLabel(kind: CategoryKind): string {
 }
 
 const CATEGORY_TYPES: CategoryKind[] = ['expense', 'income']
+
+// The "Parent" combobox's own option list for one category row: every
+// other category of the same kind (an expense category can't sit under
+// an income parent or vice versa — one typed tree, data-model.md §6;
+// the app layer enforces this too, filtering here just keeps the picker
+// from offering a choice it would reject), shown with the same
+// indentation/path hierarchy as everywhere else. A category can't be
+// its own parent, so it's excluded from its own candidate list — this
+// is display-only and doesn't attempt to also exclude the category's
+// *descendants* (reparenting under one would form a cycle the server
+// already rejects), matching this field's pre-#106 behavior exactly.
+function parentOptionsFor(
+  category: Category,
+  categories: Category[],
+): ComboboxOption[] {
+  const candidates = categories.filter(
+    (c) => c.id !== category.id && c.type === category.type,
+  )
+  return [
+    { value: '', label: 'Top level' },
+    ...buildCategoryTree(candidates).map(({ category: c, depth, path }) => ({
+      value: c.id,
+      label: c.name,
+      depth,
+      path,
+    })),
+  ]
+}
 
 export function CategoriesSettings() {
   const [categories, setCategories] = useState<Category[] | null>(null)
@@ -165,12 +196,16 @@ export function CategoriesSettings() {
       ) : (
         <Card className="[--card-spacing:0]">
           <ul className="divide-border divide-y">
-            {categories
-              .filter((c) => !c.archived)
-              .map((category) => (
+            {buildCategoryTree(categories.filter((c) => !c.archived)).map(
+              ({ category, depth }) => (
                 <li
                   key={category.id}
                   className="flex flex-col gap-2 px-4 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between"
+                  // Indentation reflecting this category's parent_id
+                  // chain (issue #106) — added on top of the row's own
+                  // px-4 base inset, not in place of it, so a top-level
+                  // category (depth 0) sits exactly where it always did.
+                  style={{ paddingLeft: `${16 + depth * 20}px` }}
                 >
                   {renamingID === category.id ? (
                     <form
@@ -212,34 +247,18 @@ export function CategoriesSettings() {
                         >
                           Parent
                         </Label>
-                        <Select
+                        <Combobox
                           id={`parent-${category.id}`}
-                          className="h-7 text-xs"
+                          className="h-7 w-44 text-xs"
                           value={category.parent_id ?? ''}
-                          onChange={(event) =>
-                            handleReparent(category.id, event.target.value)
+                          onChange={(parent) =>
+                            handleReparent(category.id, parent)
                           }
-                        >
-                          <option value="">Top level</option>
-                          {(categories ?? [])
-                            // Same kind only — an expense category can't
-                            // sit under an income parent or vice versa
-                            // (one typed tree, data-model.md §6). The app
-                            // layer (categories.go's
-                            // categoryKindMismatchError) enforces this
-                            // too; filtering here just keeps the picker
-                            // from offering a choice it would reject.
-                            .filter(
-                              (c) =>
-                                c.id !== category.id &&
-                                c.type === category.type,
-                            )
-                            .map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name}
-                              </option>
-                            ))}
-                        </Select>
+                          options={parentOptionsFor(category, categories ?? [])}
+                          placeholder="Top level"
+                          searchPlaceholder="Search categories…"
+                          emptyText="No matching categories."
+                        />
                         <Button
                           variant="outline"
                           size="sm"
@@ -261,7 +280,8 @@ export function CategoriesSettings() {
                     </>
                   )}
                 </li>
-              ))}
+              ),
+            )}
           </ul>
         </Card>
       )}
