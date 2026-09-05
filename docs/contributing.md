@@ -39,6 +39,7 @@ The [`Makefile`](../Makefile) is the build contract. **CI runs `make check-go` a
 | `make run` | Run the server locally |
 | `make seed-dev` | Seed a scratch dev DB with a password, API tokens, and realistic accounts/categories/transactions via the real CLI ([`scripts/seed-dev.sh`](../scripts/seed-dev.sh)) - requires `BODGER_DB_PATH` pointed at a non-default file, e.g. `BODGER_DB_PATH=/tmp/bodger-dev.db make seed-dev`; pass script flags through `ARGS`, e.g. `make seed-dev ARGS=--force` (a bare `make seed-dev --force` doesn't work - make parses that as its own flag) |
 | `make release-dry-run` | Build every release target locally (goreleaser snapshot mode, no tag or publish) — see [`releasing.md`](releasing.md#local-dry-runs) |
+| `make analyze-web` | Build the web UI and open a bundle-size treemap (`vite-bundle-visualizer`) — use this before assuming a `make build` chunk-size warning is (or isn't) worth chasing; it shows which package is actually responsible, not just the total |
 | `make test-cover` | Tests with a coverage profile |
 | `make docker-up` | Run the self-hosted stack |
 | `make help` | List everything |

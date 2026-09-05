@@ -172,6 +172,13 @@ ifneq ($(HAS_WEB),)
 	cd $(WEB_DIR) && npm run build
 endif
 
+## analyze-web: build the web UI and open a bundle-size treemap
+.PHONY: analyze-web
+analyze-web:
+ifneq ($(HAS_WEB),)
+	cd $(WEB_DIR) && npm run analyze
+endif
+
 ## run: run the server locally
 .PHONY: run
 run:
