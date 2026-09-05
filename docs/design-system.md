@@ -151,7 +151,9 @@ Primitives present as of this milestone: `button`, `input`, `label`,
 `sidebar`, `popover`, `calendar`, `tabs`, `dialog`, `alert-dialog`,
 `dropdown-menu`, `tooltip`, `separator`, `skeleton`, `spinner`, `kbd`,
 `empty`, `sonner` (shadcn's current toast component — see the note
-below for why this isn't a hand-built Radix Toast).
+below for why this isn't a hand-built Radix Toast), `command` and
+`combobox` (issue #106 — see the "Combobox and category hierarchy"
+section below; the first primitives here not built on Radix).
 
 **`cn`** (`web/src/lib/utils.ts`) re-exports the
 [`cn` npm package](https://github.com/shadcn-ui/cn) — shadcn's own
@@ -189,15 +191,19 @@ closes the drawer via `setOpenMobile(false)` before navigating — without
 it the sheet's overlay is left covering the destination page, pinned
 down by `web/e2e/mobile-nav.spec.ts`.
 
-`select` swapped for the Radix-based version, plus `popover`+`calendar`,
-`dialog`/`alert-dialog`, and `dropdown-menu`, are still not wired into
-any page: they're all Radix-portal-based and need
-`@testing-library/user-event` plus jsdom polyfills (`hasPointerCapture`,
-`scrollIntoView`) this project doesn't have yet — landing an untested
-interaction swap isn't worth the risk. That remaining wiring is tracked
-in [#104](https://github.com/anirudhgray/bodger/issues/104), scoped
-separately from #101 so it isn't silently dropped. `kbd` has no call
-site yet — there's no keyboard-shortcut UI in the app to hang it on.
+`popover`+`calendar` landed as a real date picker in #118
+(`components/ui/date-picker.tsx`, wired into TransactionDialog's date
+field and TransactionsList's from/to filters), and the native
+`<select>`-to-Radix swap landed in #106/#104 as a Combobox (below) for
+exactly the three category pickers that had a real payoff — see that
+section for which ones, and why the other two `<select>`s stayed
+native. `dialog`/`alert-dialog` and `dropdown-menu` are still not wired
+into any page: #104's own text frames both as "if a real spot turns
+up," and none has — Settings' rows still just have plain Rename/Archive/
+Revoke buttons, and deletes/archives are deliberately unconfirmed
+(`docs/ux-principles.md` §5) — so #104 is done as far as it's going to
+get without a genuine need appearing first. `kbd` has no call site
+yet — there's no keyboard-shortcut UI in the app to hang it on.
 
 `toast` (issue #108) is wired into every action whose own UI (a dialog,
 a row) closes or moves on before its result would otherwise be shown:
@@ -327,6 +333,79 @@ than reimplementing its behavior:
     messages" section above) is already going to carry that message,
     so the two don't say the same thing twice. All three call sites
     above do this.
+
+## Combobox and category hierarchy
+
+Issue #106 needed a picker that could show real indentation and host an
+inline "create new" row — neither a native `<option>` list nor a grouped
+Radix `Select` (one level of nesting via `SelectGroup`/`SelectLabel`) can
+do both, and categories nest to arbitrary depth in the domain model
+(`internal/domain/ledger/category.go`'s `ParentID`, no cap on how deep a
+chain can go), so a grouped `Select` would only ever handle one level.
+The fit is shadcn's Combobox pattern: Radix `Popover` + `Command`
+(search-as-you-type, arbitrary-depth indentation, and a natural place for
+a create row), which meant adding this project's first non-Radix
+primitive:
+
+- **`components/ui/command.tsx`** wraps [cmdk](https://cmdk.paco.me/),
+  themed with this app's own tokens the same way every other primitive
+  here wraps its own Radix package — `Command`, `CommandInput`,
+  `CommandList`, `CommandEmpty`, `CommandGroup`, `CommandItem`,
+  `CommandSeparator`. cmdk isn't Radix, but it's the closest thing to a
+  "primitive" this interaction needs, and it composes with the existing
+  `popover.tsx` the same way `calendar.tsx` already does.
+- **`components/ui/combobox.tsx`**'s `Combobox` composes `command.tsx`
+  and `popover.tsx` into one widget, generic over a plain
+  `ComboboxOption` (`value`, `label`, optional `depth` and `path`) —
+  nothing in it is category-specific. It follows `date-picker.tsx`'s
+  controlled/uncontrolled convention exactly: pass `value`+`onChange`
+  for a `useState`-backed field (TransactionDialog's Category), or
+  `name`+`defaultValue` for an uncontrolled `<form>`+`FormData` field
+  (TransactionsList's filter panel) — a hidden input mirrors the picked
+  value in the latter case, the same trick `date-picker.tsx` uses.
+- **`lib/category-tree.ts`**'s `buildCategoryTree` turns the flat
+  `Category[]` every endpoint returns into a depth-first, depth- and
+  path-annotated walk — written once and reused by all three call
+  sites below, rather than three copies of the same parent_id-chasing
+  logic. `depth` drives the open list's indentation (`0.75rem` per
+  level in the combobox, `20px` per level in Settings' own list —
+  different scales for a compact popover row vs. a full list row);
+  `path` (the full "Parent > Child" ancestry) is what a collapsed
+  trigger shows instead of just the category's own name, and what
+  search matches against, so a same-named category in a different
+  branch of the tree is still distinguishable and still findable by
+  typing either name.
+
+**Where it's wired in, and why not everywhere:**
+
+- **TransactionDialog's Category field** — hierarchy display *and*
+  quick-create (below).
+- **TransactionsList's category filter** and **Settings' own "Parent"
+  field** (`pages/settings/Categories.tsx`) — hierarchy display only.
+  #106's own text scopes quick-create to the transaction dialog
+  specifically; the filter has no transaction to lose progress on, and
+  Settings already has its own category-creation form immediately above
+  the list it's part of.
+- **`settings/Accounts.tsx`'s account-type dropdown** and
+  **`settings/Categories.tsx`'s own category-type (Expense/Income)
+  dropdown** stay plain native `<select>`s — short, flat, two-or-few
+  option lists with no hierarchy and no search need, exactly the case
+  the original `select.tsx` audit note already called out as not
+  worth the swap.
+
+**Quick-create**, from the Category combobox only: typing text that
+matches no existing category's name (case-insensitively) shows an inline
+"Create "…"" row; picking it calls the real `createCategory` API call
+(always as a new top-level category of whichever kind the dialog is
+currently in — Spend → expense, Receive → income; reparenting it under
+something specific is a follow-up trip to Settings, same as any other
+category) and slots the result straight into the field as its new
+selection, without closing the transaction dialog or discarding anything
+already typed. A failed create surfaces via `toast.error` rather than
+inline — there's no dedicated error slot inside the combobox's own
+create row, and a toast doesn't block or clear the transaction still
+mid-entry underneath it — and leaves the popover open with the typed
+text still in place, ready to retry.
 
 ## Casing enum values for display
 

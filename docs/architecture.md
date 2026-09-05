@@ -258,12 +258,20 @@ into nested subpages under `/settings`, now that #88 settled `AppLayout`'s
 own nav as a `Sidebar` — Settings' own sub-nav is a `tabs` strip for
 switching sections once already on one, plus a collapsible `Sidebar`
 submenu for jumping to one directly; see `docs/design-system.md`'s `tabs`
-section for why both exist) are done. Still open: [#104](https://github.com/anirudhgray/bodger/issues/104)
-(wiring the remaining Radix-portal primitives into pages — the
-`popover`+`calendar` date picker landed; native-`<select>`-to-Radix,
-`dialog`, and `dropdown-menu` have not) and [#106](https://github.com/anirudhgray/bodger/issues/106)
-(category hierarchy view + quick-create from pickers, building on #104's
-infrastructure and #107's new Categories subpage).
+section for why both exist), [#104](https://github.com/anirudhgray/bodger/issues/104)
+(wiring the remaining Radix-portal primitives into pages — `popover`+
+`calendar` landed as a real date picker in #118, and the native-`<select>`-
+to-Radix swap landed as a `command`/`combobox`-based Combobox alongside
+#106, below; `dialog`/`alert-dialog` and `dropdown-menu` were deliberately
+left unwired, per #104's own "only if a real spot turns up" scoping — no
+row's inline actions have outgrown a plain button group, and
+deletes/archives stay intentionally unconfirmed, docs/ux-principles.md
+§5), and [#106](https://github.com/anirudhgray/bodger/issues/106)
+(category hierarchy view + quick-create from pickers: Settings' category
+list and every category picker now show the real parent/child tree via a
+new Combobox primitive, with an inline "+ Create category" row in the
+transaction dialog's own picker — see `docs/design-system.md`'s
+"Combobox and category hierarchy" section) are done.
 
 | Milestone | Status |
 | --- | --- |
