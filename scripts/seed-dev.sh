@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 #
 # scripts/seed-dev.sh - seed a scratch bodger database with realistic
-# household data for local development (issue #115): a handful of
-# accounts spanning every account type/currency the domain supports, a
-# real category tree (parent + child, not flat - relevant to issue
-# #106's hierarchy display), and a wide spread of transactions across
-# dates, categories, and accounts, so the web UI's TransactionsList
-# filters/pagination and Balances show non-trivial numbers.
+# household data for local development (issue #115): a password, a
+# couple of API tokens, a handful of accounts spanning every account
+# type/currency the domain supports, a real category tree (parent +
+# child, not flat - relevant to issue #106's hierarchy display), and a
+# wide spread of transactions across dates, categories, and accounts, so
+# the web UI's TransactionsList filters/pagination and Balances show
+# non-trivial numbers.
 #
 # This shells out to the real, built `bodger` binary's own CLI commands
-# (auth set-password, accounts add, categories add, spend/receive/move)
-# - the same commands a real user runs - the same approach
+# (auth set-password, auth token create, accounts add, categories add,
+# spend/receive/move) - the same commands a real user runs - the same approach
 # web/e2e/global-setup.ts takes for its single account/category, scaled
 # up into an actual development fixture. It never inserts into the
 # database directly, so every seeded row is only ever as valid as what
@@ -28,12 +29,14 @@
 #   prompt - --force is the opt-in).
 #
 # Idempotency:
-#   Accounts and categories are additive-but-deduplicated: each is
-#   looked up by name first (via `--json` + jq) and only created if
-#   missing, so running this script again over a database it already
-#   seeded - or one that happens to already have an account/category of
-#   the same name - does not fail on a uniqueness conflict or produce
-#   duplicates.
+#   API tokens, accounts, and categories are additive-but-deduplicated:
+#   each is looked up by name first (via `--json` + jq) and only created
+#   if missing, so running this script again over a database it already
+#   seeded - or one that happens to already have a token/account/category
+#   of the same name - does not fail on a uniqueness conflict or produce
+#   duplicates. A skipped token's plaintext isn't re-shown (bodger itself
+#   never shows it again either) - delete the DB and re-run if you need
+#   a fresh value.
 #   Transactions are purely additive. Nothing about a spend/receive/move
 #   recorded through the CLI carries an external reference this script
 #   could dedupe against, so every run appends another full batch of
@@ -142,6 +145,31 @@ fi
 
 echo "seed-dev: setting the dev password"
 printf '%s\n' "$PASSWORD" | run auth set-password >/dev/null
+
+# --- api tokens ----------------------------------------------------------
+
+echo "seed-dev: seeding API tokens"
+existing_tokens="$(run auth token list --json | jq -r '.data[].name')"
+
+token_exists() { grep -Fxq "$1" <<<"$existing_tokens"; }
+
+add_token() {
+  local name="$1"
+  if token_exists "$name"; then
+    echo "  - $name (already exists, skipping)"
+    return
+  fi
+  local plaintext
+  plaintext="$(run auth token create "$name" --json | jq -r '.data.token')"
+  echo "  - $name created: $plaintext"
+}
+
+# Two tokens, so the web UI's own token-management screen (issue #57) has
+# more than one row to show. The plaintext is only ever shown once - by
+# bodger itself, and here, since a dev fixture is exactly the case where
+# printing it to the terminal for you to copy is the point.
+add_token "Dev CLI"
+add_token "Dev Web"
 
 # --- accounts ------------------------------------------------------------
 

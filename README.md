@@ -55,7 +55,7 @@ make check        # format, vet, lint, test - exactly what CI runs
 make build        # produces bin/bodger
 ```
 
-Want realistic data to develop against instead of an empty ledger? `BODGER_DB_PATH=/tmp/bodger-dev.db make seed-dev` seeds a scratch database with a spread of accounts, a real category tree, and months of transactions via the real CLI — see [`scripts/seed-dev.sh`](scripts/seed-dev.sh).
+Want realistic data to develop against instead of an empty ledger? `BODGER_DB_PATH=/tmp/bodger-dev.db make seed-dev` seeds a scratch database with a password, a couple of API tokens, a spread of accounts, a real category tree, and months of transactions via the real CLI — see [`scripts/seed-dev.sh`](scripts/seed-dev.sh).
 
 Full details in [`docs/contributing.md`](docs/contributing.md).
 
