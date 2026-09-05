@@ -51,9 +51,23 @@ export async function revokeApiToken(id: string): Promise<void> {
 // same reference data on separate branches and each guessed its own
 // shape; issue #83 collapsed every copy onto the one generated from
 // internal/surface/http/openapi.json. AccountKind isn't used by anything
-// in this file, so callers that need it (e.g. Settings.tsx) import it
-// straight from '@/lib/api' rather than through a re-export here.
+// in this file, so callers that need it (e.g.
+// pages/settings/Accounts.tsx) import it straight from '@/lib/api'
+// rather than through a re-export here.
 
+// listAccounts/listCategories/listApiTokens (below) still fetch and
+// render every row in one shot — no `cursor`/`limit`, unlike
+// listTransactions's real next_cursor-based paging (web/src/lib/api.ts,
+// internal/surface/http/transactions.go). issue #107 considered adding
+// that here too, alongside splitting Settings.tsx into its own subpages
+// per section, but decided against it for now: a household's account and
+// category lists are bounded by how many distinct accounts/categories
+// they bother to create by hand (nothing generates these in bulk, unlike
+// transactions), and each now has a full page to itself rather than
+// sharing scroll space with three other sections. Real pagination is
+// still the right fix if that stops being true — a category tree (#106)
+// or a household with dozens of accounts could get there — but adding it
+// now, before any section actually needs it, would be speculative.
 export async function listAccounts(): Promise<Account[]> {
   return apiFetch<Account[]>('/api/v1/accounts')
 }

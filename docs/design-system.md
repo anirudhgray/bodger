@@ -214,6 +214,20 @@ function — sonner's own API already covers what a wrapper would have
 added (stacking, per-toast auto-dismiss, a loading→success/error
 promise pattern), so there's nothing left for one to do.
 
+`tabs` (issue #107) also now backs Settings' own sub-navigation
+(`pages/settings/SettingsLayout.tsx`), split into `/settings/password`,
+`/tokens`, `/accounts`, and `/categories` routes rather than one long
+stacked page. This is a second, different use of the same primitive from
+TransactionEntry's Spend/Receive/Move switch above: there, `Tabs` swaps
+content in place within one page; here, each `TabsTrigger` is a real
+`<Link>` (via `asChild`) to its own route, so the "tabs" are actual
+navigation — the address bar, back button, and bookmarks all work
+normally. `AppLayout`'s own top-level nav (#88) stayed a `Sidebar`
+rather than growing a second, nested one for these four items: they're
+flat and non-hierarchical, so a horizontal tab strip in the content area
+was the proportional choice over stacking two independent
+collapse/toggle affordances.
+
 ## Toasts vs. inline messages
 
 Two different places a success/error message can live, and both are

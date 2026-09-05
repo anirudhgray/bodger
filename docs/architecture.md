@@ -251,16 +251,18 @@ bug in containerized `bodger serve` unrelated to the milestone's own goal
 (design tokens), [#101](https://github.com/anirudhgray/bodger/issues/101)
 (auditing `components/ui` and the existing pages against them —
 `docs/design-system.md`), [#89](https://github.com/anirudhgray/bodger/issues/89)
-(cross-navigation), and [#88](https://github.com/anirudhgray/bodger/issues/88)
-(responsive layout, including wiring `sidebar` into `AppLayout`'s nav) are
+(cross-navigation), [#88](https://github.com/anirudhgray/bodger/issues/88)
+(responsive layout, including wiring `sidebar` into `AppLayout`'s nav), and
+[#107](https://github.com/anirudhgray/bodger/issues/107) (splitting Settings
+into nested subpages under `/settings`, now that #88 settled `AppLayout`'s
+own nav as a `Sidebar` — Settings' own sub-nav is a `tabs` strip instead of
+a second, nested sidebar; see `SettingsLayout.tsx`'s comment for why) are
 done. Still open: [#104](https://github.com/anirudhgray/bodger/issues/104)
 (wiring the remaining Radix-portal primitives into pages — the
 `popover`+`calendar` date picker landed; native-`<select>`-to-Radix,
-`dialog`, and `dropdown-menu` have not), [#106](https://github.com/anirudhgray/bodger/issues/106)
+`dialog`, and `dropdown-menu` have not) and [#106](https://github.com/anirudhgray/bodger/issues/106)
 (category hierarchy view + quick-create from pickers, building on #104's
-infrastructure), and [#107](https://github.com/anirudhgray/bodger/issues/107)
-(splitting Settings into nested subpages, which depends on #88's now-settled
-sidebar shape for its own sub-navigation).
+infrastructure and #107's new Categories subpage).
 
 | Milestone | Status |
 | --- | --- |
