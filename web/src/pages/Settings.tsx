@@ -7,8 +7,10 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
 import {
   ApiError,
   type Account,
@@ -189,7 +191,7 @@ function ApiTokensSection() {
       description="Tokens authenticate scripts and other external clients. A token's value is shown once, when it's created."
     >
       {justCreated && (
-        <div className="border-border bg-muted flex flex-col gap-1 rounded-lg border p-3 text-sm">
+        <Card className="bg-muted flex flex-col gap-1 p-3 text-sm">
           <p>
             Created <strong>{justCreated.name}</strong>. Copy this token now —
             it can’t be shown again.
@@ -205,7 +207,7 @@ function ApiTokensSection() {
           >
             Dismiss
           </Button>
-        </div>
+        </Card>
       )}
 
       <form onSubmit={handleCreate} className="flex max-w-sm items-end gap-2">
@@ -234,34 +236,36 @@ function ApiTokensSection() {
       ) : tokens.length === 0 ? (
         <p className="text-muted-foreground text-sm">No API tokens yet.</p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {tokens.map((token) => (
-            <li
-              key={token.id}
-              className="border-border flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
-            >
-              <div>
-                <p className="font-medium">{token.name}</p>
-                <p className="text-muted-foreground text-xs">
-                  {token.revoked_at
-                    ? 'Revoked'
-                    : token.last_used_at
-                      ? `Last used ${token.last_used_at}`
-                      : 'Never used'}
-                </p>
-              </div>
-              {!token.revoked_at && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => handleRevoke(token.id)}
-                >
-                  Revoke
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
+        <Card className="[--card-spacing:0]">
+          <ul className="divide-border divide-y">
+            {tokens.map((token) => (
+              <li
+                key={token.id}
+                className="flex items-center justify-between px-4 py-2.5 text-sm"
+              >
+                <div>
+                  <p className="font-medium">{token.name}</p>
+                  <p className="text-muted-foreground text-xs">
+                    {token.revoked_at
+                      ? 'Revoked'
+                      : token.last_used_at
+                        ? `Last used ${token.last_used_at}`
+                        : 'Never used'}
+                  </p>
+                </div>
+                {!token.revoked_at && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => handleRevoke(token.id)}
+                  >
+                    Revoke
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
     </Section>
   )
@@ -374,9 +378,8 @@ function AccountsSection() {
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="account-type">Type</Label>
-          <select
+          <Select
             id="account-type"
-            className="border-input bg-background h-8 rounded-lg border px-2.5 text-sm shadow-xs"
             value={type}
             onChange={(event) => setType(event.target.value as AccountKind)}
           >
@@ -385,7 +388,7 @@ function AccountsSection() {
                 {accountKindLabel(t)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <Button type="submit" disabled={creating || name === ''}>
           {creating ? 'Adding…' : 'Add'}
@@ -401,71 +404,73 @@ function AccountsSection() {
       {accounts === null ? (
         <p className="text-muted-foreground text-sm">Loading…</p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {accounts
-            .filter((a) => !a.archived)
-            .map((account) => (
-              <li
-                key={account.id}
-                className="border-border flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
-              >
-                {renamingID === account.id ? (
-                  <form
-                    className="flex flex-1 items-center gap-2"
-                    onSubmit={(event) => {
-                      event.preventDefault()
-                      handleRename(account.id)
-                    }}
-                  >
-                    <Input
-                      autoFocus
-                      value={renameValue}
-                      onChange={(event) => setRenameValue(event.target.value)}
-                    />
-                    <Button type="submit" size="sm">
-                      Save
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setRenamingID(null)}
+        <Card className="[--card-spacing:0]">
+          <ul className="divide-border divide-y">
+            {accounts
+              .filter((a) => !a.archived)
+              .map((account) => (
+                <li
+                  key={account.id}
+                  className="flex items-center justify-between px-4 py-2.5 text-sm"
+                >
+                  {renamingID === account.id ? (
+                    <form
+                      className="flex flex-1 items-center gap-2"
+                      onSubmit={(event) => {
+                        event.preventDefault()
+                        handleRename(account.id)
+                      }}
                     >
-                      Cancel
-                    </Button>
-                  </form>
-                ) : (
-                  <>
-                    <div>
-                      <p className="font-medium">{account.name}</p>
-                      <p className="text-muted-foreground text-xs">
-                        {accountKindLabel(account.type)} · {account.currency}
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setRenamingID(account.id)
-                          setRenameValue(account.name)
-                        }}
-                      >
-                        Rename
+                      <Input
+                        autoFocus
+                        value={renameValue}
+                        onChange={(event) => setRenameValue(event.target.value)}
+                      />
+                      <Button type="submit" size="sm">
+                        Save
                       </Button>
                       <Button
-                        variant="destructive"
+                        type="button"
+                        variant="ghost"
                         size="sm"
-                        onClick={() => handleArchive(account.id)}
+                        onClick={() => setRenamingID(null)}
                       >
-                        Archive
+                        Cancel
                       </Button>
-                    </div>
-                  </>
-                )}
-              </li>
-            ))}
-        </ul>
+                    </form>
+                  ) : (
+                    <>
+                      <div>
+                        <p className="font-medium">{account.name}</p>
+                        <p className="text-muted-foreground text-xs">
+                          {accountKindLabel(account.type)} · {account.currency}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setRenamingID(account.id)
+                            setRenameValue(account.name)
+                          }}
+                        >
+                          Rename
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleArchive(account.id)}
+                        >
+                          Archive
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </li>
+              ))}
+          </ul>
+        </Card>
       )}
     </Section>
   )
@@ -568,9 +573,8 @@ function CategoriesSection() {
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="category-type">Type</Label>
-          <select
+          <Select
             id="category-type"
-            className="border-input bg-background h-8 rounded-lg border px-2.5 text-sm shadow-xs"
             value={type}
             onChange={(event) => setType(event.target.value as CategoryKind)}
           >
@@ -579,7 +583,7 @@ function CategoriesSection() {
                 {categoryKindLabel(t)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <Button type="submit" disabled={creating || name === ''}>
           {creating ? 'Adding…' : 'Add'}
@@ -595,104 +599,107 @@ function CategoriesSection() {
       {categories === null ? (
         <p className="text-muted-foreground text-sm">Loading…</p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {categories
-            .filter((c) => !c.archived)
-            .map((category) => (
-              <li
-                key={category.id}
-                className="border-border flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
-              >
-                {renamingID === category.id ? (
-                  <form
-                    className="flex flex-1 items-center gap-2"
-                    onSubmit={(event) => {
-                      event.preventDefault()
-                      handleRename(category.id)
-                    }}
-                  >
-                    <Input
-                      autoFocus
-                      value={renameValue}
-                      onChange={(event) => setRenameValue(event.target.value)}
-                    />
-                    <Button type="submit" size="sm">
-                      Save
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setRenamingID(null)}
+        <Card className="[--card-spacing:0]">
+          <ul className="divide-border divide-y">
+            {categories
+              .filter((c) => !c.archived)
+              .map((category) => (
+                <li
+                  key={category.id}
+                  className="flex items-center justify-between px-4 py-2.5 text-sm"
+                >
+                  {renamingID === category.id ? (
+                    <form
+                      className="flex flex-1 items-center gap-2"
+                      onSubmit={(event) => {
+                        event.preventDefault()
+                        handleRename(category.id)
+                      }}
                     >
-                      Cancel
-                    </Button>
-                  </form>
-                ) : (
-                  <>
-                    <div>
-                      <p className="font-medium">{category.name}</p>
-                      <p className="text-muted-foreground text-xs">
-                        {categoryKindLabel(category.type)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Label
-                        htmlFor={`parent-${category.id}`}
-                        className="text-muted-foreground text-xs font-normal"
-                      >
-                        Parent
-                      </Label>
-                      <select
-                        id={`parent-${category.id}`}
-                        className="border-input bg-background h-7 rounded-lg border px-2 text-xs"
-                        value={category.parent_id ?? ''}
-                        onChange={(event) =>
-                          handleReparent(category.id, event.target.value)
-                        }
-                      >
-                        <option value="">Top level</option>
-                        {(categories ?? [])
-                          // Same kind only — an expense category can't sit
-                          // under an income parent or vice versa (one
-                          // typed tree, data-model.md §6). The app layer
-                          // (categories.go's categoryKindMismatchError)
-                          // enforces this too; filtering here just keeps
-                          // the picker from offering a choice it would
-                          // reject.
-                          .filter(
-                            (c) =>
-                              c.id !== category.id && c.type === category.type,
-                          )
-                          .map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
-                      </select>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setRenamingID(category.id)
-                          setRenameValue(category.name)
-                        }}
-                      >
-                        Rename
+                      <Input
+                        autoFocus
+                        value={renameValue}
+                        onChange={(event) => setRenameValue(event.target.value)}
+                      />
+                      <Button type="submit" size="sm">
+                        Save
                       </Button>
                       <Button
-                        variant="destructive"
+                        type="button"
+                        variant="ghost"
                         size="sm"
-                        onClick={() => handleArchive(category.id)}
+                        onClick={() => setRenamingID(null)}
                       >
-                        Archive
+                        Cancel
                       </Button>
-                    </div>
-                  </>
-                )}
-              </li>
-            ))}
-        </ul>
+                    </form>
+                  ) : (
+                    <>
+                      <div>
+                        <p className="font-medium">{category.name}</p>
+                        <p className="text-muted-foreground text-xs">
+                          {categoryKindLabel(category.type)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label
+                          htmlFor={`parent-${category.id}`}
+                          className="text-muted-foreground text-xs font-normal"
+                        >
+                          Parent
+                        </Label>
+                        <Select
+                          id={`parent-${category.id}`}
+                          className="h-7 text-xs"
+                          value={category.parent_id ?? ''}
+                          onChange={(event) =>
+                            handleReparent(category.id, event.target.value)
+                          }
+                        >
+                          <option value="">Top level</option>
+                          {(categories ?? [])
+                            // Same kind only — an expense category can't
+                            // sit under an income parent or vice versa
+                            // (one typed tree, data-model.md §6). The app
+                            // layer (categories.go's
+                            // categoryKindMismatchError) enforces this
+                            // too; filtering here just keeps the picker
+                            // from offering a choice it would reject.
+                            .filter(
+                              (c) =>
+                                c.id !== category.id &&
+                                c.type === category.type,
+                            )
+                            .map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
+                            ))}
+                        </Select>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setRenamingID(category.id)
+                            setRenameValue(category.name)
+                          }}
+                        >
+                          Rename
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleArchive(category.id)}
+                        >
+                          Archive
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </li>
+              ))}
+          </ul>
+        </Card>
       )}
     </Section>
   )
