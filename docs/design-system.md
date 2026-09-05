@@ -97,8 +97,14 @@ and persists the choice (`localStorage`, key `bodger:theme` — the stored
 value always wins once set), `web/src/hooks/use-theme.ts` wires that into
 React, and `index.html` carries a small inline script that applies the
 same resolution before first paint, so there's no flash of the wrong
-theme while the bundle loads. Keep that script's resolution rule in sync
-with `lib/theme.ts`'s `resolveTheme` if it ever changes — it's duplicated
+theme while the bundle loads. `web/src/lib/inline-theme-script.test.ts`
+extracts and runs that actual script text against the same cases
+`theme.test.ts` covers, so the two drifting apart fails a test instead of
+silently shipping (`web/e2e/theme.spec.ts` covers the toggle as a real
+user flow across a reload, but React's own mount effect masks a broken
+inline script from that test — see its doc comment). Keep the script's
+resolution rule in sync with `lib/theme.ts`'s `resolveTheme` if it ever
+changes — it's duplicated
 in plain JS deliberately, since it has to run before any module does.
 
 ## Component primitives
