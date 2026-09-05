@@ -119,8 +119,13 @@ describe('TransactionEntry', () => {
     ])
     render(<TransactionEntry />)
 
-    await screen.findByRole('button', { name: 'Move' })
-    fireEvent.click(screen.getByRole('button', { name: 'Move' }))
+    // The kind switcher is components/ui/tabs (#101's design-system
+    // audit), so its role is 'tab', not 'button' — and Radix's
+    // TabsTrigger activates on mousedown (or focus), not on the
+    // synthetic 'click' event fireEvent.click dispatches alone, so this
+    // fires mousedown directly rather than click.
+    await screen.findByRole('tab', { name: 'Move' })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Move' }))
 
     expect(screen.queryByLabelText('Category')).not.toBeInTheDocument()
     expect(screen.getByLabelText('From account')).toBeInTheDocument()

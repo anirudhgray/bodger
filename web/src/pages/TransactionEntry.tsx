@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   ApiError,
   listAccounts,
@@ -248,25 +249,18 @@ export function TransactionEntry() {
   return (
     <div className="flex flex-1 flex-col items-center p-6">
       <div className="flex w-full max-w-sm flex-col gap-6">
-        <div
-          className="flex gap-1"
-          role="radiogroup"
-          aria-label="Transaction type"
+        <Tabs
+          value={kind}
+          onValueChange={(value) => handleKindChange(value as Kind)}
         >
-          {(Object.keys(KIND_LABELS) as Kind[]).map((k) => (
-            <Button
-              key={k}
-              type="button"
-              size="sm"
-              variant={kind === k ? 'default' : 'outline'}
-              aria-pressed={kind === k}
-              className="flex-1"
-              onClick={() => handleKindChange(k)}
-            >
-              {KIND_LABELS[k]}
-            </Button>
-          ))}
-        </div>
+          <TabsList aria-label="Transaction type" className="w-full">
+            {(Object.keys(KIND_LABELS) as Kind[]).map((k) => (
+              <TabsTrigger key={k} value={k} className="flex-1">
+                {KIND_LABELS[k]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
         <form
           className="flex flex-col gap-4"
@@ -415,10 +409,7 @@ export function TransactionEntry() {
             </p>
           )}
           {justRecorded && !submitError && (
-            <p
-              role="status"
-              className="text-sm text-green-700 dark:text-green-500"
-            >
+            <p role="status" className="text-success text-sm">
               Recorded.
             </p>
           )}

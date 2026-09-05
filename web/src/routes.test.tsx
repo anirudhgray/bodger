@@ -125,8 +125,10 @@ describe('routes', () => {
       })
       render(<RouterProvider router={router} />)
 
+      // The kind switcher is components/ui/tabs (#101's design-system
+      // audit), so its role is 'tab', not 'button'.
       expect(
-        await screen.findByRole('button', { name: 'Spend' }),
+        await screen.findByRole('tab', { name: 'Spend' }),
       ).toBeInTheDocument()
     })
 
