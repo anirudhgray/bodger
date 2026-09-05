@@ -59,7 +59,7 @@ export function BalancesPage() {
 
   if (balances === null) {
     return (
-      <div className="flex flex-1 flex-col gap-6 p-6">
+      <div className="flex flex-1 flex-col gap-6 p-4 sm:p-6">
         <h1 className="text-2xl font-semibold tracking-tight">Balances</h1>
         <div className="flex items-center gap-2">
           <Spinner />
@@ -71,7 +71,7 @@ export function BalancesPage() {
 
   if (balances.balances.length === 0) {
     return (
-      <div className="flex flex-1 flex-col gap-6 p-6">
+      <div className="flex flex-1 flex-col gap-6 p-4 sm:p-6">
         <h1 className="text-2xl font-semibold tracking-tight">Balances</h1>
         <Empty>
           <EmptyHeader>
@@ -94,7 +94,7 @@ export function BalancesPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
+    <div className="flex flex-1 flex-col gap-6 p-4 sm:p-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">Balances</h1>
         <p className="text-muted-foreground text-sm">As of {balances.as_of}</p>

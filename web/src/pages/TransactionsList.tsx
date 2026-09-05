@@ -242,7 +242,7 @@ export function TransactionsList() {
   const hasActiveFilters = Object.values(filter).some(Boolean)
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-6">
+    <div className="flex flex-1 flex-col gap-4 p-4 sm:p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Transactions</h1>
         <Button
@@ -260,7 +260,7 @@ export function TransactionsList() {
         <form
           key={formResetKey}
           onSubmit={applyFilters}
-          className="border-border flex flex-wrap items-end gap-3 rounded-lg border p-3"
+          className="border-border flex flex-wrap items-end gap-3 rounded-lg border p-3 sm:gap-4"
         >
           <div className="flex flex-col gap-1">
             <Label htmlFor="filter-account">Account</Label>
@@ -383,9 +383,9 @@ export function TransactionsList() {
             {transactions.map((t) => (
               <li
                 key={t.id}
-                className="flex items-center justify-between gap-4 px-4 py-2.5"
+                className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:py-2.5"
               >
-                <div className="flex flex-1 flex-col gap-0.5">
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <div className="flex items-center gap-2 text-sm">
                     <span className="text-muted-foreground">{t.date}</span>
                     <span className="font-medium">{t.description}</span>
@@ -418,27 +418,33 @@ export function TransactionsList() {
                     )}
                   </div>
                 </div>
-                <div className="text-sm font-medium tabular-nums">
-                  {t.type === 'inflow' ? '+' : t.type === 'outflow' ? '−' : ''}
-                  {t.amount} {t.currency}
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEdit(t)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDelete(t.id)}
-                  >
-                    Delete
-                  </Button>
+                <div className="flex items-center justify-between gap-3 sm:shrink-0 sm:justify-end sm:gap-4">
+                  <div className="text-sm font-medium tabular-nums">
+                    {t.type === 'inflow'
+                      ? '+'
+                      : t.type === 'outflow'
+                        ? '−'
+                        : ''}
+                    {t.amount} {t.currency}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEdit(t)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDelete(t.id)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </div>
               </li>
             ))}

@@ -246,7 +246,10 @@ function ApiTokensSection() {
         </DialogContent>
       </Dialog>
 
-      <form onSubmit={handleCreate} className="flex max-w-sm items-end gap-2">
+      <form
+        onSubmit={handleCreate}
+        className="flex max-w-sm flex-wrap items-end gap-2"
+      >
         <div className="flex flex-1 flex-col gap-1.5">
           <Label htmlFor="token-name">New token name</Label>
           <Input
@@ -422,7 +425,10 @@ function AccountsSection() {
       title="Accounts"
       description="Where your money lives — bank accounts, cash, cards, and the like."
     >
-      <form onSubmit={handleCreate} className="flex max-w-md items-end gap-2">
+      <form
+        onSubmit={handleCreate}
+        className="flex max-w-md flex-wrap items-end gap-2"
+      >
         <div className="flex flex-1 flex-col gap-1.5">
           <Label htmlFor="account-name">New account name</Label>
           <Input
@@ -470,11 +476,11 @@ function AccountsSection() {
               .map((account) => (
                 <li
                   key={account.id}
-                  className="flex items-center justify-between px-4 py-2.5 text-sm"
+                  className="flex flex-col gap-2 px-4 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between"
                 >
                   {renamingID === account.id ? (
                     <form
-                      className="flex flex-1 items-center gap-2"
+                      className="flex flex-1 flex-wrap items-center gap-2"
                       onSubmit={(event) => {
                         event.preventDefault()
                         handleRename(account.id)
@@ -630,7 +636,10 @@ function CategoriesSection() {
       title="Categories"
       description="How your income and expenses are grouped."
     >
-      <form onSubmit={handleCreate} className="flex max-w-md items-end gap-2">
+      <form
+        onSubmit={handleCreate}
+        className="flex max-w-md flex-wrap items-end gap-2"
+      >
         <div className="flex flex-1 flex-col gap-1.5">
           <Label htmlFor="category-name">New category name</Label>
           <Input
@@ -678,11 +687,11 @@ function CategoriesSection() {
               .map((category) => (
                 <li
                   key={category.id}
-                  className="flex items-center justify-between px-4 py-2.5 text-sm"
+                  className="flex flex-col gap-2 px-4 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between"
                 >
                   {renamingID === category.id ? (
                     <form
-                      className="flex flex-1 items-center gap-2"
+                      className="flex flex-1 flex-wrap items-center gap-2"
                       onSubmit={(event) => {
                         event.preventDefault()
                         handleRename(category.id)
@@ -713,7 +722,7 @@ function CategoriesSection() {
                           {categoryKindLabel(category.type)}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Label
                           htmlFor={`parent-${category.id}`}
                           className="text-muted-foreground text-xs font-normal"
@@ -779,7 +788,7 @@ function CategoriesSection() {
 
 export function Settings() {
   return (
-    <div className="flex flex-1 flex-col gap-8 p-6">
+    <div className="flex flex-1 flex-col gap-8 p-4 sm:p-6">
       <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
       <PasswordSection />
       <ApiTokensSection />
