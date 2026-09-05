@@ -18,42 +18,72 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# There is deliberately no standalone `make build` job. check-go's `go
+# vet`/`go test ./...` already compiles cmd/bodger (an empty embedded
+# dist/ — just .gitkeep — doesn't stop that from succeeding), and
+# whenever check-web runs, its e2e smoke test already does a real
+# `npm run build` + `go build` of the production binary and starts it
+# against actual HTTP requests (web/e2e/global-setup.ts) — a stronger
+# proof than a bare, unrun `make build` compile. Adding a third job that
+# repeats both toolchains' setup for coverage already provided by the
+# other two isn't worth the extra Actions minutes.
 jobs:
-  check:
-    name: check
+  # A commit that only touches one side (e.g. web/ only, or internal/... only)
+  # shouldn't pay for the other side's job at all. `internal/surface/http/**`
+  # is listed under both filters: it's what generates openapi.json, which
+  # web/src/lib/api-types.ts is checked against (npm run check:api-types, part
+  # of `make check-web`) — a Go-only change there can make that file stale.
+  changes:
+    name: detect changes
+    runs-on: ubuntu-latest
+    # dorny/paths-filter lists the PR's changed files via the GitHub API on
+    # pull_request events, which needs pull-requests: read explicitly — the
+    # repo's default workflow token permissions don't grant it.
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            go:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - '.golangci.yml'
+              - '.tool-versions'
+              - 'Makefile'
+              - 'internal/surface/http/**'
+              - '.github/workflows/ci.yml'
+            web:
+              - 'web/**'
+              - 'internal/surface/http/**'
+              - '.tool-versions'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
+
+  check-go:
+    name: check (go)
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
       - name: Read toolchain versions
         id: tools
-        run: |
-          echo "go=$(awk '/^golang /{print $2}' .tool-versions)"   >> "$GITHUB_OUTPUT"
-          echo "node=$(awk '/^nodejs /{print $2}' .tool-versions)" >> "$GITHUB_OUTPUT"
+        run: echo "go=$(awk '/^golang /{print $2}' .tool-versions)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ steps.tools.outputs.go }}
           cache: true
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: ${{ steps.tools.outputs.node }}
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-        if: hashFiles('web/package-lock.json') != ''
-
-      - name: Install web dependencies
-        if: hashFiles('web/package-lock.json') != ''
-        run: cd web && npm ci
-
-      # web/e2e's smoke test (issue #65) needs a real browser binary —
-      # Chromium only, matching web/playwright.config.ts's single project.
-      # `--with-deps` also installs the OS libraries Chromium needs on a
-      # bare runner image.
-      - name: Install Playwright's Chromium browser
-        if: hashFiles('web/package-lock.json') != ''
-        run: cd web && npx playwright install --with-deps chromium
 
       # Pinned, not `latest`: a linter release that adds a check would
       # otherwise fail an unrelated PR. Bump deliberately.
@@ -61,12 +91,58 @@ jobs:
         with:
           version: v2.13.2
           install-mode: binary
-        if: hashFiles('**/*.go') != ''
 
-      # The single source of truth for what "passing" means. Anything checked
-      # here must be runnable locally with the identical command.
-      - name: make check
-        run: make check
+      # The single source of truth for what "passing" means for a Go change.
+      # Anything checked here must be runnable locally with the identical
+      # command.
+      - name: make check-go
+        run: make check-go
 
-      - name: make build
-        run: make build
+  check-web:
+    name: check (web)
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read toolchain versions
+        id: tools
+        run: echo "node=$(awk '/^nodejs /{print $2}' .tool-versions)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ steps.tools.outputs.node }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: cd web && npm ci
+
+      # Caches the downloaded Chromium binary (web/e2e's smoke test, issue
+      # #65, needs a real browser — matching web/playwright.config.ts's
+      # single project). The OS libraries `--with-deps` also installs aren't
+      # under this cache path — those live in the runner's own filesystem,
+      # which doesn't persist between runs — so a cache hit still needs
+      # `install-deps` to put them back; it just skips the (slow) browser
+      # download and extraction.
+      - name: Cache Playwright's Chromium browser
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+
+      - name: Install Playwright's Chromium browser
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: cd web && npx playwright install --with-deps chromium
+
+      - name: Install Playwright's OS dependencies (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: cd web && npx playwright install-deps chromium
+
+      # The single source of truth for what "passing" means for a web
+      # change. Anything checked here must be runnable locally with the
+      # identical command.
+      - name: make check-web
+        run: make check-web
