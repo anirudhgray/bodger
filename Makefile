@@ -1,8 +1,11 @@
 # bodger - task runner.
 #
-# These targets are the project's build contract: CI runs `make check` and
-# `make build`, and nothing else. If a command isn't in this file, it isn't
-# part of the build - see docs/contributing.md.
+# These targets are the project's build contract: CI runs `make check-go`,
+# `make check-web`, and `make build` (the first two gated on which paths a
+# commit touches - see .github/workflows/ci.yml), and nothing else. `make
+# check` runs both check-go and check-web unconditionally, for local use.
+# If a command isn't in this file, it isn't part of the build - see
+# docs/contributing.md.
 
 SHELL       := /bin/bash
 BINARY      := bodger
@@ -65,18 +68,26 @@ ifneq ($(HAS_WEB),)
 	cd $(WEB_DIR) && npm run fmt
 endif
 
-## fmt-check: fail if any code is unformatted (CI)
-.PHONY: fmt-check
-fmt-check:
+## fmt-check-go: fail if Go code is unformatted
+.PHONY: fmt-check-go
+fmt-check-go:
 ifneq ($(HAS_GO),)
 	@unformatted=$$(gofmt -l -s . | grep -v '^$(WEB_DIR)/' || true); \
 	if [ -n "$$unformatted" ]; then \
 	  echo "unformatted Go files (run 'make fmt'):"; echo "$$unformatted"; exit 1; \
 	fi
 endif
+
+## fmt-check-web: fail if web code is unformatted
+.PHONY: fmt-check-web
+fmt-check-web:
 ifneq ($(HAS_WEB),)
 	cd $(WEB_DIR) && npm run fmt:check
 endif
+
+## fmt-check: fail if any code is unformatted (CI)
+.PHONY: fmt-check
+fmt-check: fmt-check-go fmt-check-web
 
 ## generate: regenerate generated files (openapi.json, then its frontend types)
 .PHONY: generate
@@ -95,9 +106,9 @@ ifneq ($(HAS_GO),)
 	go vet $(GO_PKGS)
 endif
 
-## lint: run linters
-.PHONY: lint
-lint:
+## lint-go: run Go linters
+.PHONY: lint-go
+lint-go:
 ifneq ($(HAS_GO),)
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 	  golangci-lint run; \
@@ -105,19 +116,35 @@ ifneq ($(HAS_GO),)
 	  echo "golangci-lint not installed - skipping (see docs/contributing.md)"; \
 	fi
 endif
+
+## lint-web: run web linters
+.PHONY: lint-web
+lint-web:
 ifneq ($(HAS_WEB),)
 	cd $(WEB_DIR) && npm run lint
 endif
 
-## test: run all tests
-.PHONY: test
-test:
+## lint: run linters
+.PHONY: lint
+lint: lint-go lint-web
+
+## test-go: run Go tests
+.PHONY: test-go
+test-go:
 ifneq ($(HAS_GO),)
 	go test -race -count=1 $(GO_PKGS)
 endif
+
+## test-web: run web tests (vitest, api-types freshness, e2e)
+.PHONY: test-web
+test-web:
 ifneq ($(HAS_WEB),)
 	cd $(WEB_DIR) && npm run test
 endif
+
+## test: run all tests
+.PHONY: test
+test: test-go test-web
 
 ## test-cover: run Go tests with a coverage profile
 .PHONY: test-cover
@@ -147,9 +174,17 @@ endif
 run:
 	go run $(CMD) serve
 
+## check-go: everything CI runs for a Go change - format, vet, lint, test
+.PHONY: check-go
+check-go: fmt-check-go vet lint-go test-go
+
+## check-web: everything CI runs for a web change - format, lint, test
+.PHONY: check-web
+check-web: fmt-check-web lint-web test-web
+
 ## check: everything CI runs - format, vet, lint, test
 .PHONY: check
-check: fmt-check vet lint test
+check: check-go check-web
 
 ## docker-build: build the container image
 .PHONY: docker-build
