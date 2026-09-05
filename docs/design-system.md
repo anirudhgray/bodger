@@ -196,13 +196,66 @@ correct for their own case:
   already closed or is about to, and the result has nowhere left to
   land: TransactionDialog's create/edit success (the dialog closes
   immediately), transaction delete, API token revoke, account/category
-  archive (the row's own controls are what triggered the action, and
-  stay on screen, but there was previously no feedback that anything
-  happened at all).
+  archive success (the row's own controls are what triggered the
+  action, and stay on screen, but there was previously no feedback that
+  anything happened at all — and for delete/revoke/archive specifically,
+  no inline "in progress" affordance either, which is what
+  `toast.promise` below is for).
 
 Don't wire a toast into a form validation error — those stay inline —
 and don't retrofit every existing inline error into a toast; most are
-correctly inline already.
+correctly inline already. This cuts both ways for a single action, not
+just success vs. failure in general: delete/revoke/archive show a toast
+on *success* (the row's about to disappear, or already has) but stay
+inline on *failure* (the row stays put, so the existing per-section
+`error` state is still the one place that message belongs — showing it
+in both places at once would just be the same sentence twice).
+
+## Toast styling and the loading→success/error pattern
+
+General rule for every primitive in this app, toast included: start
+from shadcn's own default styling and interaction conventions, and
+apply only this project's specific theme tokens and quirks on top —
+don't invent a different visual language component-by-component. The
+first cut of the toast primitive violated this (see below); the fix is
+the reference going forward.
+
+- **Color is a signal, not a fill.** The toast card itself
+  (`components/ui/toast.tsx`) always renders on the neutral
+  `bg-popover`/`border-border` surface every other overlay in this app
+  uses, regardless of variant — the same "accent is a signal, not a
+  fill" principle from this doc's Principles section, applied to a
+  primitive that initially got it wrong by tinting the *entire* card
+  (`bg-success/10`, full green text) for `success`/`destructive`. The
+  variant's color lives on the leading icon (a check, an X-circle, a
+  spinner) and the title text only — matching both shadcn's own toast
+  examples and this app's existing "Recorded." convention for
+  positive-signal text.
+- **Primary message goes in `title`, not `description`.** `title` is
+  what carries the variant's color; `description` is a secondary,
+  always-neutral detail line underneath it, used only when a toast
+  needs more than one line. Every current call site is single-line, so
+  every current call site passes `title`.
+- **`toast.promise(promise, { loading, success, error? })`**
+  (`web/src/hooks/use-toast.ts`) — shadcn/sonner's "promise" toast
+  pattern, reimplemented on this app's own Radix-based store rather
+  than pulling in sonner. Shows a `loading`-variant toast immediately,
+  then updates that *same* toast in place to `success` or `destructive`
+  once the promise settles (an internal `version` counter forces
+  `Toaster` to remount just that toast, so Radix's own auto-dismiss
+  timer restarts for the new content instead of inheriting however much
+  of the loading toast's — effectively infinite — duration had already
+  elapsed). It's a pure side effect: the promise you pass in comes back
+  unchanged, so an existing `await`/`try`/`catch` call site needs no
+  restructuring.
+  - Omit `error` to have the loading toast quietly dismiss on
+    rejection instead of showing one — the right choice whenever the
+    action's own inline error state (per the bullet above) is already
+    going to carry that message, so the two don't say the same thing
+    twice. `TransactionsList.tsx`'s `handleDelete` and `Settings.tsx`'s
+    `handleRevoke`/`handleArchive` all do this: loading toast for
+    the wait, success toast when it lands, inline `error` (not a
+    toast) if it doesn't.
 
 ## Casing enum values for display
 
