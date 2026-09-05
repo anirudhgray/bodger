@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
+import { toast } from 'sonner'
 import {
   ApiError,
   type Account,
@@ -194,9 +195,19 @@ function ApiTokensSection() {
 
   async function handleRevoke(id: string) {
     setError(null)
-    try {
+    // See TransactionsList.tsx's handleDelete for why this has a loading
+    // toast but no `error` option, and why the action is awaited
+    // separately from the toast.promise call.
+    const revocation = (async () => {
       await revokeApiToken(id)
       await refresh()
+    })()
+    toast.promise(revocation, {
+      loading: 'Revoking…',
+      success: 'Token revoked.',
+    })
+    try {
+      await revocation
     } catch (err) {
       setError(errorMessage(err))
     }
@@ -388,9 +399,19 @@ function AccountsSection() {
 
   async function handleArchive(id: string) {
     setError(null)
-    try {
+    // See TransactionsList.tsx's handleDelete for why this has a loading
+    // toast but no `error` option, and why the action is awaited
+    // separately from the toast.promise call.
+    const archiving = (async () => {
       await archiveAccount(id)
       await refresh()
+    })()
+    toast.promise(archiving, {
+      loading: 'Archiving…',
+      success: 'Account archived.',
+    })
+    try {
+      await archiving
     } catch (err) {
       setError(errorMessage(err))
     }
@@ -576,9 +597,19 @@ function CategoriesSection() {
 
   async function handleArchive(id: string) {
     setError(null)
-    try {
+    // See TransactionsList.tsx's handleDelete for why this has a loading
+    // toast but no `error` option, and why the action is awaited
+    // separately from the toast.promise call.
+    const archiving = (async () => {
       await archiveCategory(id)
       await refresh()
+    })()
+    toast.promise(archiving, {
+      loading: 'Archiving…',
+      success: 'Category archived.',
+    })
+    try {
+      await archiving
     } catch (err) {
       setError(errorMessage(err))
     }

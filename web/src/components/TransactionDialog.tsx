@@ -34,6 +34,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { toast } from 'sonner'
 import {
   ApiError,
   listAccounts,
@@ -357,6 +358,7 @@ function TransactionDialogSheet({
         const updated = await updateTransaction(request.transaction.id, body)
         request.onSaved?.(updated)
         notifySaved({ mode: 'edit', transaction: updated })
+        toast.success('Transaction updated.')
         onOpenChange(false)
         return
       }
@@ -403,6 +405,7 @@ function TransactionDialogSheet({
         resetForNextEntry()
         setJustRecorded(true)
       } else {
+        toast.success('Transaction recorded.')
         onOpenChange(false)
       }
     } catch (err) {

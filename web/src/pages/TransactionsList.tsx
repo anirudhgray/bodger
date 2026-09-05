@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
+import { toast } from 'sonner'
 import {
   ApiError,
   deleteTransaction,
@@ -183,8 +184,24 @@ export function TransactionsList() {
   }
 
   async function handleDelete(id: string) {
+    // The row has no other pending affordance while this is in flight, so
+    // a loading toast covers that gap; on success the row is about to
+    // disappear so the toast also carries that confirmation. On failure
+    // the row stays and the existing inline `setError` below is the
+    // single place that message lives — sonner's toast.promise has no
+    // `error` option passed here, so it just quietly resolves the toast
+    // away on rejection instead of duplicating that message (see
+    // docs/design-system.md's toast-vs-inline convention). toast.promise
+    // doesn't hand back the underlying promise (it returns a toast id),
+    // so the real `deletion` promise is still awaited directly below for
+    // control flow/error handling — both just observe the same promise.
+    const deletion = deleteTransaction(id)
+    toast.promise(deletion, {
+      loading: 'Deleting transaction…',
+      success: 'Transaction deleted.',
+    })
     try {
-      await deleteTransaction(id)
+      await deletion
       setTransactions((prev) => prev.filter((t) => t.id !== id))
     } catch (err) {
       setError(

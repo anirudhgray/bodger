@@ -121,7 +121,8 @@ Primitives present as of this milestone: `button`, `input`, `label`,
 `select` (native, hand-written — see the audit note below), `card`,
 `sidebar`, `popover`, `calendar`, `tabs`, `dialog`, `alert-dialog`,
 `dropdown-menu`, `tooltip`, `separator`, `skeleton`, `spinner`, `kbd`,
-`empty`.
+`empty`, `sonner` (shadcn's current toast component — see the note
+below for why this isn't a hand-built Radix Toast).
 
 **`cn`** (`web/src/lib/utils.ts`) re-exports the
 [`cn` npm package](https://github.com/shadcn-ui/cn) — shadcn's own
@@ -164,6 +165,112 @@ interaction swap isn't worth the risk. That remaining wiring is tracked
 in [#104](https://github.com/anirudhgray/bodger/issues/104), scoped
 separately from #101 so it isn't silently dropped. `kbd` has no call
 site yet — there's no keyboard-shortcut UI in the app to hang it on.
+
+`toast` (issue #108) is wired into every action whose own UI (a dialog,
+a row) closes or moves on before its result would otherwise be shown:
+TransactionDialog's create/edit success, transaction delete, API token
+revoke, account/category archive. It's built on **sonner**
+(`components/ui/sonner.tsx`, shadcn's current toast component), not a
+hand-built wrapper around `@radix-ui/react-toast` the way every other
+primitive here is — the Radix Toast primitive itself is deprecated
+upstream in favor of sonner, and a first pass that hand-built one
+directly against Radix Toast was replaced once that became clear. Call
+sites `import { toast } from 'sonner'` directly (`toast.success(...)`,
+`toast.promise(...)`) rather than going through an app-owned wrapper
+function — sonner's own API already covers what a wrapper would have
+added (stacking, per-toast auto-dismiss, a loading→success/error
+promise pattern), so there's nothing left for one to do.
+
+## Toasts vs. inline messages
+
+Two different places a success/error message can live, and both are
+correct for their own case:
+
+- **Inline, persistent** — form validation tied to a specific field or
+  action whose UI is still on screen: a rejected submit still showing
+  its own form, an invalid amount, a load error blocking a whole page.
+  `docs/ux-principles.md` §6 already governs this content; a toast would
+  disappear and leave the user without the field- or action-level
+  context of *what* failed. TransactionDialog's `submitError`,
+  Settings' per-section `error`, and TransactionsList's `error` all stay
+  inline for exactly this reason.
+- **Toast** — an action's own triggering UI (a dialog, a row) has
+  already closed or is about to, and the result has nowhere left to
+  land: TransactionDialog's create/edit success (the dialog closes
+  immediately), transaction delete, API token revoke, account/category
+  archive success (the row's own controls are what triggered the
+  action, and stay on screen, but there was previously no feedback that
+  anything happened at all — and for delete/revoke/archive specifically,
+  no inline "in progress" affordance either, which is what
+  `toast.promise` below is for).
+
+Don't wire a toast into a form validation error — those stay inline —
+and don't retrofit every existing inline error into a toast; most are
+correctly inline already. This cuts both ways for a single action, not
+just success vs. failure in general: delete/revoke/archive show a toast
+on *success* (the row's about to disappear, or already has) but stay
+inline on *failure* (the row stays put, so the existing per-section
+`error` state is still the one place that message belongs — showing it
+in both places at once would just be the same sentence twice).
+
+## Toast styling and the loading→success/error pattern
+
+General rule for every primitive in this app, toast included: start
+from shadcn's own default styling and interaction conventions, and
+apply only this project's specific theme tokens and quirks on top —
+don't invent a different visual language component-by-component. A
+first cut of this primitive violated that rule twice over: it was
+hand-built directly against `@radix-ui/react-toast` (deprecated
+upstream in favor of sonner) *and* tinted the entire card
+(`bg-success/10`, full green text) for `success`/`destructive` instead
+of following shadcn/sonner's own neutral-card-plus-icon look. Both are
+fixed by using **sonner** (`components/ui/sonner.tsx`) as-is rather
+than reimplementing its behavior:
+
+- **`components/ui/sonner.tsx`** wraps sonner's own `<Toaster/>`,
+  themed via CSS variables (`--normal-bg`, `--success-text`,
+  `--error-text`, etc., set from this app's own `--popover`/`--success`/
+  `--destructive` tokens) rather than custom variant classes — sonner's
+  built-in success/error/loading icons and card styling do the rest, so
+  there's no hand-written `cva` variant map to keep in sync. `theme` is
+  read from this app's own `useTheme()` (`hooks/use-theme.tsx`), not
+  `next-themes` (shadcn's reference implementation assumes `next-themes`
+  since its docs are Next-first; this app has its own theme context, so
+  the wrapper reads from that instead — same idea, different source).
+- Call sites `import { toast } from 'sonner'` directly and call
+  `toast.success(message)` / `toast.promise(promise, opts)` — there's no
+  app-owned `toast()` wrapper function to import instead. `title` vs.
+  `description` doesn't apply here: sonner's `toast.success(message)`
+  takes the message directly as its first argument.
+- **`toast.promise(promise, { loading, success, error? })`** is sonner's
+  own API, not a reimplementation — it shows a loading toast immediately
+  and updates it to success/error once `promise` settles, with sonner's
+  own default icons for each state.
+  - **Gotcha:** sonner's `toast.promise` returns a toast id, not the
+    promise you passed in (unlike a naive wrapper might) — so it can't
+    be `await`ed for its own resolution/rejection. Every call site that
+    still needs the actual result (to update state on success, or
+    `catch` to set an inline error) keeps its own reference to the
+    promise and awaits that separately, passing the same reference to
+    `toast.promise` purely for the toast's side effect:
+    ```ts
+    const action = doTheThing()
+    toast.promise(action, { loading: '…', success: 'Done.' })
+    try {
+      await action
+      // update state on success
+    } catch (err) {
+      setError(...) // the real error handling
+    }
+    ```
+    `TransactionsList.tsx`'s `handleDelete` and `Settings.tsx`'s
+    `handleRevoke`/`handleArchive` all follow this shape.
+  - Omit `error` to have the loading toast quietly resolve away on
+    rejection instead of showing one — the right choice whenever the
+    action's own inline error state (per the "Toasts vs. inline
+    messages" section above) is already going to carry that message,
+    so the two don't say the same thing twice. All three call sites
+    above do this.
 
 ## Casing enum values for display
 
