@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
+import { toast } from '@/hooks/use-toast'
 import {
   ApiError,
   type Account,
@@ -197,6 +198,7 @@ function ApiTokensSection() {
     try {
       await revokeApiToken(id)
       await refresh()
+      toast({ description: 'Token revoked.' })
     } catch (err) {
       setError(errorMessage(err))
     }
@@ -391,6 +393,7 @@ function AccountsSection() {
     try {
       await archiveAccount(id)
       await refresh()
+      toast({ description: 'Account archived.' })
     } catch (err) {
       setError(errorMessage(err))
     }
@@ -579,6 +582,7 @@ function CategoriesSection() {
     try {
       await archiveCategory(id)
       await refresh()
+      toast({ description: 'Category archived.' })
     } catch (err) {
       setError(errorMessage(err))
     }

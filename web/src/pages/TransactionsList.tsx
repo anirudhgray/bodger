@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
+import { toast } from '@/hooks/use-toast'
 import {
   ApiError,
   deleteTransaction,
@@ -152,6 +153,7 @@ export function TransactionsList() {
     try {
       await deleteTransaction(id)
       setTransactions((prev) => prev.filter((t) => t.id !== id))
+      toast({ description: 'Transaction deleted.' })
     } catch (err) {
       setError(
         err instanceof ApiError
