@@ -4,13 +4,7 @@
 // round-tripping, the immutable kind label) is covered as a real
 // integration through TransactionsList.test.tsx instead of duplicated
 // here, since that's the only place edit is actually triggered from.
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

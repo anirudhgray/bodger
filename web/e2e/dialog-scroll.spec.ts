@@ -58,8 +58,19 @@ test('the transaction dialog stays usable on a short viewport with "Add details"
   // real transaction here would throw off smoke.spec.ts's own balance
   // assertion.
   await dialog.getByLabel('Amount').fill('12.50')
-  await dialog.getByLabel('Category').selectOption({ label: E2E_CATEGORY_NAME })
+  // The Category field is a Combobox (issue #106), not a native
+  // <select> — its popover renders in its own portal, so the option is
+  // queried from the whole page rather than scoped to `dialog`.
+  await dialog.getByRole('combobox', { name: 'Category' }).click()
+  await page.getByRole('option', { name: E2E_CATEGORY_NAME }).click()
   await expect(submit).toBeEnabled()
+  // The category combobox is itself a nested Radix dismissable layer
+  // (Popover) inside the dialog's own, with its own brief close
+  // animation (components/ui/popover.tsx's duration-100) — pressing
+  // Escape before that animation finishes and the layer actually
+  // unmounts can be consumed by it instead of reaching the dialog, so
+  // wait for its content to be gone from the DOM rather than racing it.
+  await expect(page.locator('[data-slot="popover-content"]')).toHaveCount(0)
 
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
