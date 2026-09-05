@@ -24,6 +24,7 @@ import {
   type Account,
   type Category,
 } from '@/lib/api'
+import { sanitizeAmountInput } from '@/lib/utils'
 
 type Kind = 'outflow' | 'inflow' | 'transfer'
 
@@ -277,7 +278,7 @@ export function TransactionEntry() {
               autoFocus
               required
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => setAmount(sanitizeAmountInput(e.target.value))}
             />
           </div>
 

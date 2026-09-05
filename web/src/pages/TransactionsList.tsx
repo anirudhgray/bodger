@@ -38,7 +38,7 @@ import {
   type TransactionKind,
   type TransactionListFilter,
 } from '@/lib/api'
-import { capitalize } from '@/lib/utils'
+import { capitalize, sanitizeAmountInput } from '@/lib/utils'
 
 // kindLabel mirrors internal/surface/cli/transactions.go's
 // transactionTypeFor: the same verb a transaction was recorded with
@@ -171,7 +171,7 @@ export function TransactionsList() {
   return (
     <div className="flex flex-col gap-4 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold tracking-tight">Transactions</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Transactions</h1>
         <Button
           type="button"
           variant="outline"
@@ -472,6 +472,11 @@ function EditRow({
             defaultValue={transaction.amount}
             required
             className="w-28"
+            onChange={(e) => {
+              const input = e.currentTarget
+              const clean = sanitizeAmountInput(input.value)
+              if (clean !== input.value) input.value = clean
+            }}
           />
         </div>
         {isTransfer ? (

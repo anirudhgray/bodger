@@ -246,6 +246,22 @@ describe('TransactionsList', () => {
     expect(await screen.findByText('−50.00 USD')).toBeInTheDocument()
   })
 
+  it('rejects non-numeric characters in the edit form amount field', async () => {
+    mockedListTransactions.mockResolvedValue({ data: [groceries] })
+    renderPage()
+    await screen.findByText('Groceries')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    const form = screen.getByRole('form', { name: 'Edit Groceries' })
+    const amountField = within(form).getByLabelText('Amount')
+
+    fireEvent.change(amountField, { target: { value: 'soemthing' } })
+    expect(amountField).toHaveValue('')
+
+    fireEvent.change(amountField, { target: { value: '$50.00' } })
+    expect(amountField).toHaveValue('50.00')
+  })
+
   it('preserves the edit form and shows an error when saving fails', async () => {
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     mockedUpdateTransaction.mockRejectedValue(
@@ -256,8 +272,14 @@ describe('TransactionsList', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     const form = screen.getByRole('form', { name: 'Edit Groceries' })
+    // A well-formed number, not garbage text — the amount field's own
+    // client-side sanitization (a separate concern this suite tests on
+    // its own) means garbage can no longer reach a submit at all. This
+    // is testing the server rejecting a validly-typed value on rules the
+    // client doesn't know about (the mock controls that, independent of
+    // what's actually typed here).
     fireEvent.change(within(form).getByLabelText('Amount'), {
-      target: { value: 'nonsense' },
+      target: { value: '999999.99' },
     })
     fireEvent.click(within(form).getByRole('button', { name: 'Save' }))
 
@@ -266,6 +288,6 @@ describe('TransactionsList', () => {
     )
     // Partial input is preserved (ux-principles.md §5) — the form is
     // still open with what was typed, not discarded back to the row.
-    expect(within(form).getByLabelText('Amount')).toHaveValue('nonsense')
+    expect(within(form).getByLabelText('Amount')).toHaveValue('999999.99')
   })
 })

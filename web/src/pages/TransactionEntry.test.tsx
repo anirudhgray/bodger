@@ -112,6 +112,21 @@ describe('TransactionEntry', () => {
     expect(screen.getByRole('button', { name: 'Record spend' })).toBeDisabled()
   })
 
+  it('rejects non-numeric characters in the amount field as they are typed', async () => {
+    render(<TransactionEntry />)
+    await screen.findByText('HDFC Savings')
+
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: 'soemthing' },
+    })
+    expect(screen.getByLabelText('Amount')).toHaveValue('')
+
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: '$42.50' },
+    })
+    expect(screen.getByLabelText('Amount')).toHaveValue('42.50')
+  })
+
   it('switches to a Move form with from/to accounts and no category field', async () => {
     mockedListAccounts.mockResolvedValue([
       account,
