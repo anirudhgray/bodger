@@ -121,8 +121,8 @@ Primitives present as of this milestone: `button`, `input`, `label`,
 `select` (native, hand-written — see the audit note below), `card`,
 `sidebar`, `popover`, `calendar`, `tabs`, `dialog`, `alert-dialog`,
 `dropdown-menu`, `tooltip`, `separator`, `skeleton`, `spinner`, `kbd`,
-`empty`, `toast` (hand-built against Radix's Toast primitive directly —
-see the note below, since it isn't in the shadcn CLI's own registry).
+`empty`, `sonner` (shadcn's current toast component — see the note
+below for why this isn't a hand-built Radix Toast).
 
 **`cn`** (`web/src/lib/utils.ts`) re-exports the
 [`cn` npm package](https://github.com/shadcn-ui/cn) — shadcn's own
@@ -169,15 +169,17 @@ site yet — there's no keyboard-shortcut UI in the app to hang it on.
 `toast` (issue #108) is wired into every action whose own UI (a dialog,
 a row) closes or moves on before its result would otherwise be shown:
 TransactionDialog's create/edit success, transaction delete, API token
-revoke, account/category archive. It's built directly against
-`@radix-ui/react-toast` (via the `radix-ui` package, same as every other
-primitive here) rather than generated via the shadcn CLI or added as
-`sonner` — shadcn's current registry only ships a sonner-based toast,
-and adding a second toast/notification library alongside Radix for one
-component wasn't worth it. The store (`web/src/hooks/use-toast.ts`) is
-the classic pre-sonner shadcn pattern: a module-level listener list plus
-a plain `toast()` function, since call sites are as often a plain async
-event handler as a component that's already subscribed to anything.
+revoke, account/category archive. It's built on **sonner**
+(`components/ui/sonner.tsx`, shadcn's current toast component), not a
+hand-built wrapper around `@radix-ui/react-toast` the way every other
+primitive here is — the Radix Toast primitive itself is deprecated
+upstream in favor of sonner, and a first pass that hand-built one
+directly against Radix Toast was replaced once that became clear. Call
+sites `import { toast } from 'sonner'` directly (`toast.success(...)`,
+`toast.promise(...)`) rather than going through an app-owned wrapper
+function — sonner's own API already covers what a wrapper would have
+added (stacking, per-toast auto-dismiss, a loading→success/error
+promise pattern), so there's nothing left for one to do.
 
 ## Toasts vs. inline messages
 
@@ -216,46 +218,59 @@ in both places at once would just be the same sentence twice).
 General rule for every primitive in this app, toast included: start
 from shadcn's own default styling and interaction conventions, and
 apply only this project's specific theme tokens and quirks on top —
-don't invent a different visual language component-by-component. The
-first cut of the toast primitive violated this (see below); the fix is
-the reference going forward.
+don't invent a different visual language component-by-component. A
+first cut of this primitive violated that rule twice over: it was
+hand-built directly against `@radix-ui/react-toast` (deprecated
+upstream in favor of sonner) *and* tinted the entire card
+(`bg-success/10`, full green text) for `success`/`destructive` instead
+of following shadcn/sonner's own neutral-card-plus-icon look. Both are
+fixed by using **sonner** (`components/ui/sonner.tsx`) as-is rather
+than reimplementing its behavior:
 
-- **Color is a signal, not a fill.** The toast card itself
-  (`components/ui/toast.tsx`) always renders on the neutral
-  `bg-popover`/`border-border` surface every other overlay in this app
-  uses, regardless of variant — the same "accent is a signal, not a
-  fill" principle from this doc's Principles section, applied to a
-  primitive that initially got it wrong by tinting the *entire* card
-  (`bg-success/10`, full green text) for `success`/`destructive`. The
-  variant's color lives on the leading icon (a check, an X-circle, a
-  spinner) and the title text only — matching both shadcn's own toast
-  examples and this app's existing "Recorded." convention for
-  positive-signal text.
-- **Primary message goes in `title`, not `description`.** `title` is
-  what carries the variant's color; `description` is a secondary,
-  always-neutral detail line underneath it, used only when a toast
-  needs more than one line. Every current call site is single-line, so
-  every current call site passes `title`.
-- **`toast.promise(promise, { loading, success, error? })`**
-  (`web/src/hooks/use-toast.ts`) — shadcn/sonner's "promise" toast
-  pattern, reimplemented on this app's own Radix-based store rather
-  than pulling in sonner. Shows a `loading`-variant toast immediately,
-  then updates that *same* toast in place to `success` or `destructive`
-  once the promise settles (an internal `version` counter forces
-  `Toaster` to remount just that toast, so Radix's own auto-dismiss
-  timer restarts for the new content instead of inheriting however much
-  of the loading toast's — effectively infinite — duration had already
-  elapsed). It's a pure side effect: the promise you pass in comes back
-  unchanged, so an existing `await`/`try`/`catch` call site needs no
-  restructuring.
-  - Omit `error` to have the loading toast quietly dismiss on
+- **`components/ui/sonner.tsx`** wraps sonner's own `<Toaster/>`,
+  themed via CSS variables (`--normal-bg`, `--success-text`,
+  `--error-text`, etc., set from this app's own `--popover`/`--success`/
+  `--destructive` tokens) rather than custom variant classes — sonner's
+  built-in success/error/loading icons and card styling do the rest, so
+  there's no hand-written `cva` variant map to keep in sync. `theme` is
+  read from this app's own `useTheme()` (`hooks/use-theme.tsx`), not
+  `next-themes` (shadcn's reference implementation assumes `next-themes`
+  since its docs are Next-first; this app has its own theme context, so
+  the wrapper reads from that instead — same idea, different source).
+- Call sites `import { toast } from 'sonner'` directly and call
+  `toast.success(message)` / `toast.promise(promise, opts)` — there's no
+  app-owned `toast()` wrapper function to import instead. `title` vs.
+  `description` doesn't apply here: sonner's `toast.success(message)`
+  takes the message directly as its first argument.
+- **`toast.promise(promise, { loading, success, error? })`** is sonner's
+  own API, not a reimplementation — it shows a loading toast immediately
+  and updates it to success/error once `promise` settles, with sonner's
+  own default icons for each state.
+  - **Gotcha:** sonner's `toast.promise` returns a toast id, not the
+    promise you passed in (unlike a naive wrapper might) — so it can't
+    be `await`ed for its own resolution/rejection. Every call site that
+    still needs the actual result (to update state on success, or
+    `catch` to set an inline error) keeps its own reference to the
+    promise and awaits that separately, passing the same reference to
+    `toast.promise` purely for the toast's side effect:
+    ```ts
+    const action = doTheThing()
+    toast.promise(action, { loading: '…', success: 'Done.' })
+    try {
+      await action
+      // update state on success
+    } catch (err) {
+      setError(...) // the real error handling
+    }
+    ```
+    `TransactionsList.tsx`'s `handleDelete` and `Settings.tsx`'s
+    `handleRevoke`/`handleArchive` all follow this shape.
+  - Omit `error` to have the loading toast quietly resolve away on
     rejection instead of showing one — the right choice whenever the
-    action's own inline error state (per the bullet above) is already
-    going to carry that message, so the two don't say the same thing
-    twice. `TransactionsList.tsx`'s `handleDelete` and `Settings.tsx`'s
-    `handleRevoke`/`handleArchive` all do this: loading toast for
-    the wait, success toast when it lands, inline `error` (not a
-    toast) if it doesn't.
+    action's own inline error state (per the "Toasts vs. inline
+    messages" section above) is already going to carry that message,
+    so the two don't say the same thing twice. All three call sites
+    above do this.
 
 ## Casing enum values for display
 
