@@ -25,19 +25,13 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
 
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-
-const SETTINGS_SECTIONS: { to: string; label: string }[] = [
-  { to: 'password', label: 'Password' },
-  { to: 'tokens', label: 'API tokens' },
-  { to: 'accounts', label: 'Accounts' },
-  { to: 'categories', label: 'Categories' },
-]
+import { SETTINGS_SECTIONS } from '@/pages/settings/shared'
 
 export function SettingsLayout() {
   const location = useLocation()
   const activeSection =
     location.pathname.split('/').filter(Boolean).pop() ??
-    SETTINGS_SECTIONS[0].to
+    SETTINGS_SECTIONS[0].slug
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 sm:p-6">
@@ -50,7 +44,7 @@ export function SettingsLayout() {
             className="w-fit min-w-full justify-start sm:min-w-0"
           >
             {SETTINGS_SECTIONS.map((section) => (
-              <TabsTrigger key={section.to} value={section.to} asChild>
+              <TabsTrigger key={section.to} value={section.slug} asChild>
                 <Link to={section.to}>{section.label}</Link>
               </TabsTrigger>
             ))}

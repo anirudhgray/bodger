@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import {
+  ChevronRight,
   Moon,
   Receipt,
   Settings as SettingsIcon,
@@ -10,6 +11,11 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
@@ -19,6 +25,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarProvider,
   SidebarTrigger,
   useSidebar,
@@ -27,16 +36,16 @@ import { TransactionDialogProvider } from '@/components/TransactionDialog'
 import { useTransactionDialog } from '@/hooks/use-transaction-dialog'
 import { useTheme } from '@/hooks/use-theme'
 import { logout } from '@/lib/session'
+import { SETTINGS_SECTIONS } from '@/pages/settings/shared'
 
 // Each item's icon matches the one its own screen already uses for its
 // empty state (TransactionsList.tsx's Receipt, Balances.tsx's Wallet) —
 // reusing that vocabulary rather than picking new icons for the same
-// concept. Settings has no single equivalent (KeyRound is scoped to its
-// API-tokens section specifically), so it gets the generic gear.
+// concept. Settings is rendered separately below, as a collapsible group
+// rather than a plain link — see AppSidebar's comment for why.
 const navItems = [
   { to: '/transactions', label: 'Transactions', icon: Receipt },
   { to: '/balances', label: 'Balances', icon: Wallet },
-  { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ]
 
 // AppLayout is the routing skeleton's shell: a sidebar nav, a header, and
@@ -69,6 +78,8 @@ function AppSidebar() {
     setOpenMobile(false)
   }
 
+  const isSettingsActive = location.pathname.startsWith('/settings')
+
   return (
     <Sidebar>
       <SidebarHeader>
@@ -97,6 +108,54 @@ function AppSidebar() {
                   </SidebarMenuItem>
                 )
               })}
+              {/* Settings is a collapsible group rather than a plain link:
+                  its four subpages (issue #107's SettingsLayout tab strip)
+                  are also reachable straight from the sidebar, collapsed
+                  by default so they don't crowd the top-level nav, and
+                  opened by default only when a settings route is already
+                  active so the sidebar shows where you are. The trigger
+                  itself only expands/collapses — it doesn't navigate — so
+                  reaching a section always means picking one from the
+                  list, the same as the tab strip does. */}
+              <Collapsible
+                defaultOpen={isSettingsActive}
+                className="group/settings-collapsible"
+              >
+                <SidebarMenuItem>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton isActive={isSettingsActive}>
+                      <SettingsIcon />
+                      Settings
+                      <ChevronRight className="ml-auto transition-transform group-data-[state=open]/settings-collapsible:rotate-90" />
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      {SETTINGS_SECTIONS.map((section) => {
+                        const isSectionActive = location.pathname === section.to
+                        return (
+                          <SidebarMenuSubItem key={section.to}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={isSectionActive}
+                            >
+                              <Link
+                                to={section.to}
+                                onClick={closeMobileSidebar}
+                                aria-current={
+                                  isSectionActive ? 'page' : undefined
+                                }
+                              >
+                                {section.label}
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        )
+                      })}
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
