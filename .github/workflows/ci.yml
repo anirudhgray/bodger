@@ -27,6 +27,12 @@ jobs:
   changes:
     name: detect changes
     runs-on: ubuntu-latest
+    # dorny/paths-filter lists the PR's changed files via the GitHub API on
+    # pull_request events, which needs pull-requests: read explicitly — the
+    # repo's default workflow token permissions don't grant it.
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       go: ${{ steps.filter.outputs.go }}
       web: ${{ steps.filter.outputs.web }}
