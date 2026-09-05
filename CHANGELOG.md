@@ -9,6 +9,26 @@ sync with each GitHub Release.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-05
+
+### Added
+
+* [71c43b9f](https://github.com/anirudhgray/bodger/commit/71c43b9f): feat(web): category hierarchy view + quick-create from pickers (#123) (@anirudhgray)
+* [966365ff](https://github.com/anirudhgray/bodger/commit/966365ff): feat(web): cross-navigation between related screens (#113) (@anirudhgray)
+* [877ac406](https://github.com/anirudhgray/bodger/commit/877ac406): feat(web): design tokens and shadcn primitives for M3 Rivendell (#103) (@anirudhgray)
+* [7c336f32](https://github.com/anirudhgray/bodger/commit/7c336f32): feat(web): split Settings into nested subpages (#122) (@anirudhgray)
+* [9191783b](https://github.com/anirudhgray/bodger/commit/9191783b): feat(web): toast notifications for post-dialog/row feedback (#114) (@anirudhgray)
+
+### Changed
+
+* [d6bf1bfd](https://github.com/anirudhgray/bodger/commit/d6bf1bfd): refactor(web): audit and align components/ui against the design system (#105) (@anirudhgray)
+* [52be9609](https://github.com/anirudhgray/bodger/commit/52be9609): refactor(web): wire a Radix popover+calendar date picker (#104) (#118) (@anirudhgray)
+
+### Fixed
+
+* [a0efd528](https://github.com/anirudhgray/bodger/commit/a0efd528): fix(release): embed real web UI in release binaries, add release-dry-run (#112) (@anirudhgray)
+* [76c1eee8](https://github.com/anirudhgray/bodger/commit/76c1eee8): fix(web): responsive layout and sidebar nav (#88) (#121) (@anirudhgray)
+
 ## [0.2.0] - 2026-09-04
 
 ### Added
@@ -57,6 +77,7 @@ sync with each GitHub Release.
 * 5ae7d547: fix(infra): make lint fail loudly on an incompatible golangci-lint (#23)
 * c76bd7e7: fix(infra): pre-push hook executable bit, worktree hygiene (#14)
 
-[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/anirudhgray/bodger/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/anirudhgray/bodger/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/anirudhgray/bodger/releases/tag/v0.1.0
