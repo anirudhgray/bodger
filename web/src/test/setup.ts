@@ -12,7 +12,7 @@ import '@testing-library/jest-dom/vitest'
 // query can match stale elements from an earlier test as well as the
 // current one (issue #59: this is what broke a getByRole('button', {name:
 // 'Log in'}) query in Login.test.tsx). Registered once, centrally, here.
-import { afterEach } from 'vitest'
+import { afterEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
 afterEach(() => {
@@ -24,8 +24,8 @@ afterEach(() => {
 // prefersDark, for the dark-mode toggle (issue #101) — throws in every
 // test unless something provides one first. This always reports "no
 // match": tests that care about a specific prefers-color-scheme value
-// stub it themselves (see hooks/use-theme.test.ts), and everything else
-// just needs the call not to throw.
+// stub it themselves (see lib/theme.test.ts), and everything else just
+// needs the call not to throw.
 if (typeof window.matchMedia !== 'function') {
   window.matchMedia = (query: string) => ({
     matches: false,
@@ -38,3 +38,21 @@ if (typeof window.matchMedia !== 'function') {
     dispatchEvent: () => false,
   })
 }
+
+// jsdom doesn't implement the Clipboard API at all — navigator.clipboard
+// is undefined, so anything that calls writeText (components/ui's
+// CopyButton) throws in every test unless something provides a stub
+// first. A plain vi.fn() lets tests assert on what was copied; cleared
+// (not just reset — a test can still supply its own mockResolvedValue if
+// it needs one) after every test alongside the cleanup() above, so one
+// test's calls never leak into the next in the same file.
+if (typeof navigator.clipboard === 'undefined') {
+  Object.defineProperty(navigator, 'clipboard', {
+    value: { writeText: vi.fn() },
+    configurable: true,
+  })
+}
+
+afterEach(() => {
+  vi.mocked(navigator.clipboard.writeText).mockClear()
+})

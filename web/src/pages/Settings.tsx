@@ -3,12 +3,27 @@
 // #62-added) application method via web/src/lib/settings.ts — no
 // business logic lives here, only presentation and request/response
 // wiring (docs/architecture.md §3).
+import { KeyRound } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Empty, EmptyTitle } from '@/components/ui/empty'
+import { CopyButton } from '@/components/ui/copy-button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -192,25 +207,33 @@ function ApiTokensSection() {
       title="API tokens"
       description="Tokens authenticate scripts and other external clients. A token's value is shown once, when it's created."
     >
-      {justCreated && (
-        <Card className="bg-muted flex flex-col gap-1 p-3 text-sm">
-          <p>
-            Created <strong>{justCreated.name}</strong>. Copy this token now —
-            it can’t be shown again.
-          </p>
-          <code className="bg-background rounded border px-2 py-1 break-all">
-            {justCreated.token}
-          </code>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="self-start"
-            onClick={() => setJustCreated(null)}
-          >
-            Dismiss
-          </Button>
-        </Card>
-      )}
+      <Dialog
+        open={justCreated !== null}
+        onOpenChange={(open) => {
+          if (!open) setJustCreated(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Token created</DialogTitle>
+            <DialogDescription>
+              Copy <strong>{justCreated?.name}</strong>’s token now — it can’t
+              be shown again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2">
+            <code className="bg-muted flex-1 rounded border px-2 py-1.5 text-sm break-all">
+              {justCreated?.token}
+            </code>
+            <CopyButton value={justCreated?.token ?? ''} label="Copy token" />
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setJustCreated(null)}>
+              I’ve copied or stored it
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <form onSubmit={handleCreate} className="flex max-w-sm items-end gap-2">
         <div className="flex flex-1 flex-col gap-1.5">
@@ -240,7 +263,12 @@ function ApiTokensSection() {
         </div>
       ) : tokens.length === 0 ? (
         <Empty>
-          <EmptyTitle>No API tokens yet.</EmptyTitle>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <KeyRound />
+            </EmptyMedia>
+            <EmptyTitle>No API tokens yet</EmptyTitle>
+          </EmptyHeader>
         </Empty>
       ) : (
         <Card className="[--card-spacing:0]">

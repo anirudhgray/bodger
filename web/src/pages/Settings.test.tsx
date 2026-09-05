@@ -86,7 +86,9 @@ describe('Settings', () => {
     expect(await screen.findByText('bdg_plaintextvalue')).toBeInTheDocument()
     expect(mockedCreateApiToken).toHaveBeenCalledWith('my-script')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'I’ve copied or stored it' }),
+    )
     expect(screen.queryByText('bdg_plaintextvalue')).not.toBeInTheDocument()
 
     // The list itself never carries the plaintext value — only the
