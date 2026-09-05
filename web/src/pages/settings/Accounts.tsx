@@ -8,7 +8,13 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { type Account, type AccountKind } from '@/lib/api'
 import {
@@ -141,15 +147,19 @@ export function AccountsSettings() {
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="account-type">Type</Label>
           <Select
-            id="account-type"
             value={type}
-            onChange={(event) => setType(event.target.value as AccountKind)}
+            onValueChange={(value) => setType(value as AccountKind)}
           >
-            {ACCOUNT_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {accountKindLabel(t)}
-              </option>
-            ))}
+            <SelectTrigger id="account-type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ACCOUNT_TYPES.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {accountKindLabel(t)}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </div>
         <Button type="submit" disabled={creating || name === ''}>

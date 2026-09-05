@@ -7,7 +7,13 @@
 // is reversible in the database... confirmation is for genuinely
 // hard-to-undo actions", ux-principles.md §5).
 import { Receipt } from 'lucide-react'
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from 'react'
 import { useLocation } from 'react-router-dom'
 
 import {
@@ -16,6 +22,7 @@ import {
 } from '@/hooks/use-transaction-dialog'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import {
   Empty,
   EmptyContent,
@@ -26,7 +33,13 @@ import {
 } from '@/components/ui/empty'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'sonner'
 import {
@@ -41,6 +54,7 @@ import {
   type TransactionKind,
   type TransactionListFilter,
 } from '@/lib/api'
+import { buildCategoryTree } from '@/lib/category-tree'
 import { capitalize } from '@/lib/utils'
 
 // kindLabel mirrors internal/surface/cli/transactions.go's
@@ -64,6 +78,13 @@ function kindLabel(kind: TransactionKind): string {
 const KIND_OPTIONS: { value: TransactionKind; label: string }[] = (
   ['outflow', 'inflow', 'transfer'] as const
 ).map((value) => ({ value, label: capitalize(kindLabel(value)) }))
+
+// Radix's SelectItem (unlike a native <option> or Combobox's cmdk-based
+// items) rejects an empty-string value outright — Select.Root reserves
+// "" internally for "nothing selected." The account/type filters' "Any"
+// option needs a real, non-empty sentinel instead, translated back to
+// undefined in applyFilters below.
+const ANY_FILTER_VALUE = 'any'
 
 function nameFor(id: string | undefined, byId: Map<string, string>): string {
   if (!id) return ''
@@ -102,6 +123,23 @@ export function TransactionsList() {
 
   const accountsByID = new Map(accounts.map((a) => [a.id, a.name]))
   const categoriesByID = new Map(categories.map((c) => [c.id, c.name]))
+
+  // Issue #106: the category filter shows the same parent_id hierarchy
+  // Settings' own category list and TransactionDialog's picker do,
+  // rather than a flat alphabetical dump — "Any" stands in for the old
+  // <select>'s empty-value option, since it isn't itself a category.
+  const categoryOptions = useMemo<ComboboxOption[]>(
+    () => [
+      { value: '', label: 'Any' },
+      ...buildCategoryTree(categories).map(({ category, depth, path }) => ({
+        value: category.id,
+        label: category.name,
+        depth,
+        path,
+      })),
+    ],
+    [categories],
+  )
 
   const load = useCallback(
     async (appliedFilter: TransactionListFilter, append: boolean) => {
@@ -153,10 +191,15 @@ export function TransactionsList() {
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
+    const account = form.get('account') as string
+    const type = form.get('type') as string
     const next: TransactionListFilter = {
-      account: (form.get('account') as string) || undefined,
+      account: account && account !== ANY_FILTER_VALUE ? account : undefined,
       category: (form.get('category') as string) || undefined,
-      type: (form.get('type') as TransactionKind) || undefined,
+      type:
+        type && type !== ANY_FILTER_VALUE
+          ? (type as TransactionKind)
+          : undefined,
       from: (form.get('from') as string) || undefined,
       to: (form.get('to') as string) || undefined,
     }
@@ -265,46 +308,49 @@ export function TransactionsList() {
           <div className="flex flex-col gap-1">
             <Label htmlFor="filter-account">Account</Label>
             <Select
-              id="filter-account"
               name="account"
-              defaultValue={filter.account ?? ''}
+              defaultValue={filter.account ?? ANY_FILTER_VALUE}
             >
-              <option value="">Any</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
+              <SelectTrigger id="filter-account">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY_FILTER_VALUE}>Any</SelectItem>
+                {accounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="filter-category">Category</Label>
-            <Select
+            <Combobox
               id="filter-category"
               name="category"
               defaultValue={filter.category ?? ''}
-            >
-              <option value="">Any</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
+              options={categoryOptions}
+              placeholder="Any"
+              searchPlaceholder="Search categories…"
+              emptyText="No matching categories."
+              className="w-44"
+            />
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="filter-type">Type</Label>
-            <Select
-              id="filter-type"
-              name="type"
-              defaultValue={filter.type ?? ''}
-            >
-              <option value="">Any</option>
-              {KIND_OPTIONS.map((k) => (
-                <option key={k.value} value={k.value}>
-                  {k.label}
-                </option>
-              ))}
+            <Select name="type" defaultValue={filter.type ?? ANY_FILTER_VALUE}>
+              <SelectTrigger id="filter-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY_FILTER_VALUE}>Any</SelectItem>
+                {KIND_OPTIONS.map((k) => (
+                  <SelectItem key={k.value} value={k.value}>
+                    {k.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
           <div className="flex flex-col gap-1">

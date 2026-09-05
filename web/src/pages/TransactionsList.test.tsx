@@ -175,6 +175,7 @@ describe('TransactionsList', () => {
   })
 
   it('refreshes when a transaction is created by something else entirely (e.g. the nav)', async () => {
+    const user = userEvent.setup()
     mockedListTransactions
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [groceries] })
@@ -190,9 +191,19 @@ describe('TransactionsList', () => {
     fireEvent.change(within(dialog).getByLabelText('Amount'), {
       target: { value: '42.50' },
     })
-    fireEvent.change(within(dialog).getByLabelText('Category'), {
-      target: { value: 'c1' },
-    })
+    // The Category field is a Combobox (issue #106), not a native
+    // <select> — pick it via the real interaction, same as
+    // TransactionDialog.test.tsx's own pickCategory helper. Its popover
+    // content renders in its own portal, outside `dialog`'s own DOM
+    // subtree, so the option is queried from the whole document rather
+    // than scoped `within(dialog)`.
+    await user.click(within(dialog).getByRole('combobox', { name: 'Category' }))
+    await user.click(await screen.findByRole('option', { name: 'Food' }))
+    await waitFor(() =>
+      expect(
+        within(dialog).getByRole('combobox', { name: 'Account' }),
+      ).toHaveTextContent('Checking'),
+    )
     fireEvent.click(
       within(dialog).getByRole('button', { name: 'Record spend' }),
     )
@@ -226,7 +237,51 @@ describe('TransactionsList', () => {
     expect(
       screen.getByRole('button', { name: /Hide filters/ }),
     ).toBeInTheDocument()
-    expect(await screen.findByLabelText('Account')).toHaveValue('a1')
+    expect(
+      await screen.findByRole('combobox', { name: 'Account' }),
+    ).toHaveTextContent('Checking')
+  })
+
+  it('shows a nested category’s full ancestry path in the filter (issue #106)', async () => {
+    mockedListCategories.mockResolvedValue([
+      {
+        id: 'c1',
+        name: 'Food',
+        type: 'expense',
+        sort_order: 0,
+        archived: false,
+      },
+      {
+        id: 'c2',
+        name: 'Groceries',
+        type: 'expense',
+        sort_order: 0,
+        archived: false,
+        parent_id: 'c1',
+      },
+    ])
+    mockedListTransactions.mockResolvedValue({ data: [] })
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('No transactions yet')
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }))
+    await user.click(await screen.findByRole('combobox', { name: 'Category' }))
+
+    expect(
+      await screen.findByRole('option', { name: 'Food' }),
+    ).toBeInTheDocument()
+    // The child's own list label is just its name ("Groceries") — the
+    // hierarchy shows as indentation there, not a repeated path — but
+    // its full "Food > Groceries" ancestry is still findable by typing
+    // either name, per Combobox's own path-based search.
+    await user.type(
+      screen.getByRole('combobox', { name: /search/i }),
+      'Food > Groceries',
+    )
+    expect(
+      await screen.findByRole('option', { name: 'Groceries' }),
+    ).toBeInTheDocument()
   })
 
   it('filters by category when a transaction row’s category is clicked', async () => {
@@ -241,18 +296,20 @@ describe('TransactionsList', () => {
         category: 'c1',
       }),
     )
-    expect(await screen.findByLabelText('Category')).toHaveValue('c1')
+    expect(
+      await screen.findByRole('combobox', { name: 'Category' }),
+    ).toHaveTextContent('Food')
   })
 
   it('applies a filter and re-fetches with it', async () => {
+    const user = userEvent.setup()
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     renderPage()
     await screen.findByText('Groceries')
 
     fireEvent.click(screen.getByRole('button', { name: /Filters/ }))
-    fireEvent.change(await screen.findByLabelText('Account'), {
-      target: { value: 'a1' },
-    })
+    await user.click(screen.getByRole('combobox', { name: 'Account' }))
+    await user.click(await screen.findByRole('option', { name: 'Checking' }))
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
 
     await waitFor(() =>
@@ -287,33 +344,30 @@ describe('TransactionsList', () => {
   })
 
   it('title-cases the type filter options, matching the account/category type dropdowns', async () => {
+    const user = userEvent.setup()
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     renderPage()
     await screen.findByText('Groceries')
 
     fireEvent.click(screen.getByRole('button', { name: /Filters/ }))
-    const typeSelect = await screen.findByLabelText('Type')
+    await user.click(screen.getByRole('combobox', { name: 'Type' }))
 
     expect(
-      within(typeSelect).getByRole('option', { name: 'Spend' }),
+      await screen.findByRole('option', { name: 'Spend' }),
     ).toBeInTheDocument()
-    expect(
-      within(typeSelect).getByRole('option', { name: 'Receive' }),
-    ).toBeInTheDocument()
-    expect(
-      within(typeSelect).getByRole('option', { name: 'Move' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Receive' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Move' })).toBeInTheDocument()
   })
 
   it('clearing filters resets the form so a later Apply is not stale', async () => {
+    const user = userEvent.setup()
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     renderPage()
     await screen.findByText('Groceries')
 
     fireEvent.click(screen.getByRole('button', { name: /Filters/ }))
-    fireEvent.change(await screen.findByLabelText('Account'), {
-      target: { value: 'a1' },
-    })
+    await user.click(screen.getByRole('combobox', { name: 'Account' }))
+    await user.click(await screen.findByRole('option', { name: 'Checking' }))
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
     await waitFor(() =>
       expect(mockedListTransactions).toHaveBeenLastCalledWith(
@@ -332,9 +386,11 @@ describe('TransactionsList', () => {
       }),
     )
     // The bug wasn't the fetch — clearFilters() always fetched unfiltered.
-    // It was the form still displaying "a1" afterwards, so a second Apply
-    // with no further changes would silently resubmit it.
-    expect(screen.getByLabelText('Account')).toHaveValue('')
+    // It was the form still displaying "Checking" afterwards, so a second
+    // Apply with no further changes would silently resubmit it.
+    expect(screen.getByRole('combobox', { name: 'Account' })).toHaveTextContent(
+      'Any',
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
     await waitFor(() =>

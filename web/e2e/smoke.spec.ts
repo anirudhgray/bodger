@@ -31,7 +31,11 @@ test('log in, record a transaction, see the updated balance, log out', async ({
   const dialog = page.getByRole('dialog', { name: 'Add transaction' })
   await expect(dialog).toBeVisible()
   await dialog.getByLabel('Amount').fill(E2E_SPEND_AMOUNT)
-  await dialog.getByLabel('Category').selectOption({ label: E2E_CATEGORY_NAME })
+  // The Category field is a Combobox (issue #106), not a native
+  // <select> — its popover renders in its own portal, so the option is
+  // queried from the whole page rather than scoped to `dialog`.
+  await dialog.getByRole('combobox', { name: 'Category' }).click()
+  await page.getByRole('option', { name: E2E_CATEGORY_NAME }).click()
   await dialog.getByRole('button', { name: 'Record spend' }).click()
   await expect(dialog).toBeHidden()
   await expect(page).toHaveURL(/\/transactions$/)

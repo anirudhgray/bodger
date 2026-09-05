@@ -19,6 +19,7 @@ import {
 } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import {
   Dialog,
   DialogContent,
@@ -30,7 +31,13 @@ import {
 import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
@@ -47,6 +54,8 @@ import {
   type EditTransactionBody,
   type Transaction,
 } from '@/lib/api'
+import { buildCategoryTree } from '@/lib/category-tree'
+import { createCategory } from '@/lib/settings'
 import { sanitizeAmountInput } from '@/lib/utils'
 import {
   TransactionDialogContext,
@@ -318,6 +327,53 @@ function TransactionDialogSheet({
     [categories, kind],
   )
 
+  // Issue #106: the same parent_id tree Settings' own category list and
+  // "Parent" field show, flattened into the Combobox's option shape.
+  // Built from relevantCategories (not the raw `categories` state) so a
+  // category tree already reflects the current Spend/Receive tab's own
+  // kind filter — an expense category never shows up while entering
+  // income, matching what the old <select> already did.
+  const categoryOptions = useMemo<ComboboxOption[]>(
+    () =>
+      buildCategoryTree(relevantCategories).map(
+        ({ category, depth, path }) => ({
+          value: category.id,
+          label: category.name,
+          depth,
+          path,
+        }),
+      ),
+    [relevantCategories],
+  )
+
+  // Quick-create (issue #106): called from the Category combobox itself
+  // when the typed text matches nothing. Always creates a new top-level
+  // category of whichever kind the dialog is currently in (Spend →
+  // expense, Receive → income) — nesting it under a specific parent from
+  // here would need its own picker inside the create row, which is more
+  // than "don't abandon the transaction" calls for; a quick-created
+  // category can always be reparented later from Settings, same as any
+  // other. Errors surface as a toast rather than inline: there's no
+  // dedicated error slot inside the combobox's create row, and a toast
+  // doesn't block the transaction still mid-entry underneath it.
+  async function handleCreateCategory(name: string): Promise<ComboboxOption> {
+    try {
+      const created = await createCategory({
+        name,
+        type: kind === 'inflow' ? 'income' : 'expense',
+      })
+      setCategories((prev) => [...prev, created])
+      return { value: created.id, label: created.name, path: created.name }
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : 'Couldn’t create that category. Try again.',
+      )
+      throw err
+    }
+  }
+
   const hasSingleAccount = accounts.length === 1
   const canSubmit =
     amount.trim() !== '' &&
@@ -489,21 +545,16 @@ function TransactionDialogSheet({
               {kind !== 'transfer' && (
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="td-category">Category</Label>
-                  <Select
+                  <Combobox
                     id="td-category"
-                    required
+                    options={categoryOptions}
                     value={categoryId}
-                    onChange={(e) => setCategoryId(e.target.value)}
-                  >
-                    <option value="" disabled>
-                      Choose a category
-                    </option>
-                    {relevantCategories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </Select>
+                    onChange={setCategoryId}
+                    placeholder="Choose a category"
+                    searchPlaceholder="Search categories…"
+                    emptyText="No matching categories."
+                    onCreate={handleCreateCategory}
+                  />
                 </div>
               )}
 
@@ -513,21 +564,50 @@ function TransactionDialogSheet({
                 </Label>
                 {hasSingleAccount ? (
                   <p className="text-sm">{accounts[0]?.name}</p>
+                ) : accounts.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">
+                    Loading accounts…
+                  </p>
                 ) : (
+                  // Rendered only once `accounts` has actually loaded: Radix
+                  // Select renders a hidden native <select> mirror whenever
+                  // its trigger sits inside a real <form> (true here,
+                  // regardless of whether a `name` prop is passed), keyed
+                  // to the set of option values. Mounting this Select
+                  // first with zero options and letting `accounts` arrive
+                  // afterward changes that key mid-lifecycle, which forces
+                  // Radix to destroy and recreate the native mirror and,
+                  // in the process, dispatch a synthetic change event that
+                  // silently resets the controlled value back to "" —
+                  // confirmed by direct reproduction against
+                  // @radix-ui/react-select's own SelectBubbleInput source,
+                  // not a jsdom-only artifact. Mounting once the real
+                  // option list is already final avoids the mid-lifecycle
+                  // key change entirely.
                   <Select
-                    id="td-account"
                     required
                     value={accountId}
-                    onChange={(e) => setAccountId(e.target.value)}
+                    onValueChange={(value) => {
+                      setAccountId(value)
+                      // A stale "to account" that now equals the new
+                      // "from account" is invalid (can't transfer to
+                      // yourself) — clear it rather than silently
+                      // submitting a transfer to/from the same account.
+                      setToAccountId((current) =>
+                        current === value ? '' : current,
+                      )
+                    }}
                   >
-                    <option value="" disabled>
-                      Choose an account
-                    </option>
-                    {accounts.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
+                    <SelectTrigger id="td-account">
+                      <SelectValue placeholder="Choose an account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                 )}
               </div>
@@ -535,23 +615,40 @@ function TransactionDialogSheet({
               {kind === 'transfer' && (
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="td-to-account">To account</Label>
-                  <Select
-                    id="td-to-account"
-                    required
-                    value={toAccountId}
-                    onChange={(e) => setToAccountId(e.target.value)}
-                  >
-                    <option value="" disabled>
-                      Choose an account
-                    </option>
-                    {accounts
-                      .filter((a) => a.id !== accountId)
-                      .map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                  </Select>
+                  {accounts.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">
+                      Loading accounts…
+                    </p>
+                  ) : (
+                    <Select
+                      // Keyed on the excluded account: this option list
+                      // changes shape every time `accountId` does (see the
+                      // "From account" comment above for why that alone
+                      // is enough to spuriously reset a Radix Select's
+                      // value through its native form-mirror). A fresh
+                      // key forces a clean remount with the final option
+                      // list already in place, rather than letting Radix
+                      // mutate an existing instance's options out from
+                      // under it.
+                      key={accountId}
+                      required
+                      value={toAccountId}
+                      onValueChange={setToAccountId}
+                    >
+                      <SelectTrigger id="td-to-account">
+                        <SelectValue placeholder="Choose an account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {accounts
+                          .filter((a) => a.id !== accountId)
+                          .map((a) => (
+                            <SelectItem key={a.id} value={a.id}>
+                              {a.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               )}
 

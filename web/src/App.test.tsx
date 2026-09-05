@@ -4,6 +4,7 @@
 // that guard — so this test mounts AppLayout directly behind a plain
 // (non-data) router, exercising only its own logout click handler.
 import { fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -141,6 +142,7 @@ describe('AppLayout', () => {
   })
 
   it('opens the transaction dialog from Add, and navigates to /transactions after recording', async () => {
+    const user = userEvent.setup()
     const recorded: Transaction = {
       id: 't1',
       type: 'outflow',
@@ -195,9 +197,11 @@ describe('AppLayout', () => {
     fireEvent.change(screen.getByLabelText('Amount'), {
       target: { value: '5.00' },
     })
-    fireEvent.change(await screen.findByLabelText('Category'), {
-      target: { value: 'c1' },
-    })
+    // The Category field is a Combobox (issue #106), not a native
+    // <select> — see TransactionDialog.test.tsx's pickCategory for the
+    // same real-interaction convention.
+    await user.click(await screen.findByRole('combobox', { name: 'Category' }))
+    await user.click(await screen.findByRole('option', { name: 'Coffee' }))
     fireEvent.click(screen.getByRole('button', { name: 'Record spend' }))
 
     expect(await screen.findByText('Transactions content')).toBeInTheDocument()

@@ -4,13 +4,7 @@
 // round-tripping, the immutable kind label) is covered as a real
 // integration through TransactionsList.test.tsx instead of duplicated
 // here, since that's the only place edit is actually triggered from.
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -26,6 +20,17 @@ vi.mock('@/lib/api', async (importOriginal) => {
   }
 })
 
+// createCategory is called by the Category combobox's quick-create row
+// (issue #106) — mocked separately since it lives in lib/settings, not
+// lib/api, alongside the rest of Settings' CRUD calls.
+vi.mock('@/lib/settings', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/settings')>()
+  return {
+    ...actual,
+    createCategory: vi.fn(),
+  }
+})
+
 import {
   ApiError,
   listAccounts,
@@ -35,12 +40,14 @@ import {
   type Category,
   type Transaction,
 } from '@/lib/api'
+import { createCategory } from '@/lib/settings'
 import { TransactionDialogProvider } from './TransactionDialog'
 import { useTransactionDialog } from '@/hooks/use-transaction-dialog'
 
 const mockedListAccounts = vi.mocked(listAccounts)
 const mockedListCategories = vi.mocked(listCategories)
 const mockedRecordOutflow = vi.mocked(recordOutflow)
+const mockedCreateCategory = vi.mocked(createCategory)
 
 const account: Account = {
   id: 'acc-1',
@@ -89,14 +96,28 @@ function renderAndOpen(onSaved?: (t: Transaction) => void) {
   fireEvent.click(screen.getByText('Open'))
 }
 
+// The Category field is a Combobox (issue #106), not a native <select>:
+// picking a value means opening it and clicking the matching option,
+// the same real-interaction shape as date-picker.test.tsx's calendar
+// day pick, not a plain fireEvent.change.
+async function pickCategory(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+) {
+  await user.click(screen.getByRole('combobox', { name: 'Category' }))
+  await user.click(await screen.findByRole('option', { name }))
+}
+
 describe('TransactionDialog (create)', () => {
   beforeEach(() => {
     mockedListAccounts.mockReset().mockResolvedValue([account])
     mockedListCategories.mockReset().mockResolvedValue([category])
     mockedRecordOutflow.mockReset().mockResolvedValue(recorded)
+    mockedCreateCategory.mockReset()
   })
 
   it('records a spend and calls onSaved, closing the dialog by default', async () => {
+    const user = userEvent.setup()
     const onSaved = vi.fn()
     renderAndOpen(onSaved)
     await screen.findByText('HDFC Savings')
@@ -104,9 +125,7 @@ describe('TransactionDialog (create)', () => {
     fireEvent.change(screen.getByLabelText('Amount'), {
       target: { value: '800' },
     })
-    fireEvent.change(screen.getByLabelText('Category'), {
-      target: { value: 'cat-1' },
-    })
+    await pickCategory(user, 'Groceries')
     fireEvent.click(screen.getByRole('button', { name: 'Record spend' }))
 
     await waitFor(() =>
@@ -131,15 +150,14 @@ describe('TransactionDialog (create)', () => {
   // the accounts/categories fetch effect, had already run once and
   // never ran again, leaving whatever was last typed/fetched behind.
   it('resets every field when the create dialog is closed and reopened', async () => {
+    const user = userEvent.setup()
     renderAndOpen()
     await screen.findByText('HDFC Savings')
 
     fireEvent.change(screen.getByLabelText('Amount'), {
       target: { value: '800' },
     })
-    fireEvent.change(screen.getByLabelText('Category'), {
-      target: { value: 'cat-1' },
-    })
+    await pickCategory(user, 'Groceries')
     fireEvent.click(screen.getByText('Add details'))
     fireEvent.change(screen.getByLabelText('Description'), {
       target: { value: 'Leftover text' },
@@ -154,7 +172,9 @@ describe('TransactionDialog (create)', () => {
     await screen.findByText('HDFC Savings')
 
     expect(screen.getByLabelText('Amount')).toHaveValue('')
-    expect(screen.getByLabelText('Category')).toHaveValue('')
+    expect(
+      screen.getByRole('combobox', { name: 'Category' }),
+    ).toHaveTextContent('Choose a category')
     expect(screen.queryByLabelText('Description')).not.toBeInTheDocument()
     expect(screen.getByText('Add details')).toBeInTheDocument()
   })
@@ -163,6 +183,7 @@ describe('TransactionDialog (create)', () => {
   // gated on a mount-only effect, so anything added via Settings between
   // two opens of the same reused dialog instance never showed up.
   it('re-fetches accounts and categories on reopen, picking up anything added since', async () => {
+    const user = userEvent.setup()
     renderAndOpen()
     await screen.findByText('HDFC Savings')
     expect(screen.queryByText('Rent')).not.toBeInTheDocument()
@@ -181,10 +202,9 @@ describe('TransactionDialog (create)', () => {
     await screen.findByText('HDFC Savings')
 
     expect(mockedListCategories).toHaveBeenCalledTimes(2)
+    await user.click(screen.getByRole('combobox', { name: 'Category' }))
     expect(
-      within(screen.getByLabelText('Category')).getByRole('option', {
-        name: 'Rent',
-      }),
+      await screen.findByRole('option', { name: 'Rent' }),
     ).toBeInTheDocument()
   })
 
@@ -205,9 +225,7 @@ describe('TransactionDialog (create)', () => {
     fireEvent.change(screen.getByLabelText('Amount'), {
       target: { value: '800' },
     })
-    fireEvent.change(screen.getByLabelText('Category'), {
-      target: { value: 'cat-1' },
-    })
+    await pickCategory(user, 'Groceries')
     fireEvent.click(screen.getByRole('button', { name: 'Record spend' }))
 
     await waitFor(() =>
@@ -245,7 +263,17 @@ describe('TransactionDialog (create)', () => {
       { ...account, id: 'acc-2', name: 'Checking' },
     ])
     renderAndOpen()
-    await screen.findByText('HDFC Savings')
+    // Two accounts here (unlike every other test's single-account mock,
+    // which takes the plain-text `hasSingleAccount` branch) means the
+    // Account field is a real Select — its trigger shows "HDFC Savings"
+    // via the same text Radix's hidden native form-mirror <option> also
+    // renders, so a plain findByText would match both. Scope to the
+    // visible combobox trigger instead.
+    await waitFor(() =>
+      expect(
+        screen.getByRole('combobox', { name: 'Account' }),
+      ).toHaveTextContent('HDFC Savings'),
+    )
 
     // TabsTrigger activates on mousedown (or focus), not on the
     // synthetic 'click' event fireEvent.click dispatches alone.
@@ -258,6 +286,7 @@ describe('TransactionDialog (create)', () => {
   })
 
   it('preserves what was typed when the API rejects the submission', async () => {
+    const user = userEvent.setup()
     mockedRecordOutflow.mockRejectedValue(
       new ApiError(
         'invalid_input',
@@ -271,20 +300,21 @@ describe('TransactionDialog (create)', () => {
     fireEvent.change(screen.getByLabelText('Amount'), {
       target: { value: '800' },
     })
-    fireEvent.change(screen.getByLabelText('Category'), {
-      target: { value: 'cat-1' },
-    })
+    await pickCategory(user, 'Groceries')
     fireEvent.click(screen.getByRole('button', { name: 'Record spend' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       "Couldn't find a category called 'cat-1'.",
     )
     expect(screen.getByLabelText('Amount')).toHaveValue('800')
-    expect(screen.getByLabelText('Category')).toHaveValue('cat-1')
+    expect(
+      screen.getByRole('combobox', { name: 'Category' }),
+    ).toHaveTextContent('Groceries')
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
   it('"Enter multiple" keeps the dialog open and resets the form after a save', async () => {
+    const user = userEvent.setup()
     const onSaved = vi.fn()
     renderAndOpen(onSaved)
     await screen.findByText('HDFC Savings')
@@ -293,18 +323,89 @@ describe('TransactionDialog (create)', () => {
     fireEvent.change(screen.getByLabelText('Amount'), {
       target: { value: '800' },
     })
-    fireEvent.change(screen.getByLabelText('Category'), {
-      target: { value: 'cat-1' },
-    })
+    await pickCategory(user, 'Groceries')
     fireEvent.click(screen.getByRole('button', { name: 'Record spend' }))
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(await screen.findByRole('status')).toHaveTextContent('Recorded.')
     expect(screen.getByLabelText('Amount')).toHaveValue('')
+    expect(
+      screen.getByRole('combobox', { name: 'Category' }),
+    ).toHaveTextContent('Choose a category')
 
     // The account stays put (the next entry is likely the same account)
     // but category/amount reset, and the switch itself stays on.
     expect(screen.getByRole('switch', { name: 'Enter multiple' })).toBeChecked()
+  })
+
+  // Issue #106: an inline "+ Create" row in the Category combobox itself,
+  // rather than requiring a trip to Settings, so entering a transaction
+  // for a category that doesn't exist yet doesn't mean abandoning it.
+  it('quick-creates a category from the combobox and slots it in as the selection', async () => {
+    const user = userEvent.setup()
+    mockedCreateCategory.mockResolvedValue({
+      id: 'cat-new',
+      name: 'Subscriptions',
+      type: 'expense',
+      sort_order: 1,
+      archived: false,
+    })
+    renderAndOpen()
+    await screen.findByText('HDFC Savings')
+
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: '15' },
+    })
+    await user.click(screen.getByRole('combobox', { name: 'Category' }))
+    await user.type(
+      screen.getByRole('combobox', { name: /search/i }),
+      'Subscriptions',
+    )
+    await user.click(await screen.findByText('Create "Subscriptions"'))
+
+    expect(mockedCreateCategory).toHaveBeenCalledWith({
+      name: 'Subscriptions',
+      type: 'expense',
+    })
+    expect(
+      screen.getByRole('combobox', { name: 'Category' }),
+    ).toHaveTextContent('Subscriptions')
+    // What was already typed before opening the picker is still there —
+    // quick-create doesn't reset or abandon the rest of the transaction.
+    expect(screen.getByLabelText('Amount')).toHaveValue('15')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Record spend' }))
+    await waitFor(() =>
+      expect(mockedRecordOutflow).toHaveBeenCalledWith(
+        expect.objectContaining({ category: 'cat-new' }),
+      ),
+    )
+  })
+
+  it('leaves the combobox open with what was typed if quick-create fails, instead of losing the transaction', async () => {
+    const user = userEvent.setup()
+    mockedCreateCategory.mockRejectedValue(
+      new ApiError(
+        'invalid_input',
+        'A category named "Subscriptions" already exists.',
+        'name',
+      ),
+    )
+    renderAndOpen()
+    await screen.findByText('HDFC Savings')
+
+    await user.click(screen.getByRole('combobox', { name: 'Category' }))
+    const search = screen.getByRole('combobox', { name: /search/i })
+    await user.type(search, 'Subscriptions')
+    await user.click(await screen.findByText('Create "Subscriptions"'))
+
+    await waitFor(() => expect(mockedCreateCategory).toHaveBeenCalled())
+    // Still open, still showing what was typed — the failed create
+    // didn't silently close the picker or discard the typed text.
+    expect(search).toHaveValue('Subscriptions')
+    expect(
+      screen.getByRole('combobox', { name: 'Category' }),
+    ).toHaveTextContent('Choose a category')
   })
 })
