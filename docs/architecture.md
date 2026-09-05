@@ -216,8 +216,8 @@ related screens and a responsive layout for small screens
 than as ad-hoc fixes, since both are exactly the kind of thing a real
 design system should settle once rather than patch per-screen.
 
-### M4 — Multi-currency and FX
-Cross-currency transfers enabled. FX provider abstraction, rate storage, explicit conversion policies, reporting currency. Every converted figure carries its rate, date, source, and policy ([ADR-0004](decisions/0004-multi-currency-and-fx.md)).
+### M4 · The Grey Havens — Multi-currency and FX
+Cross-currency transfers enabled. FX provider abstraction, rate storage, explicit conversion policies, reporting currency. Every converted figure carries its rate, date, source, and policy ([ADR-0004](decisions/0004-multi-currency-and-fx.md)). Rate fetching is always an explicit, user-triggered action — never a background poller — and a fetch is the only thing that ever writes to `fx_rates`; there is no manual-rate entry. Named for the Havens where those who cross over the Sea depart from — a fitting name for the milestone where money finally crosses between currencies.
 
 ### M5 — Analytics and charts
 The shared query/filter model ([ADR-0009](decisions/0009-query-and-analytics-model.md)), spending and income by category, cash flow, trends, savings rate. Charts in the web UI and machine-readable output from the CLI, both over the same analytics methods.
@@ -287,7 +287,7 @@ transaction dialog's own picker — see `docs/design-system.md`'s
 | M1 · Arda — Ledger core, CLI, REST API | ✅ Complete (v0.1.0) |
 | M2 · The Shire — Web UI and authentication | ✅ Complete |
 | M3 · Rivendell — UI polish and design system | ✅ Complete |
-| M4 — Multi-currency and FX | ⬜ Not started |
+| M4 · The Grey Havens — Multi-currency and FX | ⬜ Not started |
 | M5 — Analytics and charts | ⬜ Not started |
 | M6 — Import and export | ⬜ Not started |
 | M7 — Budgets | ⬜ Not started |
