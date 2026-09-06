@@ -276,6 +276,119 @@ func TestFetchFxRates_ProviderFailureStoresNothing(t *testing.T) {
 	}
 }
 
+// TestFetchFxRates_QuoteOverridesReportingCurrency checks issue #165's
+// direct base/quote fetch: an explicit Quote is used instead of the
+// resolved reporting currency for every Pairs entry, and the
+// reporting-quoted Quote/reportingCurrency pair is also fetched and
+// stored in the same call.
+func TestFetchFxRates_QuoteOverridesReportingCurrency(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	provider := svc.FxProvider.(*memFxProvider)
+
+	if err := svc.SetReportingCurrency(ctx, testActorID, "USD"); err != nil {
+		t.Fatalf("SetReportingCurrency: %v", err)
+	}
+	mustAccountFixture(t, svc, "HDFC", "bank", "INR")
+	mustAccountFixture(t, svc, "Deutsche", "bank", "EUR")
+
+	today := mustAppDate(t, 2026, time.August, 20)
+	provider.setRate("INR", "EUR", mustProviderRate(t, "INR", "EUR", "0.0106", today))
+	provider.setRate("EUR", "USD", mustProviderRate(t, "EUR", "USD", "1.08", today))
+
+	result, err := svc.FetchFxRates(ctx, app.FetchFxRatesCommand{
+		ActorID: testActorID, Pairs: []string{"INR"}, Quote: "EUR",
+	})
+	if err != nil {
+		t.Fatalf("FetchFxRates: %v", err)
+	}
+	if len(result.Fetched) != 2 {
+		t.Fatalf("Fetched = %+v, want 2 rows (INR/EUR and the reporting-quoted EUR/USD)", result.Fetched)
+	}
+
+	pairs := map[string]bool{}
+	for _, f := range result.Fetched {
+		pairs[f.Rate.Base()+"/"+f.Rate.Quote()] = true
+	}
+	if !pairs["INR/EUR"] {
+		t.Errorf("Fetched = %+v, want INR/EUR (the requested pair)", result.Fetched)
+	}
+	if !pairs["EUR/USD"] {
+		t.Errorf("Fetched = %+v, want EUR/USD (the quote's own reporting-quoted rate)", result.Fetched)
+	}
+
+	if _, err := svc.FxRates.Lookup(ctx, "INR", "EUR", today, 0); err != nil {
+		t.Errorf("INR/EUR was not stored: %v", err)
+	}
+	if _, err := svc.FxRates.Lookup(ctx, "EUR", "USD", today, 0); err != nil {
+		t.Errorf("EUR/USD was not stored: %v", err)
+	}
+}
+
+// TestFetchFxRates_QuoteEqualToReportingCurrencyIsUnchanged checks that an
+// explicit Quote equal to the reporting currency behaves exactly like
+// today's default (no extra reporting-quoted row, since Quote and the
+// reporting currency are the same pair).
+func TestFetchFxRates_QuoteEqualToReportingCurrencyIsUnchanged(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	provider := svc.FxProvider.(*memFxProvider)
+
+	if err := svc.SetReportingCurrency(ctx, testActorID, "USD"); err != nil {
+		t.Fatalf("SetReportingCurrency: %v", err)
+	}
+	mustAccountFixture(t, svc, "HDFC", "bank", "INR")
+
+	today := mustAppDate(t, 2026, time.August, 20)
+	provider.setRate("INR", "USD", mustProviderRate(t, "INR", "USD", "0.0115", today))
+
+	result, err := svc.FetchFxRates(ctx, app.FetchFxRatesCommand{
+		ActorID: testActorID, Pairs: []string{"INR"}, Quote: "USD",
+	})
+	if err != nil {
+		t.Fatalf("FetchFxRates: %v", err)
+	}
+	if len(result.Fetched) != 1 || result.Fetched[0].Rate.Base() != "INR" || result.Fetched[0].Rate.Quote() != "USD" {
+		t.Fatalf("Fetched = %+v, want exactly one INR/USD row", result.Fetched)
+	}
+}
+
+// TestFetchFxRates_QuoteIgnoredWithoutExplicitPairs checks that Quote has
+// no effect on the default (InUsePairs) fetch: InUsePairs' own set has no
+// notion of an alternate quote, so a caller that sets Quote without also
+// setting Pairs still gets exactly today's default behavior.
+func TestFetchFxRates_QuoteIgnoredWithoutExplicitPairs(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	provider := svc.FxProvider.(*memFxProvider)
+
+	if err := svc.SetReportingCurrency(ctx, testActorID, "USD"); err != nil {
+		t.Fatalf("SetReportingCurrency: %v", err)
+	}
+	mustAccountFixture(t, svc, "HDFC", "bank", "INR")
+
+	today := mustAppDate(t, 2026, time.August, 20)
+	provider.setRate("INR", "USD", mustProviderRate(t, "INR", "USD", "0.0115", today))
+
+	result, err := svc.FetchFxRates(ctx, app.FetchFxRatesCommand{ActorID: testActorID, Quote: "EUR"})
+	if err != nil {
+		t.Fatalf("FetchFxRates: %v", err)
+	}
+	if len(result.Fetched) != 1 || result.Fetched[0].Rate.Base() != "INR" || result.Fetched[0].Rate.Quote() != "USD" {
+		t.Fatalf("Fetched = %+v, want the unchanged INR/USD default, Quote ignored", result.Fetched)
+	}
+}
+
+// TestFetchFxRates_RejectsUnknownQuoteCurrency checks Quote is validated
+// the same way Pairs' own entries are.
+func TestFetchFxRates_RejectsUnknownQuoteCurrency(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	_, err := svc.FetchFxRates(ctx, app.FetchFxRatesCommand{ActorID: testActorID, Pairs: []string{"INR"}, Quote: "ZZZ"})
+	wantErrCode(t, err, errs.InvalidInput)
+}
+
 func TestFetchFxRates_RequiresActorID(t *testing.T) {
 	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
 	_, err := svc.FetchFxRates(context.Background(), app.FetchFxRatesCommand{})
