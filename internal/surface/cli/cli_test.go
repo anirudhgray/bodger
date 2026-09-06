@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/anirudhgray/bodger/internal/adapters/fxprovider"
 	"github.com/anirudhgray/bodger/internal/adapters/sqlite"
 	"github.com/anirudhgray/bodger/internal/app"
 	"github.com/anirudhgray/bodger/internal/platform/clock"
@@ -52,7 +53,7 @@ func newTestFactory(t *testing.T, frozenAt time.Time) clisurface.ServiceFactory 
 			sqlite.NewAccountRepository(db), sqlite.NewCategoryRepository(db),
 			sqlite.NewTransactionRepository(db), sqlite.NewTagRepository(db),
 			sqlite.NewUserRepository(db), sqlite.NewSessionRepository(db), sqlite.NewAPITokenRepository(db),
-			sqlite.NewFxRateRepository(db),
+			sqlite.NewFxRateRepository(db), fxprovider.New("", nil),
 		)
 		return svc, func() error { return nil }, err
 	}

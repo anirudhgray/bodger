@@ -38,6 +38,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/anirudhgray/bodger/internal/adapters/fxprovider"
 	"github.com/anirudhgray/bodger/internal/adapters/sqlite"
 	"github.com/anirudhgray/bodger/internal/app"
 	"github.com/anirudhgray/bodger/internal/platform/clock"
@@ -110,6 +111,7 @@ func newHarness(t *testing.T) *harness {
 		sqlite.NewTransactionRepository(db), sqlite.NewTagRepository(db),
 		sqlite.NewUserRepository(db), sqlite.NewSessionRepository(db), sqlite.NewAPITokenRepository(db),
 		sqlite.NewFxRateRepository(db),
+		fxprovider.New("", nil),
 	)
 	if err != nil {
 		t.Fatalf("app.NewService: %v", err)

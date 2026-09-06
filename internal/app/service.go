@@ -73,6 +73,13 @@ type Service struct {
 	// field above, it carries no actor scoping — fx_rates is a global
 	// table (ADR-0004).
 	FxRates ports.FxRateRepository
+
+	// FxProvider is issue #131's external rate source (ADR-0012:
+	// Frankfurter). FetchFxRates (issue #135) is the only use-case method
+	// that ever calls it — every other use case reads exclusively through
+	// FxRates, never this, so the application stays fully usable with no
+	// network per ADR-0004.
+	FxProvider ports.FxRateProvider
 }
 
 // NewService constructs a Service from its dependencies, rejecting a nil
@@ -91,6 +98,7 @@ func NewService(
 	sessions ports.SessionRepository,
 	apiTokens ports.APITokenRepository,
 	fxRates ports.FxRateRepository,
+	fxProvider ports.FxRateProvider,
 ) (*Service, error) {
 	switch {
 	case clk == nil:
@@ -113,6 +121,8 @@ func NewService(
 		return nil, missingDependency("API token repository")
 	case fxRates == nil:
 		return nil, missingDependency("FX rate repository")
+	case fxProvider == nil:
+		return nil, missingDependency("FX rate provider")
 	}
 
 	return &Service{
@@ -127,6 +137,7 @@ func NewService(
 		Sessions:     sessions,
 		APITokens:    apiTokens,
 		FxRates:      fxRates,
+		FxProvider:   fxProvider,
 	}, nil
 }
 

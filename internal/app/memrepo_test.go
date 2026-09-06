@@ -513,25 +513,33 @@ func (m *memAPITokens) Revoke(_ context.Context, actorID, id string, revokedAt t
 
 var _ ports.APITokenRepository = (*memAPITokens)(nil)
 
-// memFxRates is an in-memory ports.FxRateRepository, for whatever
-// FX-management use case (a later issue) needs one wired into
-// newTestService. Store/StoreBatch/Lookup mirror the real sqlite
-// adapter's behaviour (upsert on (base, quote, date, source);
-// fx.SelectRate does the actual selection — domain.Date's fields are all
-// comparable, so it works directly as part of a map key). InUsePairs has
-// no accounts or transactions of its own to inspect — that data lives in
-// memAccounts/memTransactions, not here — so it always returns no pairs;
-// nothing in this package's use-case tests calls it yet.
+// memFxRates is an in-memory ports.FxRateRepository, used by every
+// use-case test wired through newTestService. Store/StoreBatch/Lookup
+// mirror the real sqlite adapter's behaviour (upsert on (base, quote,
+// date, source); fx.SelectRate does the actual selection — domain.Date's
+// fields are all comparable, so it works directly as part of a map key).
+//
+// InUsePairs mirrors the real adapter's union-of-account-and-posting-
+// currencies query (internal/adapters/sqlite/fx_rate_repo.go) over
+// accounts/transactions rather than fx_rates itself, so it holds
+// references to the same *memAccounts/*memTransactions newTestService
+// wires everywhere else — issue #135's FetchFxRates default-pairs
+// behaviour needs this to actually reflect what a test set up, not always
+// answer "no pairs".
 type memFxRateKey struct {
 	base, quote, source string
 	date                domain.Date
 }
 
 type memFxRates struct {
-	byKey map[memFxRateKey]fx.Rate
+	byKey        map[memFxRateKey]fx.Rate
+	accounts     *memAccounts
+	transactions *memTransactions
 }
 
-func newMemFxRates() *memFxRates { return &memFxRates{byKey: map[memFxRateKey]fx.Rate{}} }
+func newMemFxRates(accounts *memAccounts, transactions *memTransactions) *memFxRates {
+	return &memFxRates{byKey: map[memFxRateKey]fx.Rate{}, accounts: accounts, transactions: transactions}
+}
 
 func (m *memFxRates) Store(_ context.Context, rate fx.Rate, date domain.Date, source string) error {
 	m.byKey[memFxRateKey{rate.Base(), rate.Quote(), source, date}] = rate
@@ -562,8 +570,124 @@ func (m *memFxRates) Lookup(_ context.Context, base, quote string, date domain.D
 	return sel, nil
 }
 
-func (m *memFxRates) InUsePairs(context.Context, string, string) ([]ports.CurrencyPair, error) {
-	return nil, nil
+// InUsePairs implements ports.FxRateRepository, mirroring the real
+// sqlite adapter's union-of-account-and-posting-currencies query
+// (internal/adapters/sqlite/fx_rate_repo.go's InUsePairs doc comment) over
+// this fixture's accounts/transactions.
+func (m *memFxRates) InUsePairs(_ context.Context, actorID, reportingCurrency string) ([]ports.CurrencyPair, error) {
+	if actorID == "" {
+		return nil, errs.New(errs.InvalidInput).Explain("An actor ID is required.").Field("actor_id")
+	}
+	if reportingCurrency == "" {
+		return nil, errs.New(errs.InvalidInput).Explain("A reporting currency is required.").Field("reporting_currency")
+	}
+
+	seen := map[string]bool{}
+	if m.accounts != nil {
+		for _, a := range m.accounts.byID {
+			if a.UserID() == actorID {
+				seen[a.Currency()] = true
+			}
+		}
+	}
+	if m.transactions != nil {
+		for _, rec := range m.transactions.byID {
+			if rec.txn.UserID() != actorID || rec.txn.IsDeleted() {
+				continue
+			}
+			for _, p := range rec.txn.Postings() {
+				seen[p.Currency()] = true
+			}
+		}
+	}
+	delete(seen, reportingCurrency)
+
+	currencies := make([]string, 0, len(seen))
+	for c := range seen {
+		currencies = append(currencies, c)
+	}
+	sort.Strings(currencies)
+
+	pairs := make([]ports.CurrencyPair, 0, len(currencies))
+	for _, c := range currencies {
+		pairs = append(pairs, ports.CurrencyPair{Base: c, Quote: reportingCurrency})
+	}
+	return pairs, nil
 }
 
 var _ ports.FxRateRepository = (*memFxRates)(nil)
+
+// memFxProvider is an in-memory ports.FxRateProvider for FetchFxRates
+// tests: canned responses per (base, quote) pair, recorded calls so a test
+// can assert FetchRate vs. FetchRange was used correctly (issue #135's
+// "never loop per-date when a range is given" requirement), and an
+// optional per-pair error to exercise provider-failure handling.
+type memFxProviderKey struct{ base, quote string }
+
+type memFxProviderCall struct {
+	Base, Quote string
+	Date        domain.Date
+	From, To    domain.Date
+	IsRangeCall bool
+}
+
+type memFxProvider struct {
+	rate  map[memFxProviderKey]ports.ProviderRate
+	rang  map[memFxProviderKey][]ports.ProviderRate
+	errs  map[memFxProviderKey]error
+	calls []memFxProviderCall
+}
+
+func newMemFxProvider() *memFxProvider {
+	return &memFxProvider{
+		rate: map[memFxProviderKey]ports.ProviderRate{},
+		rang: map[memFxProviderKey][]ports.ProviderRate{},
+		errs: map[memFxProviderKey]error{},
+	}
+}
+
+// setRate configures FetchRate(base, quote, ...) to return rate.
+func (m *memFxProvider) setRate(base, quote string, rate ports.ProviderRate) {
+	m.rate[memFxProviderKey{base, quote}] = rate
+}
+
+// setRange configures FetchRange(base, quote, ...) to return rows.
+func (m *memFxProvider) setRange(base, quote string, rows []ports.ProviderRate) {
+	m.rang[memFxProviderKey{base, quote}] = rows
+}
+
+// setError configures both FetchRate and FetchRange for (base, quote) to
+// fail with err instead of returning a canned response.
+func (m *memFxProvider) setError(base, quote string, err error) {
+	m.errs[memFxProviderKey{base, quote}] = err
+}
+
+func (m *memFxProvider) FetchRate(_ context.Context, base, quote string, date domain.Date) (ports.ProviderRate, error) {
+	m.calls = append(m.calls, memFxProviderCall{Base: base, Quote: quote, Date: date})
+	key := memFxProviderKey{base, quote}
+	if err, ok := m.errs[key]; ok {
+		return ports.ProviderRate{}, err
+	}
+	pr, ok := m.rate[key]
+	if !ok {
+		return ports.ProviderRate{}, errs.New(errs.NotFound).Explain("no canned rate for %s/%s", base, quote)
+	}
+	return pr, nil
+}
+
+func (m *memFxProvider) FetchRange(_ context.Context, base, quote string, from, to domain.Date) ([]ports.ProviderRate, error) {
+	m.calls = append(m.calls, memFxProviderCall{Base: base, Quote: quote, From: from, To: to, IsRangeCall: true})
+	key := memFxProviderKey{base, quote}
+	if err, ok := m.errs[key]; ok {
+		return nil, err
+	}
+	rows, ok := m.rang[key]
+	if !ok {
+		return nil, errs.New(errs.NotFound).Explain("no canned range for %s/%s", base, quote)
+	}
+	return rows, nil
+}
+
+func (m *memFxProvider) Name() string { return "mem-provider" }
+
+var _ ports.FxRateProvider = (*memFxProvider)(nil)
