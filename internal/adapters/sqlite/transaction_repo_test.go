@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/anirudhgray/bodger/internal/domain"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
@@ -118,6 +120,81 @@ func TestTransactionRepository_Create_Transfer(t *testing.T) {
 	}
 	if got.Kind() != ledger.TransactionKindTransfer || len(got.Postings()) != 2 {
 		t.Errorf("Get transfer = %+v", got)
+	}
+	if _, _, ok := got.FxRate(); ok {
+		t.Errorf("FxRate() ok = true, want false for a same-currency transfer")
+	}
+}
+
+// TestTransactionRepository_Create_TransferPersistsFxRate exercises issue
+// #133's write-then-read round trip: a cross-currency transfer's implied
+// rate, attached via ledger.Transaction.WithFxRate (the way
+// internal/app.RecordTransfer attaches it), must survive Create followed
+// by Get through the transactions.fx_rate_used/fx_rate_source columns.
+func TestTransactionRepository_Create_TransferPersistsFxRate(t *testing.T) {
+	db, _ := newTestDB(t)
+	accRepo := NewAccountRepository(db)
+	ctx := context.Background()
+	inrAcc := mustAccountWithCurrency(t, "acc-inr", ports.SeededUserID, "HDFC Savings", "INR")
+	if err := accRepo.Create(ctx, ports.SeededUserID, inrAcc); err != nil {
+		t.Fatalf("seed acc-inr: %v", err)
+	}
+	usdAcc := mustAccountWithCurrency(t, "acc-usd", ports.SeededUserID, "Chase USD", "USD")
+	if err := accRepo.Create(ctx, ports.SeededUserID, usdAcc); err != nil {
+		t.Fatalf("seed acc-usd: %v", err)
+	}
+
+	repo := NewTransactionRepository(db)
+
+	out := mustPosting(t, "post-out", "acc-inr", -2000000, "INR", nil)
+	in := mustPosting(t, "post-in", "acc-usd", 23000, "USD", nil)
+	txn, rate, err := ledger.NewTransfer("txn-fx-transfer", ports.SeededUserID, mustDate(t, 2026, time.August, 5), "FX transfer", []ledger.Posting{out, in})
+	if err != nil {
+		t.Fatalf("NewTransfer: %v", err)
+	}
+	txn = txn.WithFxRate(rate, ledger.FxRateSourceImplied)
+
+	if err := repo.Create(ctx, ports.SeededUserID, txn, nil); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, _, err := repo.Get(ctx, ports.SeededUserID, "txn-fx-transfer")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	gotRate, gotSource, ok := got.FxRate()
+	if !ok {
+		t.Fatalf("FxRate() ok = false, want true")
+	}
+	if gotSource != ledger.FxRateSourceImplied {
+		t.Errorf("FxRate() source = %q, want %q", gotSource, ledger.FxRateSourceImplied)
+	}
+	if gotRate.Base() != "INR" || gotRate.Quote() != "USD" {
+		t.Errorf("FxRate() base/quote = %s/%s, want INR/USD", gotRate.Base(), gotRate.Quote())
+	}
+	want := decimal.RequireFromString("0.0115")
+	if !gotRate.Value().Equal(want) {
+		t.Errorf("FxRate() value = %s, want %s", gotRate.Value(), want)
+	}
+
+	// Guard against a false-positive: fx.DeriveImpliedRate is deterministic
+	// given the two postings, so this also verifies the round trip is
+	// actually reading the stored columns rather than something that would
+	// coincidentally match a recomputation for any implied rate.
+	var rawUsed, rawSource string
+	row := db.read.QueryRowContext(ctx, `SELECT fx_rate_used, fx_rate_source FROM transactions WHERE id = ?`, "txn-fx-transfer")
+	if err := row.Scan(&rawUsed, &rawSource); err != nil {
+		t.Fatalf("scan raw columns: %v", err)
+	}
+	if rawSource != ledger.FxRateSourceImplied {
+		t.Errorf("raw fx_rate_source = %q, want %q", rawSource, ledger.FxRateSourceImplied)
+	}
+	rawValue, err := decimal.NewFromString(rawUsed)
+	if err != nil {
+		t.Fatalf("parse raw fx_rate_used %q: %v", rawUsed, err)
+	}
+	if !rawValue.Equal(want) {
+		t.Errorf("raw fx_rate_used = %s, want %s", rawValue, want)
 	}
 }
 
