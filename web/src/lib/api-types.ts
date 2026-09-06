@@ -349,7 +349,7 @@ export interface paths {
         put?: never;
         /**
          * Move money between two of the actor's own accounts.
-         * @description A transfer between accounts in different currencies is allowed: the implied exchange rate between the two legs is derived and recorded automatically.
+         * @description A transfer between accounts in different currencies is allowed: the implied exchange rate between the two legs is derived and recorded automatically, from "to_amount" when given or from "amount"'s raw digits reinterpreted in the to-currency otherwise.
          */
         post: operations["createTransfer"];
         delete?: never;
@@ -597,6 +597,11 @@ export interface components {
             tags?: string[];
             /** @description An account's ID or unique name: the account the money arrives in. */
             to_account: string;
+            /**
+             * Format: money
+             * @description The to-leg's own amount, in the to-account's own currency. Omit to reuse amount's raw digits, reinterpreted in the to-currency, as before. Set this to record a real cross-currency exchange rate rather than an accidental 1:1.
+             */
+            to_amount?: string;
         };
         EditTransactionRequest: {
             /** @description An account's ID or unique name. Read when editing an outflow or an inflow. */
@@ -621,6 +626,11 @@ export interface components {
             tags?: string[];
             /** @description An account's ID or unique name. Read when editing a transfer. */
             to_account?: string;
+            /**
+             * Format: money
+             * @description The to-leg's own amount, in the to-account's own currency. Read when editing a transfer; omit to reuse amount's raw digits, reinterpreted in the to-currency, as before.
+             */
+            to_amount?: string;
         };
         Error: {
             /** @enum {string} */

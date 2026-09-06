@@ -36,6 +36,7 @@ type conformanceCase struct {
 
 	fromAccount string // transfer
 	toAccount   string // transfer
+	toAmount    string // transfer, optional (issue #159)
 
 	notes string
 	tags  []string
@@ -192,10 +193,28 @@ var cases = []conformanceCase{
 		// must derive and render the same implied exchange rate and
 		// source for the same raw input — see comparableKeys' "rate"/
 		// "rate_source" entries below, which is what actually asserts
-		// that agreement rather than just amount/currency.
+		// that agreement rather than just amount/currency. toAmount is
+		// deliberately omitted here: this covers the fallback (issue
+		// #159) where the to-leg reuses amount's raw digits, reinterpreted
+		// in the to-currency — both surfaces must still agree on that
+		// trivial 1:1-ratio rate. The following case covers a real,
+		// independently-given to-amount instead.
 		name:        "cross-currency transfer renders its implied rate identically",
 		kind:        transfer,
 		amount:      "100",
+		date:        "2026-01-15",
+		fromAccount: "Cash",         // USD
+		toAccount:   "HDFC Savings", // INR
+	},
+	{
+		// Same pair, but with an independent to-leg amount (issue
+		// #159): both surfaces must derive and render the same *real*
+		// implied rate (not the trivial 1:1 the case above exercises)
+		// from the two independently-given amounts.
+		name:        "cross-currency transfer with an independent to-amount renders its implied rate identically",
+		kind:        transfer,
+		amount:      "100",
+		toAmount:    "8000",
 		date:        "2026-01-15",
 		fromAccount: "Cash",         // USD
 		toAccount:   "HDFC Savings", // INR
@@ -335,6 +354,9 @@ func (c conformanceCase) cliArgs() []string {
 	case transfer:
 		args = []string{"move", c.amount, "--from", c.fromAccount, "--to", c.toAccount}
 	}
+	if c.kind == transfer && c.toAmount != "" {
+		args = append(args, "--to-amount", c.toAmount)
+	}
 	if c.date != "" {
 		args = append(args, "--on", c.date)
 	}
@@ -366,6 +388,7 @@ func (c conformanceCase) httpBody() any {
 			"from_account": c.fromAccount,
 			"to_account":   c.toAccount,
 			"amount":       c.amount,
+			"to_amount":    c.toAmount,
 			"date":         c.date,
 			// The same default internal/surface/cli/move.go's newMoveCmd
 			// builds, so description is never a point of divergence

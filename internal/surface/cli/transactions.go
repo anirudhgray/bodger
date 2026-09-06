@@ -274,6 +274,7 @@ type transactionEditFlags struct {
 	currency    string
 	from        string
 	to          string
+	toAmount    string
 	amount      string
 	on          string
 	description string
@@ -334,6 +335,7 @@ func newTransactionsEditCmd(factory ServiceFactory) *cobra.Command {
 				CategoryRef:    f.category,
 				FromAccountRef: f.from,
 				ToAccountRef:   f.to,
+				ToAmount:       f.toAmount,
 				Amount:         f.amount,
 				Date:           f.on,
 				Description:    f.description,
@@ -357,6 +359,7 @@ func newTransactionsEditCmd(factory ServiceFactory) *cobra.Command {
 	cmd.Flags().StringVar(&f.currency, "currency", "", "the currency of the amount (defaults to the account's)")
 	cmd.Flags().StringVar(&f.from, "from", "", "for a move: the account money leaves")
 	cmd.Flags().StringVar(&f.to, "to", "", "for a move: the account money arrives in")
+	cmd.Flags().StringVar(&f.toAmount, "to-amount", "", "for a move: the amount received, in the destination account's own currency (defaults to the same amount, reinterpreted in that currency)")
 	cmd.Flags().StringVar(&f.on, "on", "", "the date it happened (defaults to today)")
 	cmd.Flags().StringVar(&f.note, "note", "", "a free-text note to attach")
 	cmd.Flags().StringArrayVar(&f.tags, "tag", nil, "a tag to attach (repeatable)")

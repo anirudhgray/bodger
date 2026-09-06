@@ -62,9 +62,11 @@ type EditTransactionCommand struct {
 	CategoryRef string
 
 	// FromAccountRef and ToAccountRef apply only when the existing
-	// transaction is a transfer.
+	// transaction is a transfer. ToAmount is likewise transfer-only and
+	// optional — see RecordTransferCommand's doc comment (issue #159).
 	FromAccountRef string
 	ToAccountRef   string
+	ToAmount       string
 
 	Amount      string
 	Date        string
@@ -116,7 +118,7 @@ func (s *Service) EditTransaction(ctx context.Context, cmd EditTransactionComman
 		}
 
 	case ledger.TransactionKindTransfer:
-		outPosting, inPosting, err := s.buildTransferPostings(ctx, cmd.ActorID, cmd.FromAccountRef, cmd.ToAccountRef, cmd.Amount)
+		outPosting, inPosting, err := s.buildTransferPostings(ctx, cmd.ActorID, cmd.FromAccountRef, cmd.ToAccountRef, cmd.Amount, cmd.ToAmount)
 		if err != nil {
 			return TransactionResult{}, err
 		}

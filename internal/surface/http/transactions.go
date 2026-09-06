@@ -100,6 +100,7 @@ type editTransactionRequest struct {
 	Category    string   `json:"category,omitempty" doc:"A category's ID or unique name. Read when editing an outflow or an inflow."`
 	FromAccount string   `json:"from_account,omitempty" doc:"An account's ID or unique name. Read when editing a transfer."`
 	ToAccount   string   `json:"to_account,omitempty" doc:"An account's ID or unique name. Read when editing a transfer."`
+	ToAmount    string   `json:"to_amount,omitempty" doc:"The to-leg's own amount, in the to-account's own currency. Read when editing a transfer; omit to reuse amount's raw digits, reinterpreted in the to-currency, as before." format:"money"`
 	Currency    string   `json:"currency,omitempty"`
 	Amount      string   `json:"amount" doc:"Always positive; the transaction's own type says which way the money moves." format:"money"`
 	Date        string   `json:"date,omitempty" doc:"Omit to book the transaction to today in the account owner's own timezone." format:"date"`
@@ -129,6 +130,7 @@ func (h *handlers) editTransaction(w http.ResponseWriter, r *http.Request) {
 		CategoryRef:    body.Category,
 		FromAccountRef: body.FromAccount,
 		ToAccountRef:   body.ToAccount,
+		ToAmount:       body.ToAmount,
 		Amount:         body.Amount,
 		Date:           body.Date,
 		Description:    body.Description,

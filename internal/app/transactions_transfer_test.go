@@ -130,6 +130,70 @@ func TestRecordTransfer_CrossCurrencyDerivesAndPersistsImpliedRate(t *testing.T)
 	}
 }
 
+func TestRecordTransfer_IndependentToAmountDerivesRealRate(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	inr := mustAccountFixture(t, svc, "HDFC Savings", "bank", "INR")
+	usd := mustAccountFixture(t, svc, "Chase USD", "bank", "USD")
+
+	result, err := svc.RecordTransfer(ctx, app.RecordTransferCommand{
+		ActorID: testActorID, FromAccountRef: inr.Account.ID(), ToAccountRef: usd.Account.ID(),
+		Amount: "20000", ToAmount: "230", Description: "Cross-currency, real rate",
+	})
+	if err != nil {
+		t.Fatalf("RecordTransfer: %v", err)
+	}
+
+	postings := result.Transaction.Postings()
+	if len(postings) != 2 {
+		t.Fatalf("len(Postings) = %d, want 2", len(postings))
+	}
+	for _, p := range postings {
+		switch p.AccountID() {
+		case inr.Account.ID():
+			if p.Currency() != "INR" || p.Amount().AmountMinor() != -2000000 {
+				t.Errorf("from-account posting = %s %d, want -2000000 INR", p.Currency(), p.Amount().AmountMinor())
+			}
+		case usd.Account.ID():
+			if p.Currency() != "USD" || p.Amount().AmountMinor() != 23000 {
+				t.Errorf("to-account posting = %s %d, want 23000 USD", p.Currency(), p.Amount().AmountMinor())
+			}
+		default:
+			t.Errorf("unexpected posting account %q", p.AccountID())
+		}
+	}
+
+	rate, source, ok := result.Transaction.FxRate()
+	if !ok {
+		t.Fatalf("FxRate() ok = false, want true for a cross-currency transfer")
+	}
+	if source != ledger.FxRateSourceImplied {
+		t.Errorf("FxRate() source = %q, want %q", source, ledger.FxRateSourceImplied)
+	}
+	// ₹20,000.00 out, $230.00 in: the implied rate (quote/base, i.e. USD
+	// per INR, matching rate.Base()==INR/rate.Quote()==USD above) must
+	// reflect that real ratio (230/20000 = 0.0115), not the trivial 1:1 a
+	// caller gets by omitting ToAmount
+	// (TestRecordTransfer_CrossCurrencyDerivesAndPersistsImpliedRate).
+	want := decimal.RequireFromString("0.0115")
+	if !rate.Value().Equal(want) {
+		t.Errorf("FxRate() value = %s, want %s", rate.Value(), want)
+	}
+}
+
+func TestRecordTransfer_ZeroToAmountRejected(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	inr := mustAccountFixture(t, svc, "HDFC Savings", "bank", "INR")
+	usd := mustAccountFixture(t, svc, "Chase USD", "bank", "USD")
+
+	_, err := svc.RecordTransfer(ctx, app.RecordTransferCommand{
+		ActorID: testActorID, FromAccountRef: inr.Account.ID(), ToAccountRef: usd.Account.ID(),
+		Amount: "20000", ToAmount: "0", Description: "Nonsense",
+	})
+	wantErrCode(t, err, errs.InvalidInput)
+}
+
 func TestRecordTransfer_SameCurrencyHasNoPersistedFxRate(t *testing.T) {
 	svc := newTestService(t, time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC), "UTC")
 	ctx := context.Background()

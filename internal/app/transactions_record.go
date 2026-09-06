@@ -178,26 +178,29 @@ func (s *Service) RecordOutflow(ctx context.Context, cmd RecordOutflowCommand) (
 // buildTransferPostings resolves fromRef and toRef against the actor's own
 // accounts and builds the two opposite-signed, uncategorised postings a
 // transfer needs (data-model.md §5: "exactly two postings; exactly two
-// distinct accounts; opposite signs; both categories null"). The amount is
+// distinct accounts; opposite signs; both categories null"). amount is
 // parsed once, in the *from* account's currency — there is no separate
 // Currency command field for a transfer, unlike RecordOutflow/RecordInflow,
 // because a transfer's amount isn't an independent fact the way an entry's
 // amount is; it's a movement between two accounts that already have
 // currencies.
 //
-// The *to* posting is built in the *to* account's own currency, which is
-// what lets ledger.NewTransfer's cross-currency handling (issue #129) take
-// over when fromAccount and toAccount differ: both amountMinor and the *to*
-// account's currency are user-authoritative facts (the same raw amount,
-// reinterpreted in the to-account's own currency and minor-unit scale,
-// since there is no separate to-amount command field yet — a surface-layer
-// change, out of this issue's scope), and NewTransfer derives the implied
-// rate between them rather than requiring them to already agree.
-// RecordTransfer/EditTransaction (issue #133) persist that rate via
+// toAmount is optional (empty string means "not given"). When empty, the
+// *to* posting reuses amount's raw digits, reinterpreted in the *to*
+// account's own currency and minor-unit scale — today's behaviour,
+// unchanged, for a same-currency transfer or a caller that hasn't been
+// updated to send an independent to-amount yet (issue #159). When
+// non-empty, it's parsed in the *to* account's own currency and used
+// directly, letting the two legs disagree by a real, user-entered exchange
+// rate rather than only the accidental one two equal raw numbers imply.
+// Either way, both legs are user-authoritative facts handed to
+// ledger.NewTransfer, which derives the implied rate between them (issue
+// #129) rather than requiring them to already agree; RecordTransfer/
+// EditTransaction (issue #133) persist that rate via
 // ledger.Transaction.WithFxRate once NewTransfer returns it.
 //
 // Shared by RecordTransfer and EditTransaction (when editing a transfer).
-func (s *Service) buildTransferPostings(ctx context.Context, actorID, fromRef, toRef, amount string) (ledger.Posting, ledger.Posting, error) {
+func (s *Service) buildTransferPostings(ctx context.Context, actorID, fromRef, toRef, amount, toAmount string) (ledger.Posting, ledger.Posting, error) {
 	fromAccount, err := s.resolveOwnedAccount(ctx, actorID, fromRef)
 	if err != nil {
 		return ledger.Posting{}, ledger.Posting{}, attachField(err, "from_account_ref")
@@ -218,11 +221,25 @@ func (s *Service) buildTransferPostings(ctx context.Context, actorID, fromRef, t
 		return ledger.Posting{}, ledger.Posting{}, errs.New(errs.InvalidInput).Explain("Amount must not be zero.").Field("amount")
 	}
 
+	toAmountMinor := amountMinor
+	if strings.TrimSpace(toAmount) != "" {
+		toAmountMinor, err = normalize.Amount(toAmount, toAccount.Currency())
+		if err != nil {
+			return ledger.Posting{}, ledger.Posting{}, attachField(err, "to_amount")
+		}
+		if toAmountMinor < 0 {
+			toAmountMinor = -toAmountMinor
+		}
+		if toAmountMinor == 0 {
+			return ledger.Posting{}, ledger.Posting{}, errs.New(errs.InvalidInput).Explain("Amount must not be zero.").Field("to_amount")
+		}
+	}
+
 	fromMoney, err := money.NewMoney(-amountMinor, fromAccount.Currency())
 	if err != nil {
 		return ledger.Posting{}, ledger.Posting{}, errs.New(errs.Internal).Wrap(err)
 	}
-	toMoney, err := money.NewMoney(amountMinor, toAccount.Currency())
+	toMoney, err := money.NewMoney(toAmountMinor, toAccount.Currency())
 	if err != nil {
 		return ledger.Posting{}, ledger.Posting{}, errs.New(errs.Internal).Wrap(err)
 	}
@@ -238,17 +255,21 @@ func (s *Service) buildTransferPostings(ctx context.Context, actorID, fromRef, t
 	return outPosting, inPosting, nil
 }
 
-// RecordTransferCommand records a transfer of exactly Amount from
-// FromAccountRef to ToAccountRef. FromAccountRef and ToAccountRef may have
-// different currencies: buildTransferPostings resolves each account's own
-// currency, and ledger.NewTransfer derives the implied exchange rate
-// between the two legs (issue #129), which RecordTransfer persists on the
-// resulting transaction (issue #133).
+// RecordTransferCommand records a transfer of Amount from FromAccountRef to
+// ToAccountRef. FromAccountRef and ToAccountRef may have different
+// currencies: when they do, ToAmount is optional and lets the caller state
+// the to-leg's own amount independently (issue #159) rather than having it
+// default to Amount's raw digits reinterpreted in the to-currency.
+// buildTransferPostings resolves each account's own currency either way,
+// and ledger.NewTransfer derives the implied exchange rate between the two
+// legs (issue #129), which RecordTransfer persists on the resulting
+// transaction (issue #133).
 type RecordTransferCommand struct {
 	ActorID        string
 	FromAccountRef string
 	ToAccountRef   string
 	Amount         string
+	ToAmount       string
 	Date           string
 	Description    string
 	Notes          string
@@ -263,7 +284,7 @@ func (s *Service) RecordTransfer(ctx context.Context, cmd RecordTransferCommand)
 		return TransactionResult{}, err
 	}
 
-	outPosting, inPosting, err := s.buildTransferPostings(ctx, cmd.ActorID, cmd.FromAccountRef, cmd.ToAccountRef, cmd.Amount)
+	outPosting, inPosting, err := s.buildTransferPostings(ctx, cmd.ActorID, cmd.FromAccountRef, cmd.ToAccountRef, cmd.Amount, cmd.ToAmount)
 	if err != nil {
 		return TransactionResult{}, err
 	}

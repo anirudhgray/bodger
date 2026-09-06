@@ -84,11 +84,12 @@ func printMove(w io.Writer, v moveView) {
 }
 
 type moveFlags struct {
-	from string
-	to   string
-	on   string
-	note string
-	tags []string
+	from     string
+	to       string
+	toAmount string
+	on       string
+	note     string
+	tags     []string
 }
 
 // newMoveCmd builds "move": a transfer between two of the actor's own
@@ -123,6 +124,7 @@ func newMoveCmd(factory ServiceFactory) *cobra.Command {
 				FromAccountRef: f.from,
 				ToAccountRef:   f.to,
 				Amount:         args[0],
+				ToAmount:       f.toAmount,
 				Date:           f.on,
 				Description:    description,
 				Notes:          f.note,
@@ -137,6 +139,7 @@ func newMoveCmd(factory ServiceFactory) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&f.from, "from", "", "the account money leaves (required)")
 	cmd.Flags().StringVar(&f.to, "to", "", "the account money arrives in (required)")
+	cmd.Flags().StringVar(&f.toAmount, "to-amount", "", "the amount received, in the destination account's own currency (defaults to the same amount, reinterpreted in that currency)")
 	cmd.Flags().StringVar(&f.on, "on", "", "the date this happened (defaults to today)")
 	cmd.Flags().StringVar(&f.note, "note", "", "a free-text note to attach")
 	cmd.Flags().StringArrayVar(&f.tags, "tag", nil, "a tag to attach (repeatable)")
