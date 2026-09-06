@@ -343,8 +343,8 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | --- | --- |
 | `bodger spend <amount> <category> [--account] [--on] [--tag] [--note]` | Record money you spent |
 | `bodger receive <amount> <category> [--account] [--on] [--tag] [--note]` | Record money you received |
-| `bodger move <amount> --from <account> --to <account> [--on] [--tag] [--note]` | Move money between two of your accounts |
-| `bodger balance [--on]` | See what every account holds |
+| `bodger move <amount> --from <account> --to <account> [--on] [--tag] [--note]` | Move money between two of your accounts — accounts in different currencies are fine, and the implied exchange rate is shown alongside the transfer |
+| `bodger balance [--on] [--currency] [--policy] [--pinned-date]` | See what every account holds — add `--currency`/`--policy` to convert every balance into one currency, with the rate shown alongside |
 | `bodger transactions list [--account] [--category] [--type] [--since] [--until] [--limit] [--offset]` | List what you've recorded, newest first |
 | `bodger transactions edit <id> --amount <amount> --description <text> [--account] [--category] [--currency] [--from] [--to] [--on] [--tag] [--note]` | Correct a transaction — replaces every value |
 | `bodger transactions delete <id>` | Delete a transaction you recorded by mistake |
@@ -364,6 +364,10 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | `bodger auth token create <name> [--expires]` | Create a new API token |
 | `bodger auth token list` | List your API tokens |
 | `bodger auth token revoke <id>` | Revoke an API token |
+| `bodger fx rates fetch [--pair] [--from] [--to]` | Fetch and store exchange rates from the configured provider — defaults to every currency pair you actually use; add `--from`/`--to` for a historical backfill |
+| `bodger fx rates list --from <currency> --to <currency> --policy <policy> [--transaction-date] [--pinned-date]` | Look up the exchange rate between two currencies under a given conversion policy |
+| `bodger config reporting-currency get` | See your configured reporting currency |
+| `bodger config reporting-currency set <currency>` | Set your reporting currency |
 
 `<account>` and `<category>` accept either the name you gave it (case-insensitive) or its ID. If a name matches more than one of your accounts or categories, `bodger` lists the candidates instead of guessing. `<id>` is a transaction's own ID, which `bodger transactions list` shows in its last column.
 
