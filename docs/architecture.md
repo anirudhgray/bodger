@@ -412,8 +412,22 @@ suggestion is a convenience, never a requirement to submit — though its
 gap. Tracked as [#165](https://github.com/anirudhgray/bodger/issues/165):
 a direct `base/quote` fetch, not composed/derived rate math.
 
+[#140](https://github.com/anirudhgray/bodger/issues/140) adds the one
+field this milestone gives the web Settings area: a Currency section
+(`web/src/pages/settings/Currency.tsx`) alongside the existing Password/API
+tokens/Accounts/Categories ones, wired through `GET`/`POST
+/api/v1/reporting-currency` via `web/src/lib/settings.ts`, following the
+same one-call-per-action discipline every other settings section already
+uses. There's no currency-list endpoint, so the field is a free-text ISO
+code (uppercased client-side, validated server-side) rather than a picker;
+an unset preference is flagged in plain language rather than naming the
+instance default, since that value isn't itself exposed over this API —
+only `bodger config reporting-currency get`, which runs server-side, can
+name it.
+
 Every other surface exposing this app-layer work
-([#139](https://github.com/anirudhgray/bodger/issues/139)–[#141](https://github.com/anirudhgray/bodger/issues/141),
+([#139](https://github.com/anirudhgray/bodger/issues/139),
+[#141](https://github.com/anirudhgray/bodger/issues/141),
 [#145](https://github.com/anirudhgray/bodger/issues/145)) remains open.
 
 | Milestone | Status |
