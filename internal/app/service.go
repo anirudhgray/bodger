@@ -66,6 +66,13 @@ type Service struct {
 	Users     ports.UserRepository
 	Sessions  ports.SessionRepository
 	APITokens ports.APITokenRepository
+
+	// FxRates is issue #130's repository port over fx_rates: storing
+	// fetched exchange rates and looking one up via #129's
+	// nearest-earlier-within-staleness-window rule. Unlike every other
+	// field above, it carries no actor scoping — fx_rates is a global
+	// table (ADR-0004).
+	FxRates ports.FxRateRepository
 }
 
 // NewService constructs a Service from its dependencies, rejecting a nil
@@ -83,6 +90,7 @@ func NewService(
 	users ports.UserRepository,
 	sessions ports.SessionRepository,
 	apiTokens ports.APITokenRepository,
+	fxRates ports.FxRateRepository,
 ) (*Service, error) {
 	switch {
 	case clk == nil:
@@ -103,6 +111,8 @@ func NewService(
 		return nil, missingDependency("session repository")
 	case apiTokens == nil:
 		return nil, missingDependency("API token repository")
+	case fxRates == nil:
+		return nil, missingDependency("FX rate repository")
 	}
 
 	return &Service{
@@ -116,6 +126,7 @@ func NewService(
 		Users:        users,
 		Sessions:     sessions,
 		APITokens:    apiTokens,
+		FxRates:      fxRates,
 	}, nil
 }
 

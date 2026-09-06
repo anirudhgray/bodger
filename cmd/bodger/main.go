@@ -157,6 +157,7 @@ func bootstrap(ctx context.Context) (*app.Service, func() error, error) {
 		sqlite.NewUserRepository(db),
 		sqlite.NewSessionRepository(db),
 		sqlite.NewAPITokenRepository(db),
+		sqlite.NewFxRateRepository(db),
 	)
 	if err != nil {
 		_ = db.Close()
