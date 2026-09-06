@@ -297,18 +297,25 @@ func TestMove_CrossCurrencyRendersImpliedRate(t *testing.T) {
 	var got struct {
 		Amount     string `json:"amount"`
 		Currency   string `json:"currency"`
+		ToAmount   string `json:"to_amount"`
+		ToCurrency string `json:"to_currency"`
 		Rate       string `json:"rate"`
 		RateSource string `json:"rate_source"`
 	}
 	decodeData(t, stdout, &got)
 
-	// buildTransferPostings applies the same numeric minor-unit magnitude
-	// to both legs (1000 INR = 100000 minor units at INR's 2-decimal
-	// exponent; JPY's 0-decimal exponent means the same 100000 minor units
-	// renders as 100000 JPY) — the implied rate this test asserts follows
-	// directly from that.
-	if got.Amount != "100000" || got.Currency != "JPY" {
-		t.Errorf("amount/currency = %q/%q, want 100000/JPY", got.Amount, got.Currency)
+	// amount/currency report the from-leg (issue #163) — the 1000 INR the
+	// command's own positional argument gave. buildTransferPostings
+	// applies the same numeric minor-unit magnitude to both legs (1000
+	// INR = 100000 minor units at INR's 2-decimal exponent; JPY's
+	// 0-decimal exponent means the same 100000 minor units renders as
+	// 100000 JPY for the to-leg) — the implied rate this test asserts
+	// follows directly from that.
+	if got.Amount != "1000.00" || got.Currency != "INR" {
+		t.Errorf("amount/currency = %q/%q, want 1000.00/INR", got.Amount, got.Currency)
+	}
+	if got.ToAmount != "100000" || got.ToCurrency != "JPY" {
+		t.Errorf("to_amount/to_currency = %q/%q, want 100000/JPY", got.ToAmount, got.ToCurrency)
 	}
 	if got.Rate != "1 INR = 100 JPY" {
 		t.Errorf("rate = %q, want %q", got.Rate, "1 INR = 100 JPY")
@@ -458,6 +465,8 @@ type txnView struct {
 	ToAccountID   string   `json:"to_account_id"`
 	Amount        string   `json:"amount"`
 	Currency      string   `json:"currency"`
+	ToAmount      string   `json:"to_amount"`
+	ToCurrency    string   `json:"to_currency"`
 }
 
 type txnListView struct {
@@ -713,6 +722,46 @@ func TestTransactions_EditAMove(t *testing.T) {
 	}
 	if edited.FromAccountID != listed.Transactions[0].FromAccountID || edited.ToAccountID != listed.Transactions[0].ToAccountID {
 		t.Errorf("from/to = %q/%q, want them unchanged", edited.FromAccountID, edited.ToAccountID)
+	}
+}
+
+// TestTransactions_EditCrossCurrencyMoveRoundTripPreservesBothLegs is
+// issue #163's regression check: `transactions list`'s amount/to_amount
+// report the from-leg/to-leg respectively (transactions.go's
+// transactionView doc comment), so re-running `transactions edit` with
+// those exact values unchanged must reproduce the same transfer, not
+// silently reinterpret the to-leg as a new from-leg. Before the fix,
+// `transactions list` only reported the to-leg (as "amount"), so this
+// same round trip would have turned a 100.00 USD -> 8000.00 INR transfer
+// into an 8000.00 USD -> 8000.00 INR one.
+func TestTransactions_EditCrossCurrencyMoveRoundTripPreservesBothLegs(t *testing.T) {
+	factory := newTestFactory(t, mustFrozen(t))
+	mustRun(t, factory, "accounts", "add", "Cash", "--type", "cash", "--currency", "USD")
+	mustRun(t, factory, "accounts", "add", "Savings", "--type", "bank", "--currency", "INR")
+
+	mustRun(t, factory, "move", "100", "--from", "Cash", "--to", "Savings", "--to-amount", "8000", "--on", "2026-08-13")
+
+	before := listTransactions(t, factory, "--type", "move")
+	if len(before.Transactions) != 1 {
+		t.Fatalf("want exactly one move, got %+v", before.Transactions)
+	}
+	txn := before.Transactions[0]
+	if txn.Amount != "100.00" || txn.Currency != "USD" || txn.ToAmount != "8000.00" || txn.ToCurrency != "INR" {
+		t.Fatalf("listed move = %+v, want 100.00 USD -> 8000.00 INR", txn)
+	}
+
+	// Resubmit exactly what was just listed — the shape a naive "edit"
+	// pre-fill would reuse unchanged.
+	var edited txnView
+	decodeData(t, mustRun(t, factory, "transactions", "edit", txn.ID,
+		"--amount", txn.Amount, "--from", "Cash", "--to", "Savings", "--to-amount", txn.ToAmount,
+		"--description", txn.Description, "--on", txn.Date, "--json"), &edited)
+
+	if edited.Amount != "100.00" || edited.Currency != "USD" {
+		t.Errorf("edited from-leg = %s %s, want 100.00 USD (from-leg corrupted by the round trip)", edited.Amount, edited.Currency)
+	}
+	if edited.ToAmount != "8000.00" || edited.ToCurrency != "INR" {
+		t.Errorf("edited to-leg = %s %s, want 8000.00 INR (to-leg corrupted by the round trip)", edited.ToAmount, edited.ToCurrency)
 	}
 }
 
