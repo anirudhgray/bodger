@@ -348,8 +348,29 @@ An earlier draft typed this field `*money.Money`, copying
 internal caller with a `Money` already in hand (`balances.go`), while
 `ListFxRates` never does — see `docs/contributing.md`'s "surface-facing vs.
 internal-only" note for the general rule this was fixed to follow.
+
+[#137](https://github.com/anirudhgray/bodger/issues/137) exposes the same
+app-layer work through the REST API, kept in conformance with #136's CLI
+surface: `GET /api/v1/balances` gained `currency`/`policy`/`pinned_date`
+query parameters wired straight into `AccountBalancesQuery`, and
+`balanceView`/`balancesView` gained `converted`/`unconverted` fields
+matching the CLI's JSON shape field-for-field; `GET /api/v1/fx/rates`
+(pure read, optional `amount`) and `POST /api/v1/fx/rates/fetch` (network
+and persist, optional `pairs`/`from`/`to`) call `ListFxRates`/`FetchFxRates`
+directly as two separate routes, per #135's two use cases; `GET`/`POST
+/api/v1/reporting-currency` exposes #132's per-user preference, following
+`POST /api/v1/auth/password`'s precedent for a mutating action on a
+singleton, actor-scoped resource; `POST /api/v1/transfers` already accepted
+a cross-currency transfer with no rejection to remove (`transactionView`
+gained `rate`/`rate_source`, rendered the same way the CLI's `moveView`
+does); and the conformance suite gained a cross-currency transfer case
+(comparing `rate`/`rate_source` alongside the existing fields) and a
+separate `TestBalanceQueryConformance` for the currency/policy-parameterized
+balance read, which doesn't fit the existing single-transaction
+`conformanceCase` shape.
+
 Every other surface exposing this app-layer work
-([#137](https://github.com/anirudhgray/bodger/issues/137)–[#141](https://github.com/anirudhgray/bodger/issues/141),
+([#138](https://github.com/anirudhgray/bodger/issues/138)–[#141](https://github.com/anirudhgray/bodger/issues/141),
 [#145](https://github.com/anirudhgray/bodger/issues/145)) remains open.
 
 | Milestone | Status |

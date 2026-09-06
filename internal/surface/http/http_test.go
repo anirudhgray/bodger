@@ -107,8 +107,19 @@ func validateResponse(t *testing.T, req *http.Request, resp *http.Response, body
 // equivalent of internal/app/sqlite_integration_test.go's
 // newSQLiteTestService. Split out from newTestServer so a test can build
 // a handler other than NewMux (webui_handler_test.go's NewServerHandler
-// case) from the same real service without duplicating this setup.
+// case) from the same real service without duplicating this setup. It
+// wires a real (network-touching) Frankfurter provider — fine for every
+// test that never calls POST /api/v1/fx/rates/fetch; a test that does
+// calls newTestServiceWithFxProvider instead so it never depends on the
+// network (see fx_test.go).
 func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
+	t.Helper()
+	return newTestServiceWithFxProvider(t, frozenAt, tz, fxprovider.New("", nil))
+}
+
+// newTestServiceWithFxProvider is newTestService with the FX rate
+// provider swapped out.
+func newTestServiceWithFxProvider(t *testing.T, frozenAt time.Time, tz string, provider ports.FxRateProvider) *app.Service {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -137,7 +148,7 @@ func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
 		sqlite.NewTransactionRepository(db), sqlite.NewTagRepository(db),
 		sqlite.NewUserRepository(db), sqlite.NewSessionRepository(db), sqlite.NewAPITokenRepository(db),
 		sqlite.NewFxRateRepository(db),
-		fxprovider.New("", nil),
+		provider,
 	)
 	if err != nil {
 		t.Fatalf("app.NewService: %v", err)
@@ -156,17 +167,31 @@ type testServer struct {
 	token string
 }
 
-// newTestServer builds a real *httptest.Server serving
-// httpsurface.NewMux(svc, nil) over a newTestService, with a password set
-// on the seeded user and a bearer API token minted for it — the
-// credential do (below) presents on every request by default. Tests that
-// specifically exercise authentication itself (auth_test.go) build their
-// own server from newTestService instead, so they control credentials
-// directly.
+// newTestServer builds a real *httptest.Server over a newTestService — see
+// newTestServerFromService for what it wires up.
 func newTestServer(t *testing.T, frozenAt time.Time, tz string) *testServer {
 	t.Helper()
+	return newTestServerFromService(t, newTestService(t, frozenAt, tz))
+}
 
-	svc := newTestService(t, frozenAt, tz)
+// newTestServerWithFxProvider is newTestServer with the FX rate provider
+// swapped out — for fx_test.go's `POST /api/v1/fx/rates/fetch` tests,
+// which need a deterministic, in-memory ports.FxRateProvider rather than a
+// real network call to Frankfurter.
+func newTestServerWithFxProvider(t *testing.T, frozenAt time.Time, tz string, provider ports.FxRateProvider) *testServer {
+	t.Helper()
+	return newTestServerFromService(t, newTestServiceWithFxProvider(t, frozenAt, tz, provider))
+}
+
+// newTestServerFromService builds a real *httptest.Server serving
+// httpsurface.NewMux(svc, nil), with a password set on the seeded user and
+// a bearer API token minted for it — the credential do (below) presents on
+// every request by default. Tests that specifically exercise
+// authentication itself (auth_test.go) build their own server from
+// newTestService instead, so they control credentials directly.
+func newTestServerFromService(t *testing.T, svc *app.Service) *testServer {
+	t.Helper()
+
 	ctx := context.Background()
 	if err := svc.SetPassword(ctx, app.SetPasswordCommand{ActorID: ports.SeededUserID, NewPassword: "test-password-long-enough"}); err != nil {
 		t.Fatalf("SetPassword: %v", err)
@@ -599,10 +624,47 @@ func TestCrossCurrencyTransferAccepted(t *testing.T) {
 		t.Errorf("from/to account IDs = %v/%v, want %v/%v", data["from_account_id"], data["to_account_id"], usd, inr)
 	}
 	// The response's amount/currency describe the to-leg (dto.go's
-	// transactionView doc comment); the implied fx rate itself isn't part
-	// of this response shape yet — that's a separate surface change.
+	// transactionView doc comment).
 	if data["currency"] != "INR" {
 		t.Errorf("currency = %v, want INR", data["currency"])
+	}
+	// The implied exchange rate (100 USD -> 100 INR, so 1 USD = 1 INR) is
+	// rendered alongside the transaction, with its provenance — issue
+	// #137's dto.go addition, mirroring internal/surface/cli's moveView.
+	if data["rate"] != "1 USD = 1 INR" {
+		t.Errorf("rate = %v, want \"1 USD = 1 INR\"", data["rate"])
+	}
+	if data["rate_source"] != "implied" {
+		t.Errorf("rate_source = %v, want \"implied\"", data["rate_source"])
+	}
+}
+
+// TestSameCurrencyTransferHasNoRate is TestCrossCurrencyTransferAccepted's
+// regression check on the existing same-currency path: a transfer between
+// two accounts sharing a currency has no implied rate to show (its rate is
+// the trivial 1:1 identity, never persisted or rendered — see
+// dto.go's transactionViewFrom and app.RecordTransfer's identical
+// same-currency handling).
+func TestSameCurrencyTransferHasNoRate(t *testing.T) {
+	srv := newTestServer(t, time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC), "UTC")
+
+	_, decoded := do(t, srv, http.MethodPost, "/api/v1/accounts", map[string]any{"name": "Checking", "type": "bank", "currency": "USD"})
+	checking := dataOf(t, decoded)["id"].(string)
+	_, decoded = do(t, srv, http.MethodPost, "/api/v1/accounts", map[string]any{"name": "Savings", "type": "bank", "currency": "USD"})
+	savings := dataOf(t, decoded)["id"].(string)
+
+	status, decoded := do(t, srv, http.MethodPost, "/api/v1/transfers", map[string]any{
+		"from_account": checking, "to_account": savings, "amount": "100", "description": "same currency",
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %+v", status, decoded)
+	}
+	data := dataOf(t, decoded)
+	if _, ok := data["rate"]; ok {
+		t.Errorf("rate present for a same-currency transfer: %+v", data)
+	}
+	if _, ok := data["rate_source"]; ok {
+		t.Errorf("rate_source present for a same-currency transfer: %+v", data)
 	}
 }
 
