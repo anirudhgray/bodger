@@ -475,9 +475,31 @@ read model that hadn't yet honored it), and the conformance suite gained a
 GET(or `transactions list`)-then-PATCH round-trip case for both surfaces,
 alongside the existing create-only cross-currency coverage.
 
+[#145](https://github.com/anirudhgray/bodger/issues/145) adds the same
+rate-provenance treatment to `TransactionsList.tsx`, for an ordinary
+(non-transfer) foreign-currency transaction row's own reporting-currency
+equivalent — a per-row `GET /api/v1/fx/rates` read at the
+`transaction_date` policy, using that transaction's own `date` (the date
+it's booked to), never today's date; a targeted test guards exactly this
+substitution, since a page can carry rows spanning many distinct booked
+dates rather than the single "today" Balances converts against. It's a
+pure read on render (never triggering a provider fetch itself), and the
+trigger/detail/unconverted markup is the same `components/RateProvenance.tsx`
+pieces #139 introduced, now extracted out of `Balances.tsx` so both
+screens (and #141, later) share one implementation rather than three. The
+one real difference from #139's popover: TransactionsList's "Backfill
+rates" affordance (`components/RateFetchPopover.tsx`, now shared too) adds
+a date range alongside the currency multi-select, calling
+`fetchFxRates`' range-fetch mode (#135/#137/#136, already implemented
+server-side — this issue only wired the frontend call) instead of always
+targeting today. After a successful backfill, the previously
+stale/unconverted rows resolve in place without a manual reload, matching
+#139's own re-read-after-refresh behaviour. See `docs/design-system.md`'s
+"Balances: rate-provenance detail row" section for the shared-component
+details.
+
 Every other surface exposing this app-layer work
-([#141](https://github.com/anirudhgray/bodger/issues/141),
-[#145](https://github.com/anirudhgray/bodger/issues/145)) remains open.
+([#141](https://github.com/anirudhgray/bodger/issues/141)) remains open.
 
 | Milestone | Status |
 | --- | --- |
