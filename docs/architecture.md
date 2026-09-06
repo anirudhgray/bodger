@@ -393,24 +393,35 @@ a 404 rather than a raw error. None of it renders for a single-currency
 actor. Once #159 landed, the issue's other half — a second,
 independently-editable destination-amount field on a cross-currency move,
 pre-filled from the fetched rate but freely overridable, sending
-`to_amount` — was wired up too, so #138 is fully closed by this PR.
-**The pre-fill only ever resolves when the to-account's own currency
-happens to equal the reporting currency**: `GET /api/v1/fx/rates` does an
-exact base/quote match, and `POST /api/v1/fx/rates/fetch` can currently
-only ever populate a row quoted against the reporting currency
-(`internal/app/fetch_fx_rates.go`'s `resolveFetchPairs`). This is not a
-provider limitation — the Frankfurter adapter's `FetchRate` already takes
-an arbitrary base *and* quote, and
+`to_amount` — was wired up too, so #138 is fully closed by this PR. The
+destination-amount field's pre-fill and its own "Refresh" action work for
+any to-account currency, not just one that happens to equal the reporting
+currency — see #165, below.
+
+[#165](https://github.com/anirudhgray/bodger/issues/165) fixed the gap
+#138 shipped with: `POST /api/v1/fx/rates/fetch` could previously only
+ever populate a row quoted against the reporting currency
+(`internal/app/fetch_fx_rates.go`'s `resolveFetchPairs`), so the
+destination-amount field's pre-fill and refresh only worked when the
+to-account's currency happened to equal the reporting currency — outside
+that case, "Refresh" silently fetched the wrong pair (`<from>/<reporting>`
+instead of `<from>/<to>`) and the lookup kept failing with no indication
+why. This was never a provider limitation — the Frankfurter adapter's
+`FetchRate` already takes an arbitrary base *and* quote, and
 [ADR-0012](decisions/0012-fx-rate-provider.md) chose Frankfurter
 specifically so this system would never need to triangulate through a
-fixed base currency — it's a gap in `resolveFetchPairs`, which has never
-had a caller-supplied quote wired through it. Outside that case the field
-degrades to the same "no stored rate yet" state the read-only hint
-already handles, and stays fully editable regardless, since the
-suggestion is a convenience, never a requirement to submit — though its
-"Refresh" action can't help in that case either, since it hits the same
-gap. Tracked as [#165](https://github.com/anirudhgray/bodger/issues/165):
-a direct `base/quote` fetch, not composed/derived rate math.
+fixed base currency. `FetchFxRatesCommand` now takes an optional `Quote`
+(`quote` over HTTP, `--quote` on the CLI): when set, every `Pairs` entry
+is fetched directly against it instead of the reporting currency — one
+real `FetchRate(base, quote, date)` call per pair, never composed/derived
+math — and `Quote/reportingCurrency` itself is fetched and stored in the
+same call, so that rate is available for balances/reports without a
+second fetch action later.
+`web/src/hooks/use-fx-conversion-hint.ts`'s `refresh()` now passes its own
+`to` as the explicit quote — a no-op for the read-only hint (`to` is
+already the reporting currency there) and the actual fix for the
+destination-amount field's hint instance, whose `to` is the to-account's
+own currency.
 
 [#140](https://github.com/anirudhgray/bodger/issues/140) adds the one
 field this milestone gives the web Settings area: a Currency section
