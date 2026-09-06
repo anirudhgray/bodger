@@ -2,6 +2,15 @@
 
 <!-- Brief description of what this PR accomplishes -->
 
+## Closes
+
+<!--
+If this PR resolves a GitHub issue, write "Closes #<number>" (or Fixes/
+Resolves) here, one per issue if there's more than one. GitHub auto-closes
+the issue(s) when this PR merges. Delete this section if this PR doesn't
+close anything.
+-->
+
 ## Changes
 
 <!-- List the key changes made, e.g.:
