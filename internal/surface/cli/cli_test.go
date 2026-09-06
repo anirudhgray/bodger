@@ -821,6 +821,83 @@ func TestBalance_EmptyInstance(t *testing.T) {
 	}
 }
 
+// TestBalance_CurrencyAndPolicyRenderProvenanceAndUnconverted is issue
+// #136's balance-conversion surface, end to end: a USD account converts to
+// itself as an identity (no rate to show), an INR account converts via a
+// stored rate with full ADR-0004 provenance rendered inline, and a EUR
+// account with no stored rate is listed under "unconverted" with its
+// reason rather than silently dropped from the response.
+func TestBalance_CurrencyAndPolicyRenderProvenanceAndUnconverted(t *testing.T) {
+	provider := newFakeFxProvider()
+	factory := newTestFactoryWithFxProvider(t, mustFrozen(t), provider)
+
+	mustRun(t, factory, "accounts", "add", "Wallet", "--type", "cash", "--currency", "INR", "--opening-balance", "1000")
+	mustRun(t, factory, "accounts", "add", "Checking", "--type", "bank", "--currency", "USD", "--opening-balance", "500")
+	mustRun(t, factory, "accounts", "add", "Euro Account", "--type", "bank", "--currency", "EUR", "--opening-balance", "200")
+
+	provider.setRate(t, "INR", "USD", "0.0115", mustFxTestDate(t, 2026, time.August, 14))
+	mustRun(t, factory, "fx", "rates", "fetch", "--pair", "INR")
+
+	var got struct {
+		Balances []struct {
+			Account   string `json:"account"`
+			Currency  string `json:"currency"`
+			Balance   string `json:"balance"`
+			Converted *struct {
+				Amount     string `json:"amount"`
+				Currency   string `json:"currency"`
+				Rate       string `json:"rate"`
+				RateDate   string `json:"rate_date"`
+				RateSource string `json:"rate_source"`
+				Stale      bool   `json:"stale"`
+				Policy     string `json:"policy"`
+			} `json:"converted"`
+		} `json:"balances"`
+		Unconverted []struct {
+			Account string `json:"account"`
+			Reason  string `json:"reason"`
+		} `json:"unconverted"`
+	}
+	decodeData(t, mustRun(t, factory, "balance", "--currency", "USD", "--policy", "current", "--json"), &got)
+
+	byAccount := map[string]int{}
+	for i, b := range got.Balances {
+		byAccount[b.Account] = i
+	}
+
+	wallet := got.Balances[byAccount["Wallet"]]
+	if wallet.Converted == nil {
+		t.Fatalf("Wallet.Converted is nil, want a converted figure")
+	}
+	if wallet.Converted.Amount != "11.50" || wallet.Converted.Currency != "USD" {
+		t.Errorf("Wallet converted = %+v, want 11.50 USD (1000 INR @ 0.0115)", wallet.Converted)
+	}
+	if wallet.Converted.Rate != "0.0115" || wallet.Converted.RateSource != "fake-provider" || wallet.Converted.Policy != "current" {
+		t.Errorf("Wallet converted provenance = %+v", wallet.Converted)
+	}
+	if wallet.Converted.Stale {
+		t.Errorf("Wallet.Converted.Stale = true, want false (rate fetched at today's date)")
+	}
+
+	checking := got.Balances[byAccount["Checking"]]
+	if checking.Converted == nil || checking.Converted.Amount != "500.00" || checking.Converted.RateSource != "" {
+		t.Errorf("Checking converted = %+v, want an identity conversion with no rate source", checking.Converted)
+	}
+
+	if len(got.Unconverted) != 1 || got.Unconverted[0].Account != "Euro Account" || got.Unconverted[0].Reason == "" {
+		t.Fatalf("unconverted = %+v, want Euro Account with a reason", got.Unconverted)
+	}
+
+	// The plain-text rendering points at the fix.
+	text := mustRun(t, factory, "balance", "--currency", "USD", "--policy", "current")
+	if !strings.Contains(text, "bodger fx rates fetch") {
+		t.Errorf("text = %q, want it to point at `bodger fx rates fetch`", text)
+	}
+	if !strings.Contains(text, "Euro Account") {
+		t.Errorf("text = %q, want the unconverted account named", text)
+	}
+}
+
 // TestJSONError_UsesSharedEnvelope checks that an application-layer error
 // surfaced through --json uses the {"error": {...}} shape RenderError
 // documents, with the registered code and field intact — the same
