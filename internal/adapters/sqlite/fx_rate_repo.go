@@ -38,6 +38,36 @@ func (r *FxRateRepository) Store(ctx context.Context, rate fx.Rate, date domain.
 	return nil
 }
 
+// StoreBatch implements ports.FxRateRepository.
+func (r *FxRateRepository) StoreBatch(ctx context.Context, rows []ports.FxRateRow) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	for _, row := range rows {
+		if err := requireRateKey(row.Rate, row.Source); err != nil {
+			return err
+		}
+	}
+
+	tx, err := r.db.write.BeginTx(ctx, nil)
+	if err != nil {
+		return errs.New(errs.Internal).Wrap(err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op once committed
+
+	now := formatTime(r.db.clock.Now())
+	for _, row := range rows {
+		if err := upsertFxRate(ctx, tx, row.Rate, row.Date, row.Source, now); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return errs.New(errs.Internal).Wrap(err)
+	}
+	return nil
+}
+
 // requireRateKey validates the fields that make up fx_rates' primary key
 // (base, quote, rate_date, source) before a write: an empty base/quote
 // can only happen via a zero-value fx.Rate{} constructed outside the fx
