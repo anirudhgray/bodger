@@ -241,7 +241,7 @@ bodger: listening on 127.0.0.1:8080
 
 It binds `127.0.0.1` (loopback) by default. Set `BODGER_HTTP_BIND_ADDR` if you need a different loopback address or port; a non-loopback address is refused until you've set a password (see below) — if you want it reachable from another machine before that, put it behind something that handles authentication itself (a reverse proxy, a VPN) rather than exposing it directly.
 
-Every resource the CLI can touch has an equivalent under `/api/v1`: accounts, categories, transactions, transfers, and balances, plus `/healthz` to check the server is up and `/api/v1/auth/*` for the routes below. A request with no `date` field books to today the same way `spend`/`receive`/`move` do — resolved on the server, in your configured timezone, never by the client. Amounts are always sent and returned as plain decimal strings with a separate currency field, never as numbers.
+Every resource the CLI can touch has an equivalent under `/api/v1`: accounts, categories, transactions, transfers, balances, exchange rates, and your reporting currency, plus `/healthz` to check the server is up and `/api/v1/auth/*` for the routes below. A request with no `date` field books to today the same way `spend`/`receive`/`move` do — resolved on the server, in your configured timezone, never by the client. Amounts are always sent and returned as plain decimal strings with a separate currency field, never as numbers.
 
 ```sh
 curl http://127.0.0.1:8080/api/v1/accounts
@@ -282,6 +282,46 @@ curl http://127.0.0.1:8080/api/v1/accounts \
 ```
 
 The `token` field is shown exactly once, in that create response — store it somewhere safe, since it can't be retrieved again. `GET /api/v1/auth/tokens` lists every token you've created (including expired and revoked ones, for history), and `DELETE /api/v1/auth/tokens/{id}` revokes one immediately. You can also manage API tokens from the command line with `bodger auth token create`/`list`/`revoke`.
+
+### Multi-currency and exchange rates
+
+Add `currency` and `policy` to `GET /api/v1/balances` to convert every account's balance into one currency instead of seeing each in its own. `policy` picks which date's exchange rate is used: `transaction_date` uses each balance's own as-of date, `current` always uses today's rate, and `pinned` uses one date you choose with `pinned_date`. Each converted balance comes back with the rate, its source, and the date it was recorded for, so you can always see what it's based on; an account whose currency has no stored rate close enough to use is listed separately under `unconverted` rather than silently left out of the total.
+
+```sh
+curl -H 'Authorization: Bearer bdg_...' \
+  'http://127.0.0.1:8080/api/v1/balances?currency=USD&policy=current'
+```
+
+You can also do this from the command line with `bodger balance --currency --policy`.
+
+`GET /api/v1/fx/rates` looks up the exchange rate between two currencies straight from what's already stored, without ever reaching out to the network. Add `amount` to also get a converted figure back alongside the rate:
+
+```sh
+curl -H 'Authorization: Bearer bdg_...' \
+  'http://127.0.0.1:8080/api/v1/fx/rates?from=INR&to=USD&policy=current&amount=1000'
+```
+
+You can also do this from the command line with `bodger fx rates list`.
+
+`POST /api/v1/fx/rates/fetch` is the one route that actually reaches out to your configured rate provider and stores what it gets back. With no `pairs`, it fetches every currency pair you actually use, quoted against your reporting currency, at today's date; pass `pairs` to restrict it to specific currencies, and `from`/`to` together for a historical backfill instead of just today:
+
+```sh
+curl -X POST -H 'Authorization: Bearer bdg_...' \
+  http://127.0.0.1:8080/api/v1/fx/rates/fetch \
+  -d '{"pairs":["INR"]}'
+```
+
+You can also do this from the command line with `bodger fx rates fetch`.
+
+`GET /api/v1/reporting-currency` and `POST /api/v1/reporting-currency` read and set the currency your balances and reports convert into by default:
+
+```sh
+curl -X POST -H 'Authorization: Bearer bdg_...' \
+  http://127.0.0.1:8080/api/v1/reporting-currency \
+  -d '{"currency":"USD"}'
+```
+
+You can also do this from the command line with `bodger config reporting-currency get`/`set`.
 
 ### Using the web UI
 
