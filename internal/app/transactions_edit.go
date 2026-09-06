@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/anirudhgray/bodger/internal/domain/fx"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 )
@@ -119,15 +120,15 @@ func (s *Service) EditTransaction(ctx context.Context, cmd EditTransactionComman
 		if err != nil {
 			return TransactionResult{}, err
 		}
-		// NewTransfer also returns the transfer's implied fx.Rate. It's
-		// discarded here: RecordTransfer/EditTransaction don't persist it
-		// yet (issue #133 wires fx_rate_used/fx_rate_source), and
-		// buildTransferPostings already keeps the two accounts'
-		// currencies equal, so this call site never hits the
-		// cross-currency branch in practice.
-		txn, _, err = ledger.NewTransfer(existing.ID(), cmd.ActorID, fields.Date, fields.Description, []ledger.Posting{outPosting, inPosting}, opts...)
+		var rate fx.Rate
+		txn, rate, err = ledger.NewTransfer(existing.ID(), cmd.ActorID, fields.Date, fields.Description, []ledger.Posting{outPosting, inPosting}, opts...)
 		if err != nil {
 			return TransactionResult{}, wrapTransferError(err)
+		}
+		// See RecordTransfer's identical comment (transactions_record.go):
+		// only a genuinely derived cross-currency rate is persisted.
+		if !rate.IsIdentity() {
+			txn = txn.WithFxRate(rate, ledger.FxRateSourceImplied)
 		}
 
 	default:

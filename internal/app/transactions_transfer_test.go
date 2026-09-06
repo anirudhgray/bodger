@@ -5,7 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/anirudhgray/bodger/internal/app"
+	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 )
 
@@ -72,17 +75,77 @@ func TestRecordTransfer_SameAccountRejected(t *testing.T) {
 	wantErrCode(t, err, errs.InvalidInput)
 }
 
-func TestRecordTransfer_CrossCurrencyRejected(t *testing.T) {
+func TestRecordTransfer_CrossCurrencyDerivesAndPersistsImpliedRate(t *testing.T) {
 	svc := newTestService(t, time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC), "UTC")
 	ctx := context.Background()
 	inr := mustAccountFixture(t, svc, "HDFC Savings", "bank", "INR")
 	usd := mustAccountFixture(t, svc, "Chase USD", "bank", "USD")
 
-	_, err := svc.RecordTransfer(ctx, app.RecordTransferCommand{
+	result, err := svc.RecordTransfer(ctx, app.RecordTransferCommand{
 		ActorID: testActorID, FromAccountRef: inr.Account.ID(), ToAccountRef: usd.Account.ID(),
 		Amount: "20000", Description: "Cross-currency",
 	})
-	wantErrCode(t, err, errs.InvalidInput)
+	if err != nil {
+		t.Fatalf("RecordTransfer: %v", err)
+	}
+	if result.Transaction.Kind() != ledger.TransactionKindTransfer {
+		t.Errorf("Kind = %s, want transfer", result.Transaction.Kind())
+	}
+
+	postings := result.Transaction.Postings()
+	if len(postings) != 2 {
+		t.Fatalf("len(Postings) = %d, want 2", len(postings))
+	}
+	for _, p := range postings {
+		switch p.AccountID() {
+		case inr.Account.ID():
+			if p.Currency() != "INR" || p.Amount().AmountMinor() != -2000000 {
+				t.Errorf("from-account posting = %s %d, want -2000000 INR", p.Currency(), p.Amount().AmountMinor())
+			}
+		case usd.Account.ID():
+			if p.Currency() != "USD" || p.Amount().AmountMinor() != 2000000 {
+				t.Errorf("to-account posting = %s %d, want 2000000 USD", p.Currency(), p.Amount().AmountMinor())
+			}
+		default:
+			t.Errorf("unexpected posting account %q", p.AccountID())
+		}
+	}
+
+	rate, source, ok := result.Transaction.FxRate()
+	if !ok {
+		t.Fatalf("FxRate() ok = false, want true for a cross-currency transfer")
+	}
+	if source != ledger.FxRateSourceImplied {
+		t.Errorf("FxRate() source = %q, want %q", source, ledger.FxRateSourceImplied)
+	}
+	if rate.Base() != "INR" || rate.Quote() != "USD" {
+		t.Errorf("FxRate() base/quote = %s/%s, want INR/USD", rate.Base(), rate.Quote())
+	}
+	// ₹20,000 out, $20,000 in (same raw amount reused across the two
+	// currencies, per buildTransferPostings' doc comment — there is no
+	// separate to-amount field yet): 20000/20000 = 1.
+	want := decimal.RequireFromString("1")
+	if !rate.Value().Equal(want) {
+		t.Errorf("FxRate() value = %s, want %s", rate.Value(), want)
+	}
+}
+
+func TestRecordTransfer_SameCurrencyHasNoPersistedFxRate(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	savings := mustAccountFixture(t, svc, "Savings", "bank", "INR")
+	checking := mustAccountFixture(t, svc, "Checking", "bank", "INR")
+
+	result, err := svc.RecordTransfer(ctx, app.RecordTransferCommand{
+		ActorID: testActorID, FromAccountRef: savings.Account.ID(), ToAccountRef: checking.Account.ID(),
+		Amount: "500", Description: "Same-currency",
+	})
+	if err != nil {
+		t.Fatalf("RecordTransfer: %v", err)
+	}
+	if _, _, ok := result.Transaction.FxRate(); ok {
+		t.Errorf("FxRate() ok = true, want false for a same-currency transfer")
+	}
 }
 
 func TestRecordTransfer_ZeroAmountRejected(t *testing.T) {

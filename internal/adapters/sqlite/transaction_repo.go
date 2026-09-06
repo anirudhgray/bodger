@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/shopspring/decimal"
+
+	"github.com/anirudhgray/bodger/internal/domain/fx"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/domain/money"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
@@ -64,7 +67,8 @@ func (r *TransactionRepository) Get(ctx context.Context, actorID, id string) (le
 
 	row := r.db.read.QueryRowContext(ctx, `
 		SELECT id, user_id, kind, booked_date, posted_date, description, notes,
-		       import_record_id, external_id, related_transaction_id, created_at
+		       import_record_id, external_id, related_transaction_id, created_at,
+		       fx_rate_used, fx_rate_source
 		FROM transactions
 		WHERE id = ? AND user_id = ? AND deleted_at IS NULL
 	`, id, actorID)
@@ -123,7 +127,8 @@ func (r *TransactionRepository) List(ctx context.Context, actorID string, filter
 
 	query := cte + `
 		SELECT DISTINCT t.id, t.user_id, t.kind, t.booked_date, t.posted_date, t.description, t.notes,
-		       t.import_record_id, t.external_id, t.related_transaction_id, t.created_at
+		       t.import_record_id, t.external_id, t.related_transaction_id, t.created_at,
+		       t.fx_rate_used, t.fx_rate_source
 		FROM transactions t
 	`
 
@@ -255,14 +260,17 @@ func (r *TransactionRepository) Update(ctx context.Context, actorID string, txn 
 		return errs.New(errs.Internal).Wrap(err)
 	}
 
+	fxRateUsed, fxRateSource := nullableFxRate(txn)
 	result, err := tx.ExecContext(ctx, `
 		UPDATE transactions
 		SET kind = ?, booked_date = ?, posted_date = ?, description = ?, notes = ?,
-		    deleted_at = ?, import_record_id = ?, external_id = ?, related_transaction_id = ?, updated_at = ?
+		    deleted_at = ?, import_record_id = ?, external_id = ?, related_transaction_id = ?, updated_at = ?,
+		    fx_rate_used = ?, fx_rate_source = ?
 		WHERE id = ? AND user_id = ?
 	`,
 		string(txn.Kind()), formatDate(txn.BookedDate()), nullablePostedDate(txn), txn.Description(), txn.Notes(),
 		nullableDeletedAt(txn), nullableImportRecordID(txn), nullableExternalID(txn), nullableRelatedTransactionID(txn), now,
+		fxRateUsed, fxRateSource,
 		txn.ID(), actorID,
 	)
 	if err != nil {
@@ -307,14 +315,17 @@ type execer interface {
 }
 
 func insertTransactionRow(ctx context.Context, tx execer, actorID string, txn ledger.Transaction, now string) *errs.Error {
+	fxRateUsed, fxRateSource := nullableFxRate(txn)
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO transactions (id, user_id, kind, booked_date, posted_date, description, notes,
-		                          deleted_at, import_record_id, external_id, related_transaction_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                          deleted_at, import_record_id, external_id, related_transaction_id, created_at, updated_at,
+		                          fx_rate_used, fx_rate_source)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		txn.ID(), actorID, string(txn.Kind()), formatDate(txn.BookedDate()), nullablePostedDate(txn),
 		txn.Description(), txn.Notes(), nullableDeletedAt(txn), nullableImportRecordID(txn),
 		nullableExternalID(txn), nullableRelatedTransactionID(txn), now, now,
+		fxRateUsed, fxRateSource,
 	)
 	if err != nil {
 		return wrapWriteError(err).Explain("Couldn't create transaction %q.", txn.Description())
@@ -401,12 +412,18 @@ type transactionRow struct {
 	// reaches the domain Transaction, which has no CreatedAt accessor
 	// (created_at is audit-only, data-model.md §9).
 	createdAt string
+	// fxRateUsed/fxRateSource are set only for a cross-currency transfer
+	// (migration 00011_add_fx_rates.sql; ADR-0004) — NULL for every other
+	// transaction, same-currency transfers included.
+	fxRateUsed   sql.NullString
+	fxRateSource sql.NullString
 }
 
 func scanTransactionRow(row rowScanner) (transactionRow, error) {
 	var tr transactionRow
 	err := row.Scan(&tr.id, &tr.userID, &tr.kind, &tr.bookedDate, &tr.postedDate, &tr.description, &tr.notes,
-		&tr.importRecordID, &tr.externalID, &tr.relatedTransactionID, &tr.createdAt)
+		&tr.importRecordID, &tr.externalID, &tr.relatedTransactionID, &tr.createdAt,
+		&tr.fxRateUsed, &tr.fxRateSource)
 	return tr, err
 }
 
@@ -505,15 +522,61 @@ func buildTransaction(tr transactionRow, postings []ledger.Posting) (ledger.Tran
 	case ledger.TransactionKindInflow:
 		out, err = ledger.NewInflow(tr.id, tr.userID, bookedDate, tr.description, postings, opts...)
 	case ledger.TransactionKindTransfer:
-		// The implied rate NewTransfer now also returns isn't persisted
-		// yet (issue #128/#133 wire fx_rate_used/fx_rate_source); this is
-		// a read-path reconstruction of an already-stored transaction, so
-		// there's nothing to do with it here but discard it.
+		// NewTransfer's own returned rate is discarded here: it's whatever
+		// the *current* postings imply, but issue #133's stored
+		// fx_rate_used/fx_rate_source is the value this transaction was
+		// actually persisted with — restored verbatim below via
+		// WithFxRate, the durable-record reconstruction ADR-0004 wants for
+		// an fx rate, rather than silently re-derived from the postings on
+		// every read.
 		out, _, err = ledger.NewTransfer(tr.id, tr.userID, bookedDate, tr.description, postings, opts...)
+		if err == nil && tr.fxRateUsed.Valid {
+			out, err = attachStoredFxRate(out, tr.fxRateUsed.String, tr.fxRateSource.String)
+		}
 	default:
 		return ledger.Transaction{}, fmt.Errorf("sqlite: unknown stored transaction kind %q", tr.kind)
 	}
 	return out, err
+}
+
+// attachStoredFxRate reconstructs the fx.Rate a cross-currency transfer's
+// fx_rate_used/fx_rate_source columns recorded and attaches it to txn via
+// WithFxRate. The rate's base and quote currencies aren't columns of their
+// own (data-model.md §8/§9: fx_rate_used is just the decimal value) — they
+// come from the transfer's own two postings instead, the same base=outflow/
+// quote=inflow assignment ledger.DeriveImpliedRate uses (see its doc
+// comment), which txn's postings (already reconstructed above) still have.
+func attachStoredFxRate(txn ledger.Transaction, rawValue, source string) (ledger.Transaction, error) {
+	postings := txn.Postings()
+	if len(postings) != 2 {
+		return ledger.Transaction{}, fmt.Errorf("sqlite: transfer %q has %d postings, want 2", txn.ID(), len(postings))
+	}
+	base, quote := postings[1].Currency(), postings[0].Currency()
+	if postings[0].Amount().IsNegative() {
+		base, quote = postings[0].Currency(), postings[1].Currency()
+	}
+
+	value, err := decimal.NewFromString(rawValue)
+	if err != nil {
+		return ledger.Transaction{}, fmt.Errorf("sqlite: parse stored fx_rate_used %q for transaction %q: %w", rawValue, txn.ID(), err)
+	}
+	rate, err := fx.NewRate(base, quote, value)
+	if err != nil {
+		return ledger.Transaction{}, fmt.Errorf("sqlite: reconstruct fx rate for transaction %q: %w", txn.ID(), err)
+	}
+	return txn.WithFxRate(rate, source), nil
+}
+
+// nullableFxRate returns the two column values to write for txn's
+// fx_rate_used/fx_rate_source — both invalid (NULL) unless txn carries a
+// persisted rate (only ever true for a cross-currency transfer;
+// ledger.Transaction.FxRate's doc comment).
+func nullableFxRate(txn ledger.Transaction) (sql.NullString, sql.NullString) {
+	rate, source, ok := txn.FxRate()
+	if !ok {
+		return sql.NullString{}, sql.NullString{}
+	}
+	return sql.NullString{String: rate.String(), Valid: true}, sql.NullString{String: source, Valid: true}
 }
 
 // loadCurrentForRevision fetches the transaction and tags currently stored
@@ -523,7 +586,8 @@ func buildTransaction(tr transactionRow, postings []ledger.Posting) (ledger.Tran
 func loadCurrentForRevision(ctx context.Context, tx execer, actorID, id string) (ledger.Transaction, []ledger.Tag, *errs.Error) {
 	row := tx.QueryRowContext(ctx, `
 		SELECT id, user_id, kind, booked_date, posted_date, description, notes,
-		       import_record_id, external_id, related_transaction_id, created_at
+		       import_record_id, external_id, related_transaction_id, created_at,
+		       fx_rate_used, fx_rate_source
 		FROM transactions
 		WHERE id = ? AND user_id = ? AND deleted_at IS NULL
 	`, id, actorID)

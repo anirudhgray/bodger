@@ -1549,7 +1549,7 @@
     },
     "/api/v1/transfers": {
       "post": {
-        "description": "A transfer between accounts in different currencies is rejected; cross-currency transfers aren't supported yet.",
+        "description": "A transfer between accounts in different currencies is allowed: the implied exchange rate between the two legs is derived and recorded automatically.",
         "operationId": "createTransfer",
         "requestBody": {
           "content": {
