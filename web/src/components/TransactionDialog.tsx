@@ -43,6 +43,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import {
   ApiError,
+  getReportingCurrency,
   listAccounts,
   listCategories,
   recordInflow,
@@ -57,6 +58,8 @@ import {
 import { buildCategoryTree } from '@/lib/category-tree'
 import { createCategory } from '@/lib/settings'
 import { sanitizeAmountInput } from '@/lib/utils'
+import { FxConversionHint } from '@/components/FxConversionHint'
+import { useFxConversionHint } from '@/hooks/use-fx-conversion-hint'
 import {
   TransactionDialogContext,
   type SavedEvent,
@@ -222,6 +225,13 @@ function TransactionDialogSheet({
   const [kind, setKind] = useState<Kind>(editing?.type ?? 'outflow')
   const [accounts, setAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  // '' means "not loaded yet" (or the actor has no reporting currency
+  // configured and the fetch itself failed) — the foreign-currency hint
+  // below only renders once this is a real currency code, so a
+  // single-currency user or a still-loading dialog never briefly flashes
+  // a hint before this settles (issue #138's "no behavior change for a
+  // single-currency user").
+  const [reportingCurrency, setReportingCurrency] = useState('')
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [amount, setAmount] = useState(editing?.amount ?? '')
@@ -278,6 +288,7 @@ function TransactionDialogSheet({
     setSubmitting(false)
     setJustRecorded(false)
     setLoadError(null)
+    setReportingCurrency('')
 
     let cancelled = false
     Promise.all([listAccounts(), listCategories()])
@@ -306,6 +317,20 @@ function TransactionDialogSheet({
             ? err.message
             : 'Couldn’t load your accounts and categories. Try again in a moment.',
         )
+      })
+    // Fetched independently of accounts/categories, and never surfaced as
+    // a blocking loadError: the foreign-currency hint is a nice-to-have
+    // on top of entry, not something that should stop a user from
+    // recording a transaction if it fails to load.
+    getReportingCurrency()
+      .then((rc) => {
+        if (cancelled) return
+        setReportingCurrency(rc.currency)
+      })
+      .catch(() => {
+        // Left as '' — every hint below stays hidden, same as a
+        // single-currency user (issue #138's "no behavior change"
+        // requirement degrades safely here too).
       })
     return () => {
       cancelled = true
@@ -379,6 +404,21 @@ function TransactionDialogSheet({
     amount.trim() !== '' &&
     accountId !== '' &&
     (kind === 'transfer' ? toAccountId !== '' : categoryId !== '')
+
+  // The foreign-currency hint (issue #138): amount is always entered in
+  // the primary account's own currency (accountId — the "from" account
+  // for a move, the only account otherwise), so that's what a non-empty,
+  // non-reporting-currency amount is converted from. Never enabled for a
+  // single-currency user, since reportingCurrency then resolves to the
+  // same currency every account already uses.
+  const primaryCurrency =
+    accounts.find((a) => a.id === accountId)?.currency ?? ''
+  const conversionHint = useFxConversionHint({
+    from: primaryCurrency,
+    to: reportingCurrency,
+    amount,
+    date,
+  })
 
   function resetForNextEntry() {
     setAmount('')
@@ -540,6 +580,12 @@ function TransactionDialogSheet({
                     setAmount(sanitizeAmountInput(e.target.value))
                   }
                 />
+                {reportingCurrency !== '' && (
+                  <FxConversionHint
+                    hint={conversionHint}
+                    currency={reportingCurrency}
+                  />
+                )}
               </div>
 
               {kind !== 'transfer' && (
