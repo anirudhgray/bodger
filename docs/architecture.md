@@ -281,13 +281,25 @@ new Combobox primitive, with an inline "+ Create category" row in the
 transaction dialog's own picker — see `docs/design-system.md`'s
 "Combobox and category hierarchy" section) are done.
 
+**M4 · The Grey Havens is in progress.**
+[ADR-0012](decisions/0012-fx-rate-provider.md) picked Frankfurter as the FX
+rate provider; the `fx_rates` schema, transfer rate columns, and the
+`users.reporting_currency` column landed as schema-only groundwork; and the
+domain layer's `Rate` value type, the nearest-earlier-within-staleness-
+window rate-selection rule, and cross-currency transfer support followed.
+[#132](https://github.com/anirudhgray/bodger/issues/132) wires the ladder's
+last missing rung — per-user reporting currency — into
+`internal/app/normalize`'s resolution and the two call sites
+(`CreateAccount`, `buildOutflowOrInflowPosting`) that previously hardcoded
+it to `""`.
+
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
 | M1 · Arda — Ledger core, CLI, REST API | ✅ Complete (v0.1.0) |
 | M2 · The Shire — Web UI and authentication | ✅ Complete |
 | M3 · Rivendell — UI polish and design system | ✅ Complete |
-| M4 · The Grey Havens — Multi-currency and FX | ⬜ Not started |
+| M4 · The Grey Havens — Multi-currency and FX | 🟨 In progress |
 | M5 — Analytics and charts | ⬜ Not started |
 | M6 — Import and export | ⬜ Not started |
 | M7 — Budgets | ⬜ Not started |
