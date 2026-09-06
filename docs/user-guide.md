@@ -189,6 +189,8 @@ bodger transactions edit cc033a79-96e6-431c-87d8-cfbe3570bab6 \
 
 **An edit replaces the whole transaction**, so pass every value you want it to end up with — anything you leave out is cleared, not kept. `bodger transactions list --json` shows you what's there now. `--amount` and `--description` are always required; use `--account`, `--category`, and `--currency` for money you spent or received, and `--from` and `--to` for a move. What you can't change is which of the three it is: money you spent stays money you spent — delete it and record it again if that's what you need.
 
+For a move, `--amount` is what left the `--from` account and `--to-amount` is what arrived in the `--to` account — the same split `transactions list --json`'s `amount`/`to_amount` fields show, so re-editing a cross-currency move with the values it just listed keeps both ends exactly as they were.
+
 Recorded something that never happened? Delete it:
 
 ```sh
