@@ -180,9 +180,19 @@ func (s *Service) RecordOutflow(ctx context.Context, cmd RecordOutflowCommand) (
 // because a transfer's amount isn't an independent fact the way an entry's
 // amount is; it's a movement between two accounts that already have
 // currencies. Building the *to* posting in the *to* account's own currency
-// (rather than reusing the *from* currency) is what lets
-// ledger.NewTransfer's own cross-currency check fire when they differ,
-// rather than this function silently deciding what to do about it.
+// (rather than reusing the *from* currency) is what would let
+// ledger.NewTransfer's own cross-currency handling (issue #129) take over
+// if this function let a differing pair through.
+//
+// It doesn't, yet: ledger.NewTransfer now accepts and derives an implied
+// rate for a cross-currency transfer rather than rejecting it, but nothing
+// in this application-layer path persists that rate (fx_rate_used /
+// fx_rate_source) or surfaces it to a caller — that's issue #133. Until
+// #133 wires it up, this function keeps explicitly rejecting a
+// cross-currency pair itself, so RecordTransfer's user-facing behaviour is
+// unchanged: a transfer between differently-currencied accounts still
+// fails with a clear, specific error, rather than silently succeeding with
+// an implied rate nothing downstream ever records.
 //
 // Shared by RecordTransfer and EditTransaction (when editing a transfer).
 func (s *Service) buildTransferPostings(ctx context.Context, actorID, fromRef, toRef, amount string) (ledger.Posting, ledger.Posting, error) {
@@ -193,6 +203,11 @@ func (s *Service) buildTransferPostings(ctx context.Context, actorID, fromRef, t
 	toAccount, err := s.resolveOwnedAccount(ctx, actorID, toRef)
 	if err != nil {
 		return ledger.Posting{}, ledger.Posting{}, attachField(err, "to_account_ref")
+	}
+	if fromAccount.Currency() != toAccount.Currency() {
+		return ledger.Posting{}, ledger.Posting{}, errs.New(errs.InvalidInput).
+			Explain("Transfers between accounts with different currencies aren't supported yet.").
+			Field("to_account_ref")
 	}
 
 	amountMinor, err := normalize.Amount(amount, fromAccount.Currency())
@@ -227,9 +242,10 @@ func (s *Service) buildTransferPostings(ctx context.Context, actorID, fromRef, t
 }
 
 // RecordTransferCommand records a transfer of exactly Amount from
-// FromAccountRef to ToAccountRef. A cross-currency transfer is rejected
-// with ledger.ErrCrossCurrencyTransferUnsupported (via wrapTransferError) —
-// M1 behaviour per issue #2 and data-model.md §5; M3 lifts this.
+// FromAccountRef to ToAccountRef. A cross-currency transfer is rejected by
+// buildTransferPostings — the domain layer (ledger.NewTransfer, issue #129)
+// now supports one, but wiring the implied rate through this command is
+// issue #133's job, so this command keeps rejecting it in the meantime.
 type RecordTransferCommand struct {
 	ActorID        string
 	FromAccountRef string
@@ -264,7 +280,12 @@ func (s *Service) RecordTransfer(ctx context.Context, cmd RecordTransferCommand)
 		opts = append(opts, ledger.WithNotes(fields.Notes))
 	}
 
-	txn, err := ledger.NewTransfer(s.IDs.NewID(), cmd.ActorID, fields.Date, fields.Description, []ledger.Posting{outPosting, inPosting}, opts...)
+	// NewTransfer also returns the transfer's implied fx.Rate. It's
+	// discarded here: buildTransferPostings above already rejects a
+	// cross-currency pair, so this call site only ever exercises the
+	// same-currency (identity-rate) branch, and issue #133 is what will
+	// eventually persist the rate for real.
+	txn, _, err := ledger.NewTransfer(s.IDs.NewID(), cmd.ActorID, fields.Date, fields.Description, []ledger.Posting{outPosting, inPosting}, opts...)
 	if err != nil {
 		return TransactionResult{}, wrapTransferError(err)
 	}

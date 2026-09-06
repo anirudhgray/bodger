@@ -6,6 +6,7 @@ require (
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/google/uuid v1.6.0
 	github.com/pressly/goose/v3 v3.27.3
+	github.com/shopspring/decimal v1.4.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.55.0
 	golang.org/x/term v0.45.0

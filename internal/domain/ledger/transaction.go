@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/anirudhgray/bodger/internal/domain"
+	"github.com/anirudhgray/bodger/internal/domain/fx"
 	"github.com/anirudhgray/bodger/internal/domain/money"
 )
 
@@ -168,46 +169,76 @@ func validateSingleAccountPostings(postings []Posting, wantPositive bool) error 
 
 // NewTransfer constructs a transfer transaction: kind=transfer, exactly
 // two postings on two distinct accounts, opposite signs, and both
-// categories null (data-model.md §14). A same-currency transfer's two
-// postings must sum to exactly zero. Cross-currency transfers are rejected
-// with ErrCrossCurrencyTransferUnsupported — M1 behaviour; the exemption
-// from the zero-sum rule and the implied-rate recording are M3 (ADR-0003
-// §Cross-currency transfers).
-func NewTransfer(id, userID string, bookedDate domain.Date, description string, postings []Posting, opts ...TransactionOption) (Transaction, error) {
+// categories null (data-model.md §14).
+//
+// Same-currency and cross-currency transfers both succeed, but the
+// zero-sum rule applies to only the former: a same-currency transfer's two
+// postings must sum to exactly zero, while a cross-currency transfer's
+// zero-sum rule is suspended entirely (data-model.md §3/§5, ADR-0004
+// "Cross-currency transfers record both legs") — both legs are
+// independently authoritative facts the user knows, and the exchange rate
+// between them is the *derived* quantity, not the other way round.
+//
+// NewTransfer returns the transfer's implied fx.Rate alongside the
+// Transaction rather than as a side channel, because every transfer has
+// one: a same-currency transfer's rate is the trivial 1:1
+// (fx.IdentityRate), and a cross-currency transfer's rate is derived from
+// the two leg amounts (fx.DeriveImpliedRate). Returning a uniform Rate for
+// both cases means a caller that persists fx_rate_used/fx_rate_source
+// (app-layer work, issue #133) never has to special-case "was there a rate
+// or not" — there always is one, trivial or not.
+func NewTransfer(id, userID string, bookedDate domain.Date, description string, postings []Posting, opts ...TransactionOption) (Transaction, fx.Rate, error) {
 	t, err := newTransaction(id, userID, TransactionKindTransfer, bookedDate, description, postings, opts)
 	if err != nil {
-		return Transaction{}, err
+		return Transaction{}, fx.Rate{}, err
 	}
 	if len(t.postings) != 2 {
-		return Transaction{}, fmt.Errorf("%w: got %d", ErrTransferPostingCount, len(t.postings))
+		return Transaction{}, fx.Rate{}, fmt.Errorf("%w: got %d", ErrTransferPostingCount, len(t.postings))
 	}
 	a, b := t.postings[0], t.postings[1]
 
 	if a.AccountID() == b.AccountID() {
-		return Transaction{}, fmt.Errorf("%w: %q", ErrTransferSameAccount, a.AccountID())
+		return Transaction{}, fx.Rate{}, fmt.Errorf("%w: %q", ErrTransferSameAccount, a.AccountID())
 	}
 	if _, ok := a.CategoryID(); ok {
-		return Transaction{}, ErrTransferPostingHasCategory
+		return Transaction{}, fx.Rate{}, ErrTransferPostingHasCategory
 	}
 	if _, ok := b.CategoryID(); ok {
-		return Transaction{}, ErrTransferPostingHasCategory
+		return Transaction{}, fx.Rate{}, ErrTransferPostingHasCategory
 	}
 	if !oppositeSigns(a.Amount(), b.Amount()) {
-		return Transaction{}, ErrTransferPostingsMustOppose
-	}
-	if a.Currency() != b.Currency() {
-		return Transaction{}, fmt.Errorf("%w: %s vs %s", ErrCrossCurrencyTransferUnsupported, a.Currency(), b.Currency())
+		return Transaction{}, fx.Rate{}, ErrTransferPostingsMustOppose
 	}
 
-	sum, err := money.Sum(a.Amount(), b.Amount())
+	if a.Currency() == b.Currency() {
+		sum, err := money.Sum(a.Amount(), b.Amount())
+		if err != nil {
+			return Transaction{}, fx.Rate{}, err
+		}
+		if !sum.IsZero() {
+			return Transaction{}, fx.Rate{}, fmt.Errorf("%w: %s", ErrTransferNotBalanced, sum)
+		}
+		rate, err := fx.IdentityRate(a.Currency())
+		if err != nil {
+			return Transaction{}, fx.Rate{}, err
+		}
+		return t, rate, nil
+	}
+
+	// Cross-currency: the zero-sum rule above is deliberately skipped.
+	// base is the outflow leg (the money that left an account) and quote
+	// is the inflow leg (the money that arrived) — see
+	// fx.DeriveImpliedRate's doc comment for why that ordering matches
+	// ADR-0004's worked example.
+	base, quote := b.Amount(), a.Amount()
+	if a.Amount().IsNegative() {
+		base, quote = a.Amount(), b.Amount()
+	}
+	rate, err := fx.DeriveImpliedRate(base, quote)
 	if err != nil {
-		return Transaction{}, err
+		return Transaction{}, fx.Rate{}, err
 	}
-	if !sum.IsZero() {
-		return Transaction{}, fmt.Errorf("%w: %s", ErrTransferNotBalanced, sum)
-	}
-
-	return t, nil
+	return t, rate, nil
 }
 
 // oppositeSigns reports whether a and b are one strictly negative and one

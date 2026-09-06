@@ -103,7 +103,7 @@ func TestTransactionRepository_Create_Transfer(t *testing.T) {
 
 	out := mustPosting(t, "post-out", "acc-a", -200000, "INR", nil)
 	in := mustPosting(t, "post-in", "acc-b", 200000, "INR", nil)
-	txn, err := ledger.NewTransfer("txn-transfer", ports.SeededUserID, mustDate(t, 2026, time.August, 5), "Move money", []ledger.Posting{out, in})
+	txn, _, err := ledger.NewTransfer("txn-transfer", ports.SeededUserID, mustDate(t, 2026, time.August, 5), "Move money", []ledger.Posting{out, in})
 	if err != nil {
 		t.Fatalf("NewTransfer: %v", err)
 	}
