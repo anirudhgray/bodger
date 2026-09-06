@@ -380,8 +380,23 @@ stack. All four now take an optional to-amount (`to_amount` over HTTP,
 `--to-amount` on the CLI); omitted, behaviour is unchanged, and the
 conformance suite covers both paths identically across CLI and API.
 
+[#138](https://github.com/anirudhgray/bodger/issues/138) adds the web
+transaction dialog's non-persisted foreign-currency hint: any amount
+entered in a currency other than the actor's reporting currency (spend,
+receive, or a transfer's own leg alike) shows a read-only "≈ N
+&lt;reporting-currency&gt; as of `<date>`" line via `GET /api/v1/fx/rates`,
+keyed to whichever date the transaction is booked to (today, or a
+backdated entry's own date — never `Date.now()`), with a "Fetch
+rate"/"Refresh" action scoped to just that one base currency and date via
+`POST /api/v1/fx/rates/fetch`, and a plain "no stored rate yet" state for
+a 404 rather than a raw error. None of it renders for a single-currency
+actor. Once #159 landed, the issue's other half — a second,
+independently-editable destination-amount field on a cross-currency move,
+pre-filled from the fetched rate but freely overridable, sending
+`to_amount` — was wired up too, so #138 is fully closed by this PR.
+
 Every other surface exposing this app-layer work
-([#138](https://github.com/anirudhgray/bodger/issues/138)–[#141](https://github.com/anirudhgray/bodger/issues/141),
+([#139](https://github.com/anirudhgray/bodger/issues/139)–[#141](https://github.com/anirudhgray/bodger/issues/141),
 [#145](https://github.com/anirudhgray/bodger/issues/145)) remains open.
 
 | Milestone | Status |
