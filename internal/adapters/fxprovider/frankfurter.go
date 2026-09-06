@@ -120,7 +120,7 @@ func (f *Frankfurter) FetchRate(ctx context.Context, base, quote string, date do
 	if err != nil {
 		return ports.ProviderRate{}, err
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	dec := json.NewDecoder(body)
 	dec.UseNumber()
@@ -144,7 +144,7 @@ func (f *Frankfurter) FetchRange(ctx context.Context, base, quote string, from, 
 	if err != nil {
 		return nil, err
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	dec := json.NewDecoder(body)
 	dec.UseNumber()
@@ -196,19 +196,19 @@ func (f *Frankfurter) get(ctx context.Context, reqURL string) (io.ReadCloser, er
 	case resp.StatusCode == http.StatusOK:
 		return resp.Body, nil
 	case resp.StatusCode == http.StatusNotFound:
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		return nil, errs.New(errs.NotFound).
 			Explain("the rate provider has no data for this pair/date")
 	case resp.StatusCode == http.StatusUnprocessableEntity:
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		return nil, errs.New(errs.InvalidInput).
 			Explain("the rate provider rejected the currency code or request parameters")
 	case resp.StatusCode >= 500:
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		return nil, errs.New(errs.Unavailable).
 			Explain("the rate provider is unavailable (status %d)", resp.StatusCode)
 	default:
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		return nil, errs.New(errs.Internal).
 			Explain("the rate provider returned an unexpected status %d", resp.StatusCode)
 	}

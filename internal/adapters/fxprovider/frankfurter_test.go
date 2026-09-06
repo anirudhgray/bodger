@@ -2,6 +2,7 @@ package fxprovider_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
@@ -39,9 +40,7 @@ func wantErrCode(t *testing.T, err error, want errs.Code) {
 		t.Fatalf("got nil error, want code %q", want)
 	}
 	var e *errs.Error
-	if ce, ok := err.(*errs.Error); ok {
-		e = ce
-	} else {
+	if !errors.As(err, &e) {
 		t.Fatalf("got error of type %T (%v), want *errs.Error with code %q", err, err, want)
 	}
 	if e.Code != want {
