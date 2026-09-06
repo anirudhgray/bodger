@@ -401,7 +401,12 @@ reporting currency (#135's `resolveFetchPairs`) — there is no
 triangulation between two arbitrary non-reporting currencies yet. Outside
 that case the field degrades to the same "no stored rate yet" state the
 read-only hint already handles, and stays fully editable regardless,
-since the suggestion is a convenience, never a requirement to submit.
+since the suggestion is a convenience, never a requirement to submit —
+though its "Refresh" action can't help in that case either, since the
+fetch endpoint has the identical against-reporting-currency-only
+constraint; tracked as [#165](https://github.com/anirudhgray/bodger/issues/165),
+which also covers hiding that misleading affordance as an interim
+mitigation.
 
 Every other surface exposing this app-layer work
 ([#139](https://github.com/anirudhgray/bodger/issues/139)–[#141](https://github.com/anirudhgray/bodger/issues/141),
