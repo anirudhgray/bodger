@@ -2,6 +2,9 @@ package sqlite
 
 import (
 	"context"
+	"errors"
+
+	"github.com/shopspring/decimal"
 
 	"github.com/anirudhgray/bodger/internal/domain"
 	"github.com/anirudhgray/bodger/internal/domain/fx"
@@ -66,6 +69,74 @@ func (r *FxRateRepository) StoreBatch(ctx context.Context, rows []ports.FxRateRo
 		return errs.New(errs.Internal).Wrap(err)
 	}
 	return nil
+}
+
+// Lookup implements ports.FxRateRepository. It loads every stored
+// candidate for (base, quote) up to and including date, then hands them
+// to fx.SelectRate — the pure selection logic itself is never
+// reimplemented here in SQL.
+//
+// A pair can have rows from more than one source (fx_rates' primary key
+// includes source); Lookup doesn't filter by source, so all of them
+// become candidates. In practice there is currently only one provider
+// configured per instance, so this doesn't yet matter; a future
+// source-preference rule (if one is ever needed) belongs in fx.SelectRate
+// or a wrapper around it, not as ad hoc filtering here.
+func (r *FxRateRepository) Lookup(ctx context.Context, base, quote string, date domain.Date, windowDays int) (fx.Selection, error) {
+	if base == "" || quote == "" {
+		return fx.Selection{}, errs.New(errs.InvalidInput).Explain("Both a base and a quote currency are required.").Field("base")
+	}
+
+	rows, err := r.db.read.QueryContext(ctx, `
+		SELECT rate_date, rate FROM fx_rates
+		WHERE base = ? AND quote = ? AND rate_date <= ?
+	`, base, quote, formatDate(date))
+	if err != nil {
+		return fx.Selection{}, errs.New(errs.Internal).Wrap(err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var candidates []fx.RateCandidate
+	for rows.Next() {
+		var dateCol, rateCol string
+		if err := rows.Scan(&dateCol, &rateCol); err != nil {
+			return fx.Selection{}, errs.New(errs.Internal).Wrap(err)
+		}
+		d, err := parseDate(dateCol)
+		if err != nil {
+			return fx.Selection{}, errs.New(errs.Internal).Wrap(err)
+		}
+		value, err := decimal.NewFromString(rateCol)
+		if err != nil {
+			return fx.Selection{}, errs.New(errs.Internal).Wrap(err)
+		}
+		rate, err := fx.NewRate(base, quote, value)
+		if err != nil {
+			return fx.Selection{}, errs.New(errs.Internal).Wrap(err)
+		}
+		candidates = append(candidates, fx.RateCandidate{Date: d, Rate: rate})
+	}
+	if err := rows.Err(); err != nil {
+		return fx.Selection{}, errs.New(errs.Internal).Wrap(err)
+	}
+
+	sel, err := fx.SelectRate(candidates, date, windowDays)
+	if err != nil {
+		switch {
+		case errors.Is(err, fx.ErrNoRateWithinWindow):
+			return fx.Selection{}, errs.New(errs.NotFound).
+				Explain("No %s/%s rate available for %s within %d day(s).", base, quote, date.String(), windowDays).
+				Wrap(err)
+		case errors.Is(err, fx.ErrInvalidStalenessWindow):
+			return fx.Selection{}, errs.New(errs.InvalidInput).
+				Explain("The staleness window must not be negative.").
+				Field("window_days").
+				Wrap(err)
+		default:
+			return fx.Selection{}, errs.New(errs.Internal).Wrap(err)
+		}
+	}
+	return sel, nil
 }
 
 // requireRateKey validates the fields that make up fx_rates' primary key

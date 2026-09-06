@@ -2,12 +2,14 @@ package sqlite
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/shopspring/decimal"
 
 	"github.com/anirudhgray/bodger/internal/domain/fx"
+	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
 )
 
@@ -184,5 +186,90 @@ func TestFxRateRepository_StoreBatch_RejectsInvalidRow(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("count = %d, want 0 (a rejected batch should write nothing, not a partial set)", count)
+	}
+}
+
+func TestFxRateRepository_Lookup_ExactMatch(t *testing.T) {
+	db, _ := newTestDB(t)
+	repo := NewFxRateRepository(db)
+	ctx := context.Background()
+
+	aug14 := mustDate(t, 2026, time.August, 14)
+	if err := repo.Store(ctx, mustRate(t, "INR", "USD", "0.0115"), aug14, "frankfurter"); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+
+	sel, err := repo.Lookup(ctx, "INR", "USD", aug14, fx.DefaultStalenessWindowDays)
+	if err != nil {
+		t.Fatalf("Lookup: %v", err)
+	}
+	if sel.Stale {
+		t.Errorf("Stale = true, want false for an exact match")
+	}
+	if !sel.Date.Equal(aug14) {
+		t.Errorf("Date = %v, want %v", sel.Date, aug14)
+	}
+	if sel.Rate.Value().String() != "0.0115" {
+		t.Errorf("Rate = %v, want 0.0115", sel.Rate.Value())
+	}
+}
+
+func TestFxRateRepository_Lookup_NearestEarlierWithinWindow(t *testing.T) {
+	db, _ := newTestDB(t)
+	repo := NewFxRateRepository(db)
+	ctx := context.Background()
+
+	aug10 := mustDate(t, 2026, time.August, 10)
+	aug14 := mustDate(t, 2026, time.August, 14)
+	if err := repo.Store(ctx, mustRate(t, "INR", "USD", "0.0115"), aug10, "frankfurter"); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+
+	sel, err := repo.Lookup(ctx, "INR", "USD", aug14, fx.DefaultStalenessWindowDays)
+	if err != nil {
+		t.Fatalf("Lookup: %v", err)
+	}
+	if !sel.Stale {
+		t.Errorf("Stale = false, want true for a substitute rate")
+	}
+	if !sel.Date.Equal(aug10) {
+		t.Errorf("Date = %v, want %v", sel.Date, aug10)
+	}
+}
+
+func TestFxRateRepository_Lookup_NoneWithinWindow(t *testing.T) {
+	db, _ := newTestDB(t)
+	repo := NewFxRateRepository(db)
+	ctx := context.Background()
+
+	aug1 := mustDate(t, 2026, time.August, 1)
+	aug14 := mustDate(t, 2026, time.August, 14)
+	if err := repo.Store(ctx, mustRate(t, "INR", "USD", "0.0115"), aug1, "frankfurter"); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+
+	_, err := repo.Lookup(ctx, "INR", "USD", aug14, fx.DefaultStalenessWindowDays)
+	if err == nil {
+		t.Fatalf("Lookup: want an error, got nil")
+	}
+	var appErr *errs.Error
+	if !errors.As(err, &appErr) || appErr.Code != errs.NotFound {
+		t.Errorf("Lookup error = %v, want *errs.Error{Code: NotFound}", err)
+	}
+}
+
+func TestFxRateRepository_Lookup_RejectsNegativeWindow(t *testing.T) {
+	db, _ := newTestDB(t)
+	repo := NewFxRateRepository(db)
+	ctx := context.Background()
+
+	aug14 := mustDate(t, 2026, time.August, 14)
+	_, err := repo.Lookup(ctx, "INR", "USD", aug14, -1)
+	if err == nil {
+		t.Fatalf("Lookup with negative window: want an error, got nil")
+	}
+	var appErr *errs.Error
+	if !errors.As(err, &appErr) || appErr.Code != errs.InvalidInput {
+		t.Errorf("Lookup error = %v, want *errs.Error{Code: InvalidInput}", err)
 	}
 }

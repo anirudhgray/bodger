@@ -33,6 +33,15 @@ type FxRateRepository interface {
 	// partially-applied backfill would be harder to reason about than an
 	// all-or-nothing one.
 	StoreBatch(ctx context.Context, rows []FxRateRow) error
+
+	// Lookup finds the rate to use for base/quote on date, applying
+	// fx.SelectRate's exact-match-then-nearest-earlier-within-window rule
+	// (#129) over every stored candidate for that pair. windowDays is
+	// forwarded to fx.SelectRate unchanged — fx.DefaultStalenessWindowDays
+	// for ADR-0004's default of 7. It returns a *errs.Error with code
+	// NotFound if no candidate is within the window, and InvalidInput if
+	// windowDays is negative.
+	Lookup(ctx context.Context, base, quote string, date domain.Date, windowDays int) (fx.Selection, error)
 }
 
 // FxRateRow is one row for FxRateRepository.StoreBatch — the same fields
