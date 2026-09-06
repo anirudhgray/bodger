@@ -369,6 +369,17 @@ separate `TestBalanceQueryConformance` for the currency/policy-parameterized
 balance read, which doesn't fit the existing single-transaction
 `conformanceCase` shape.
 
+[#159](https://github.com/anirudhgray/bodger/issues/159) closed a gap
+found while implementing #138: `POST /api/v1/transfers`,
+`PATCH /api/v1/transactions/{id}`, and `bodger move`/`transactions edit`
+all reused the from-leg's raw digits, reinterpreted in the to-account's
+currency, for the to-leg — so a cross-currency transfer's implied rate was
+always just that trivial ratio, never a real exchange rate, since there
+was no way to state the to-leg's own amount independently anywhere in the
+stack. All four now take an optional to-amount (`to_amount` over HTTP,
+`--to-amount` on the CLI); omitted, behaviour is unchanged, and the
+conformance suite covers both paths identically across CLI and API.
+
 Every other surface exposing this app-layer work
 ([#138](https://github.com/anirudhgray/bodger/issues/138)–[#141](https://github.com/anirudhgray/bodger/issues/141),
 [#145](https://github.com/anirudhgray/bodger/issues/145)) remains open.

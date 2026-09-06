@@ -129,6 +129,12 @@ Moving money between two of your own accounts is `move` — it needs both ends n
 bodger move 20000 --from "HDFC Savings" --to Cash
 ```
 
+If the two accounts are in different currencies, `bodger` derives and shows the implied exchange rate alongside the transfer. By default that's based on the same number on both ends (reinterpreted in the destination currency), which usually isn't the real rate you got — add `--to-amount` to say exactly how much arrived, and the rate shown reflects that instead:
+
+```sh
+bodger move 20000 --from "HDFC Savings" --to "Chase USD" --to-amount 230
+```
+
 If you have more than one account and don't say which with `--account` (for `spend`/`receive`) or `--from`/`--to` (for `move`), `bodger` tells you it can't guess and lists your accounts so you can try again.
 
 A couple of extra flags work on all three:
@@ -383,10 +389,10 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | --- | --- |
 | `bodger spend <amount> <category> [--account] [--on] [--tag] [--note]` | Record money you spent |
 | `bodger receive <amount> <category> [--account] [--on] [--tag] [--note]` | Record money you received |
-| `bodger move <amount> --from <account> --to <account> [--on] [--tag] [--note]` | Move money between two of your accounts — accounts in different currencies are fine, and the implied exchange rate is shown alongside the transfer |
+| `bodger move <amount> --from <account> --to <account> [--to-amount] [--on] [--tag] [--note]` | Move money between two of your accounts — accounts in different currencies are fine, and the implied exchange rate is shown alongside the transfer; add `--to-amount` to state exactly how much arrived instead of reusing `<amount>`'s digits |
 | `bodger balance [--on] [--currency] [--policy] [--pinned-date]` | See what every account holds — add `--currency`/`--policy` to convert every balance into one currency, with the rate shown alongside |
 | `bodger transactions list [--account] [--category] [--type] [--since] [--until] [--limit] [--offset]` | List what you've recorded, newest first |
-| `bodger transactions edit <id> --amount <amount> --description <text> [--account] [--category] [--currency] [--from] [--to] [--on] [--tag] [--note]` | Correct a transaction — replaces every value |
+| `bodger transactions edit <id> --amount <amount> --description <text> [--account] [--category] [--currency] [--from] [--to] [--to-amount] [--on] [--tag] [--note]` | Correct a transaction — replaces every value |
 | `bodger transactions delete <id>` | Delete a transaction you recorded by mistake |
 | `bodger accounts list` | List your accounts |
 | `bodger accounts add <name> --type <type> [--currency] [--opening-balance] [--opening-balance-date] [--institution] [--sort-order]` | Add an account |
