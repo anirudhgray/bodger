@@ -11,6 +11,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/platform/config"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
+	"github.com/anirudhgray/bodger/internal/ports"
 )
 
 const testActorID = "actor-1"
@@ -33,9 +34,17 @@ func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
 	cfg := config.Defaults
 	cfg.UserTimezone = tz
 	categories := newMemCategories()
+	// newMemUsersSeeded only seeds ports.SeededUserID, the identity issue
+	// #55's auth use cases hardcode. Every account/category/transaction
+	// use-case test in this package uses testActorID instead - a distinct,
+	// arbitrary actor that predates issue #55 entirely - so it needs its
+	// own row too, now that CreateAccount/RecordOutflow/RecordInflow read
+	// the acting user's reporting currency (issue #132).
+	users := newMemUsersSeeded()
+	users.byID[testActorID] = ports.User{ID: testActorID}
 	svc, err := app.NewService(
 		clk, cfg, idgen.New(), newMemAccounts(), categories, newMemTransactions(categories), newMemTags(),
-		newMemUsersSeeded(), newMemSessions(), newMemAPITokens(), newMemFxRates(),
+		users, newMemSessions(), newMemAPITokens(), newMemFxRates(),
 	)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
@@ -110,6 +119,69 @@ func TestCreateAccount_DefaultsOpeningBalanceToZeroAndNoDate(t *testing.T) {
 	}
 	if _, ok := result.Account.OpeningBalanceDate(); ok {
 		t.Error("OpeningBalanceDate should be unset (nil) when not supplied, not defaulted to today")
+	}
+}
+
+// TestCreateAccount_CurrencyPrecedence_FallsBackToInstanceDefaultWhenReportingCurrencyUnset
+// is issue #132's explicit "no behaviour change for a fresh install"
+// guarantee: an actor who has never set a reporting currency (every actor,
+// before this issue existed) must still resolve CreateAccount's empty
+// Currency field to the instance default, exactly as before the "user"
+// rung of ADR-0004's ladder was wired in.
+func TestCreateAccount_CurrencyPrecedence_FallsBackToInstanceDefaultWhenReportingCurrencyUnset(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	result, err := svc.CreateAccount(context.Background(), app.CreateAccountCommand{
+		ActorID: testActorID, Name: "Cash", Kind: "cash",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	if result.Account.Currency() != svc.Config.DefaultCurrency {
+		t.Errorf("Currency = %s, want %s (the instance default, since neither entry nor user has an opinion)", result.Account.Currency(), svc.Config.DefaultCurrency)
+	}
+}
+
+// TestCreateAccount_CurrencyPrecedence_UsesReportingCurrencyWhenSet proves
+// the "user" rung is actually wired in: once an actor has a reporting
+// currency, CreateAccount's empty Currency field resolves to it rather
+// than falling all the way through to the instance default.
+func TestCreateAccount_CurrencyPrecedence_UsesReportingCurrencyWhenSet(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	if err := svc.SetReportingCurrency(ctx, testActorID, "GBP"); err != nil {
+		t.Fatalf("SetReportingCurrency: %v", err)
+	}
+
+	result, err := svc.CreateAccount(ctx, app.CreateAccountCommand{
+		ActorID: testActorID, Name: "Cash", Kind: "cash",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	if result.Account.Currency() != "GBP" {
+		t.Errorf("Currency = %s, want GBP (the actor's reporting currency)", result.Account.Currency())
+	}
+}
+
+// TestCreateAccount_UnrecognizedActor_StillResolvesCurrency covers a
+// pre-existing quirk CreateAccount's currency-precedence wiring must not
+// break: CreateAccount has never checked that its ActorID names a real
+// row in the users table (there's no such check anywhere in this method),
+// so an actor string that doesn't correspond to any user - as several
+// tests in this file use for cross-actor-invisibility checks - must still
+// resolve a currency (falling straight to the instance default, since it
+// has no reporting currency to speak of) rather than failing with a
+// not-found error the resolved-currency lookup introduced.
+func TestCreateAccount_UnrecognizedActor_StillResolvesCurrency(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	result, err := svc.CreateAccount(context.Background(), app.CreateAccountCommand{
+		ActorID: "someone-else", Name: "Not Mine", Kind: "bank",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	if result.Account.Currency() != svc.Config.DefaultCurrency {
+		t.Errorf("Currency = %s, want %s", result.Account.Currency(), svc.Config.DefaultCurrency)
 	}
 }
 

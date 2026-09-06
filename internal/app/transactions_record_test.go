@@ -144,6 +144,32 @@ func TestRecordOutflow_CurrencyPrecedenceFallsBackToAccount(t *testing.T) {
 	}
 }
 
+// TestRecordOutflow_CurrencyPrecedence_AccountStillWinsOverReportingCurrency
+// pins down ADR-0004's ladder order at this call site now that the "user"
+// rung is wired in (issue #132): an account always has its own currency,
+// so the account rung wins over the actor's reporting currency exactly as
+// it won before this issue existed - the "no behaviour change for a fresh
+// install" guarantee, extended to actors who *have* set a reporting
+// currency too.
+func TestRecordOutflow_CurrencyPrecedence_AccountStillWinsOverReportingCurrency(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "HDFC", "bank", "INR")
+	if err := svc.SetReportingCurrency(ctx, testActorID, "GBP"); err != nil {
+		t.Fatalf("SetReportingCurrency: %v", err)
+	}
+
+	result, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), Amount: "100", Description: "Chai",
+	})
+	if err != nil {
+		t.Fatalf("RecordOutflow: %v", err)
+	}
+	if result.Transaction.Postings()[0].Currency() != "INR" {
+		t.Errorf("Currency = %s, want INR (the account still wins over the actor's reporting currency)", result.Transaction.Postings()[0].Currency())
+	}
+}
+
 func TestRecordInflow(t *testing.T) {
 	svc := newTestService(t, time.Date(2026, time.August, 1, 12, 0, 0, 0, time.UTC), "UTC")
 	ctx := context.Background()

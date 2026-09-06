@@ -30,6 +30,12 @@ type User struct {
 	// PasswordHash is auth.HashPassword's self-describing PHC-encoded
 	// Argon2id hash, or nil if no password has been set yet.
 	PasswordHash *string
+	// ReportingCurrency is the ISO 4217 code ADR-0004's currency
+	// precedence ladder resolves as the "user" rung
+	// (internal/app/normalize.Currency), or nil if this user has never set
+	// one — a fresh install's normal state, which falls through to the
+	// instance default exactly as if this field didn't exist.
+	ReportingCurrency *string
 	// CreatedAt is when this user row was created.
 	CreatedAt time.Time
 }
@@ -59,4 +65,12 @@ type UserRepository interface {
 	// auth.HashPassword result; this method does no hashing itself. Returns
 	// a *errs.Error with code NotFound if no such user exists.
 	SetPasswordHash(ctx context.Context, actorID, passwordHash string) error
+
+	// SetReportingCurrency overwrites the stored reporting currency for the
+	// user identified by actorID with currency — an already-validated ISO
+	// 4217 code; this method does no validation itself, mirroring
+	// SetPasswordHash's "already-computed value in, no I/O-independent
+	// checking" shape. Returns a *errs.Error with code NotFound if no such
+	// user exists.
+	SetReportingCurrency(ctx context.Context, actorID, currency string) error
 }

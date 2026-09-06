@@ -360,6 +360,16 @@ func (m *memUsers) SetPasswordHash(_ context.Context, actorID, passwordHash stri
 	return nil
 }
 
+func (m *memUsers) SetReportingCurrency(_ context.Context, actorID, currency string) error {
+	u, ok := m.byID[actorID]
+	if !ok {
+		return errs.New(errs.NotFound).Explain("No user with ID %q.", actorID).Field("id")
+	}
+	u.ReportingCurrency = &currency
+	m.byID[actorID] = u
+	return nil
+}
+
 var _ ports.UserRepository = (*memUsers)(nil)
 
 type memSessions struct {
