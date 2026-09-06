@@ -394,6 +394,14 @@ actor. Once #159 landed, the issue's other half — a second,
 independently-editable destination-amount field on a cross-currency move,
 pre-filled from the fetched rate but freely overridable, sending
 `to_amount` — was wired up too, so #138 is fully closed by this PR.
+**The pre-fill only ever resolves when the to-account's own currency
+happens to equal the reporting currency**: `GET /api/v1/fx/rates` does an
+exact base/quote match, and every stored rate is quoted against the
+reporting currency (#135's `resolveFetchPairs`) — there is no
+triangulation between two arbitrary non-reporting currencies yet. Outside
+that case the field degrades to the same "no stored rate yet" state the
+read-only hint already handles, and stays fully editable regardless,
+since the suggestion is a convenience, never a requirement to submit.
 
 Every other surface exposing this app-layer work
 ([#139](https://github.com/anirudhgray/bodger/issues/139)–[#141](https://github.com/anirudhgray/bodger/issues/141),

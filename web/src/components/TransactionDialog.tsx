@@ -241,6 +241,22 @@ function TransactionDialogSheet({
   const [toAccountId, setToAccountId] = useState(editing?.to_account_id ?? '')
   const [categoryId, setCategoryId] = useState(editing?.category_id ?? '')
 
+  // The destination leg's own amount on a cross-currency move (issue
+  // #138/#159) — always starts empty, on both create and edit: the
+  // to-account's *current* amount isn't independently knowable from an
+  // existing transfer's GET representation (transactionView reports only
+  // one amount/currency pair for a transfer, the to-leg's — see
+  // dto.go's transactionViewFrom), so there's nothing authoritative to
+  // pre-fill an edit with here beyond a fresh suggestion, same as create.
+  // Omitting this on submit falls back to exactly today's behavior
+  // (the from-leg's raw digits, reinterpreted in the to-currency).
+  const [toAmount, setToAmount] = useState('')
+  // Tracks whether the user has typed into toAmount themselves, so the
+  // rate-suggestion effect below (over in the render section) stops
+  // overwriting it — the pre-fill is only ever a suggestion, never a
+  // value the user's own input gets silently replaced by.
+  const [toAmountTouched, setToAmountTouched] = useState(false)
+
   // Create starts collapsed (ux-principles.md §4's "occasional" layer) —
   // edit shows everything immediately, since there's no fast path for
   // changing something already recorded, and hiding an existing note
@@ -420,6 +436,54 @@ function TransactionDialogSheet({
     date,
   })
 
+  // The destination-leg amount field (issue #138's first bullet, unblocked
+  // by #159's to_amount support): only shown for a transfer whose two
+  // accounts actually differ in currency. toCurrency here is the
+  // *to*-account's own currency, which is not necessarily the reporting
+  // currency — GET /api/v1/fx/rates only ever resolves a pair stored
+  // against the reporting currency (useFxConversionHint's own doc
+  // comment), so this lookup, and its refresh, are only ever able to
+  // suggest a rate when toCurrency happens to equal reportingCurrency.
+  // Otherwise it degrades to the same "no stored rate yet" state the
+  // read-only hint already handles — the field itself stays fully
+  // editable regardless, since a suggestion is never required to submit.
+  const toCurrency = accounts.find((a) => a.id === toAccountId)?.currency ?? ''
+  const crossCurrencyTransfer =
+    kind === 'transfer' &&
+    primaryCurrency !== '' &&
+    toCurrency !== '' &&
+    primaryCurrency !== toCurrency
+  const toAmountHint = useFxConversionHint({
+    from: primaryCurrency,
+    to: toCurrency,
+    amount,
+    date,
+  })
+
+  // Suggests toAmount from the fetched rate whenever one becomes
+  // available — but only until the user types their own value (per
+  // toAmountTouched), since the pre-fill is a convenience, never
+  // authoritative over what the user actually enters.
+  useEffect(() => {
+    if (!crossCurrencyTransfer || toAmountTouched) return
+    if (toAmountHint.state.status !== 'ready') return
+    // converted is always set here — this hook always calls getFxRate
+    // with `amount` (useFxConversionHint's own `enabled` check requires a
+    // non-empty amount), and the API only omits it when amount was never
+    // given.
+    const converted = toAmountHint.state.rate.converted
+    if (!converted) return
+    const [suggested] = converted.split(' ')
+    setToAmount(suggested)
+  }, [crossCurrencyTransfer, toAmountTouched, toAmountHint.state])
+
+  // A different pair of accounts means any prior suggestion or manual
+  // entry no longer means anything for this one.
+  useEffect(() => {
+    setToAmount('')
+    setToAmountTouched(false)
+  }, [accountId, toAccountId])
+
   function resetForNextEntry() {
     setAmount('')
     setCategoryId('')
@@ -447,7 +511,11 @@ function TransactionDialogSheet({
           notes: notes.trim() || undefined,
           tags: parseTags(tags),
           ...(kind === 'transfer'
-            ? { from_account: accountId, to_account: toAccountId }
+            ? {
+                from_account: accountId,
+                to_account: toAccountId,
+                to_amount: toAmount.trim() || undefined,
+              }
             : { account: accountId, category: categoryId || undefined }),
         }
         const updated = await updateTransaction(request.transaction.id, body)
@@ -480,6 +548,7 @@ function TransactionDialogSheet({
           ? await recordTransfer({
               fromAccount: accountId,
               toAccount: toAccountId,
+              toAmount: toAmount.trim() || undefined,
               ...common,
             })
           : await (kind === 'inflow' ? recordInflow : recordOutflow)({
@@ -692,6 +761,25 @@ function TransactionDialogSheet({
                       </SelectContent>
                     </Select>
                   )}
+                </div>
+              )}
+
+              {crossCurrencyTransfer && (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="td-to-amount">
+                    Amount received ({toCurrency})
+                  </Label>
+                  <Input
+                    id="td-to-amount"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={toAmount}
+                    onChange={(e) => {
+                      setToAmountTouched(true)
+                      setToAmount(sanitizeAmountInput(e.target.value))
+                    }}
+                  />
+                  <FxConversionHint hint={toAmountHint} />
                 </div>
               )}
 

@@ -42,6 +42,7 @@ import {
   listAccounts,
   listCategories,
   recordOutflow,
+  recordTransfer,
   type Account,
   type Category,
   type FxRate,
@@ -54,6 +55,7 @@ import { useTransactionDialog } from '@/hooks/use-transaction-dialog'
 const mockedListAccounts = vi.mocked(listAccounts)
 const mockedListCategories = vi.mocked(listCategories)
 const mockedRecordOutflow = vi.mocked(recordOutflow)
+const mockedRecordTransfer = vi.mocked(recordTransfer)
 const mockedCreateCategory = vi.mocked(createCategory)
 const mockedGetReportingCurrency = vi.mocked(getReportingCurrency)
 const mockedGetFxRate = vi.mocked(getFxRate)
@@ -596,5 +598,157 @@ describe('TransactionDialog (foreign-currency conversion hint)', () => {
     })
 
     expect(mockedFetchFxRates).toHaveBeenCalledWith(['INR'], undefined)
+  })
+})
+
+// Issue #138's first bullet, unblocked by #159: an independently-editable
+// destination-amount field on a cross-currency move. Uses real timers
+// (unlike the conversion-hint block above) — combining userEvent's own
+// internal scheduling with fake timers here reliably hung these tests,
+// so this block just lets the 400ms debounce run for real via `waitFor`.
+describe('TransactionDialog (cross-currency transfer destination amount)', () => {
+  const usAccount: Account = {
+    ...account,
+    id: 'acc-2',
+    name: 'US Checking',
+    currency: 'USD',
+  }
+
+  beforeEach(() => {
+    mockedListAccounts.mockReset().mockResolvedValue([account, usAccount])
+    mockedListCategories.mockReset().mockResolvedValue([category])
+    mockedRecordTransfer.mockReset().mockResolvedValue({
+      ...recorded,
+      type: 'transfer',
+      from_account_id: 'acc-1',
+      to_account_id: 'acc-2',
+      currency: 'USD',
+    })
+    mockedGetReportingCurrency.mockReset()
+    mockedGetFxRate.mockReset()
+    mockedFetchFxRates.mockReset()
+  })
+
+  // toCurrency ('USD') matches the reporting currency here deliberately —
+  // useFxConversionHint's own doc comment explains why a suggestion can
+  // only ever resolve when the to-account's currency happens to equal
+  // the reporting currency, since GET /api/v1/fx/rates has no
+  // triangulation between two arbitrary non-reporting currencies.
+  const rate: FxRate = {
+    from: 'INR',
+    to: 'USD',
+    rate: '0.012',
+    rate_date: '2026-09-05',
+    rate_source: 'frankfurter',
+    stale: false,
+    policy: 'current',
+    amount: '800',
+    converted: '9.60 USD',
+  }
+
+  async function openMoveWithToAccount(
+    user: ReturnType<typeof userEvent.setup>,
+    toAccountName: string,
+  ) {
+    renderAndOpen()
+    await waitFor(() =>
+      expect(
+        screen.getByRole('combobox', { name: 'Account' }),
+      ).toHaveTextContent('HDFC Savings'),
+    )
+    await screen.findByRole('tab', { name: 'Move' })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Move' }))
+    await user.click(screen.getByRole('combobox', { name: 'To account' }))
+    await user.click(await screen.findByRole('option', { name: toAccountName }))
+  }
+
+  it('has no destination-amount field when both transfer accounts share a currency', async () => {
+    const user = userEvent.setup()
+    mockedListAccounts.mockResolvedValue([
+      account,
+      { ...account, id: 'acc-2', name: 'Second INR Account' },
+    ])
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: 'INR',
+      is_set: true,
+    })
+    await openMoveWithToAccount(user, 'Second INR Account')
+
+    expect(screen.queryByLabelText(/Amount received/)).not.toBeInTheDocument()
+  })
+
+  it('shows an editable destination-amount field once the two accounts differ in currency', async () => {
+    const user = userEvent.setup()
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: 'USD',
+      is_set: true,
+    })
+    await openMoveWithToAccount(user, 'US Checking')
+
+    expect(screen.getByLabelText('Amount received (USD)')).toBeInTheDocument()
+  })
+
+  it('pre-fills the destination amount from the fetched rate, but stops once the user edits it themselves', async () => {
+    const user = userEvent.setup()
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: 'USD',
+      is_set: true,
+    })
+    mockedGetFxRate.mockResolvedValue(rate)
+    await openMoveWithToAccount(user, 'US Checking')
+
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: '800' },
+    })
+    await waitFor(() =>
+      expect(screen.getByLabelText('Amount received (USD)')).toHaveValue(
+        '9.60',
+      ),
+    )
+
+    // The user overrides the suggestion — a later amount change must not
+    // silently replace what they typed.
+    fireEvent.change(screen.getByLabelText('Amount received (USD)'), {
+      target: { value: '11.00' },
+    })
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: '900' },
+    })
+    await waitFor(() => expect(mockedGetFxRate).toHaveBeenCalledTimes(2))
+    expect(screen.getByLabelText('Amount received (USD)')).toHaveValue('11.00')
+  })
+
+  it('submits the destination amount as to_amount, and omits it when left blank', async () => {
+    const user = userEvent.setup()
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: 'USD',
+      is_set: true,
+    })
+    mockedGetFxRate.mockResolvedValue(rate)
+    await openMoveWithToAccount(user, 'US Checking')
+
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: '800' },
+    })
+    await waitFor(() =>
+      expect(screen.getByLabelText('Amount received (USD)')).toHaveValue(
+        '9.60',
+      ),
+    )
+    fireEvent.change(screen.getByLabelText('Amount received (USD)'), {
+      target: { value: '9.62' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Record move' }))
+
+    await waitFor(() =>
+      expect(mockedRecordTransfer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fromAccount: 'acc-1',
+          toAccount: 'acc-2',
+          amount: '800',
+          toAmount: '9.62',
+        }),
+      ),
+    )
   })
 })

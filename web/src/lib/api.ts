@@ -160,6 +160,10 @@ export type EditTransactionBody = {
   to_account?: string
   currency?: string
   amount: string
+  // The to-leg's own amount on a transfer, independent of `amount`
+  // (issue #159) — see RecordTransferInput's toAmount for what omitting
+  // it means.
+  to_amount?: string
   date?: string
   description: string
   notes?: string
@@ -229,6 +233,12 @@ export type RecordTransferInput = {
   fromAccount: string
   toAccount: string
   amount: string
+  // The to-leg's own amount, independent of `amount` (issue #159) — when
+  // given, the implied rate is derived from these two real amounts
+  // instead of `amount`'s raw digits reused in the to-currency. Omit for
+  // same-currency transfers, where there is no separate to-leg amount to
+  // state.
+  toAmount?: string
   date?: string
   description?: string
   notes?: string
@@ -280,6 +290,7 @@ export function recordTransfer(
       from_account: input.fromAccount,
       to_account: input.toAccount,
       amount: input.amount,
+      to_amount: input.toAmount,
       date: input.date,
       description: input.description ?? '',
       notes: input.notes,
