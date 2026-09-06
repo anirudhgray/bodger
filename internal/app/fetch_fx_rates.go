@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"time"
 
 	"github.com/anirudhgray/bodger/internal/app/normalize"
 	"github.com/anirudhgray/bodger/internal/domain"
@@ -10,6 +11,15 @@ import (
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
 )
+
+// maxBackfillRangeDays bounds a single FetchFxRates backfill request: each
+// day in the range becomes one row per pair, held entirely in memory before
+// the final StoreBatch (see FetchFxRates' doc comment) -- an unbounded
+// range would mean an unbounded number of rows in memory at once. Ten years
+// comfortably covers a real historical backfill; a caller wanting more
+// history makes another call with a later starting range instead of one
+// request pulling in decades at once.
+const maxBackfillRangeDays = 3653 // 10 years, inclusive of leap days
 
 // FetchFxRatesCommand is issue #135's one explicit, network-touching,
 // store-writing FX action -- nothing else in this codebase calls
@@ -190,5 +200,22 @@ func (s *Service) resolveFetchRange(cmd FetchFxRatesCommand) (from, to domain.Da
 			Explain("The backfill range's to date (%s) is before its from date (%s).", to, from).
 			Field("to")
 	}
+	if days := daysBetween(from, to); days > maxBackfillRangeDays {
+		return domain.Date{}, domain.Date{}, false, errs.New(errs.InvalidInput).
+			Explain("The backfill range (%s to %s, %d days) is wider than the %d-day maximum. Split it into smaller ranges.", from, to, days, maxBackfillRangeDays).
+			Field("to")
+	}
 	return from, to, true, nil
+}
+
+// daysBetween counts the calendar days from from to to (both inclusive
+// endpoints of the caller's range), for maxBackfillRangeDays' width check.
+// domain.Date carries no arithmetic of its own (ADR-0005: it's a pure
+// year/month/day value with no clock) -- going through time.Date's UTC
+// midnight for both ends is the standard way to diff two calendar dates
+// without a timezone ever entering the calculation.
+func daysBetween(from, to domain.Date) int {
+	f := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC)
+	t := time.Date(to.Year(), to.Month(), to.Day(), 0, 0, 0, 0, time.UTC)
+	return int(t.Sub(f).Hours() / 24)
 }

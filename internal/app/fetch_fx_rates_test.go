@@ -211,6 +211,45 @@ func TestFetchFxRates_RejectsToBeforeFrom(t *testing.T) {
 	wantErrCode(t, err, errs.InvalidInput)
 }
 
+func TestFetchFxRates_RejectsBackfillRangeWiderThanMax(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	provider := svc.FxProvider.(*memFxProvider)
+
+	// One day past the cap (3654 days: 2016-08-18 to 2026-08-20) must be
+	// rejected before ever reaching the provider -- a caller-supplied range
+	// this wide would otherwise pull an unbounded number of rows into
+	// memory in one FetchRange call.
+	_, err := svc.FetchFxRates(ctx, app.FetchFxRatesCommand{
+		ActorID: testActorID, Pairs: []string{"INR"}, From: "2016-08-18", To: "2026-08-20",
+	})
+	wantErrCode(t, err, errs.InvalidInput)
+	if len(provider.calls) != 0 {
+		t.Errorf("provider.calls = %+v, want none -- rejected before any fetch", provider.calls)
+	}
+}
+
+func TestFetchFxRates_AcceptsBackfillRangeAtMax(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	provider := svc.FxProvider.(*memFxProvider)
+
+	// Exactly 3653 days (2016-08-19 to 2026-08-20) -- the cap itself, not
+	// one under it.
+	to := mustAppDate(t, 2026, time.August, 20)
+	provider.setRange("INR", "USD", []ports.ProviderRate{mustProviderRate(t, "INR", "USD", "0.0115", to)})
+
+	_, err := svc.FetchFxRates(ctx, app.FetchFxRatesCommand{
+		ActorID: testActorID, Pairs: []string{"INR"}, From: "2016-08-19", To: "2026-08-20",
+	})
+	if err != nil {
+		t.Fatalf("FetchFxRates at exactly the max range width: %v", err)
+	}
+	if len(provider.calls) != 1 {
+		t.Fatalf("provider.calls = %+v, want exactly one call", provider.calls)
+	}
+}
+
 func TestFetchFxRates_ProviderFailureStoresNothing(t *testing.T) {
 	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
 	ctx := context.Background()
