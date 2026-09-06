@@ -68,3 +68,45 @@ func TestUserRepository_SetPasswordHash_NotFoundForMissingUser(t *testing.T) {
 		t.Errorf("SetPasswordHash(missing user): err = %v, want errs.NotFound", err)
 	}
 }
+
+func TestUserRepository_GetByID_SeededUserHasNoReportingCurrencyYet(t *testing.T) {
+	db, _ := newTestDB(t)
+	repo := NewUserRepository(db)
+
+	user, err := repo.GetByID(context.Background(), ports.SeededUserID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if user.ReportingCurrency != nil {
+		t.Errorf("ReportingCurrency = %q, want nil (no reporting currency set yet)", *user.ReportingCurrency)
+	}
+}
+
+func TestUserRepository_SetReportingCurrency_RoundTrips(t *testing.T) {
+	db, _ := newTestDB(t)
+	repo := NewUserRepository(db)
+	ctx := context.Background()
+
+	if err := repo.SetReportingCurrency(ctx, ports.SeededUserID, "EUR"); err != nil {
+		t.Fatalf("SetReportingCurrency: %v", err)
+	}
+
+	user, err := repo.GetByID(ctx, ports.SeededUserID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if user.ReportingCurrency == nil || *user.ReportingCurrency != "EUR" {
+		t.Errorf("ReportingCurrency = %v, want %q", user.ReportingCurrency, "EUR")
+	}
+}
+
+func TestUserRepository_SetReportingCurrency_NotFoundForMissingUser(t *testing.T) {
+	db, _ := newTestDB(t)
+	repo := NewUserRepository(db)
+
+	err := repo.SetReportingCurrency(context.Background(), "does-not-exist", "EUR")
+	var e *errs.Error
+	if !errors.As(err, &e) || e.Code != errs.NotFound {
+		t.Errorf("SetReportingCurrency(missing user): err = %v, want errs.NotFound", err)
+	}
+}

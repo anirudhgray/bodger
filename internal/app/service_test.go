@@ -64,8 +64,9 @@ func (fakeTags) List(context.Context, string) ([]ledger.Tag, error) { return nil
 
 type fakeUsers struct{}
 
-func (fakeUsers) GetByID(context.Context, string) (ports.User, error)   { return ports.User{}, nil }
-func (fakeUsers) SetPasswordHash(context.Context, string, string) error { return nil }
+func (fakeUsers) GetByID(context.Context, string) (ports.User, error)        { return ports.User{}, nil }
+func (fakeUsers) SetPasswordHash(context.Context, string, string) error      { return nil }
+func (fakeUsers) SetReportingCurrency(context.Context, string, string) error { return nil }
 
 type fakeSessions struct{}
 

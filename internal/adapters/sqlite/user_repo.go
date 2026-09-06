@@ -24,7 +24,7 @@ var _ ports.UserRepository = (*UserRepository)(nil)
 // GetByID implements ports.UserRepository.
 func (r *UserRepository) GetByID(ctx context.Context, id string) (ports.User, error) {
 	row := r.db.read.QueryRowContext(ctx, `
-		SELECT id, password_hash, created_at
+		SELECT id, password_hash, reporting_currency, created_at
 		FROM users
 		WHERE id = ?
 	`, id)
@@ -61,13 +61,36 @@ func (r *UserRepository) SetPasswordHash(ctx context.Context, actorID, passwordH
 	return nil
 }
 
+// SetReportingCurrency implements ports.UserRepository.
+func (r *UserRepository) SetReportingCurrency(ctx context.Context, actorID, currency string) error {
+	if err := requireActorID(actorID); err != nil {
+		return err
+	}
+
+	result, err := r.db.write.ExecContext(ctx, `
+		UPDATE users SET reporting_currency = ? WHERE id = ?
+	`, currency, actorID)
+	if err != nil {
+		return errs.New(errs.Internal).Wrap(err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return errs.New(errs.Internal).Wrap(err)
+	}
+	if n == 0 {
+		return errs.New(errs.NotFound).Explain("No user with ID %q.", actorID).Field("id")
+	}
+	return nil
+}
+
 func scanUser(row rowScanner) (ports.User, error) {
 	var (
-		id              string
-		passwordHashCol sql.NullString
-		createdAtCol    string
+		id                   string
+		passwordHashCol      sql.NullString
+		reportingCurrencyCol sql.NullString
+		createdAtCol         string
 	)
-	if err := row.Scan(&id, &passwordHashCol, &createdAtCol); err != nil {
+	if err := row.Scan(&id, &passwordHashCol, &reportingCurrencyCol, &createdAtCol); err != nil {
 		return ports.User{}, err
 	}
 
@@ -82,5 +105,16 @@ func scanUser(row rowScanner) (ports.User, error) {
 		passwordHashPtr = &v
 	}
 
-	return ports.User{ID: id, PasswordHash: passwordHashPtr, CreatedAt: createdAt}, nil
+	var reportingCurrencyPtr *string
+	if reportingCurrencyCol.Valid {
+		v := reportingCurrencyCol.String
+		reportingCurrencyPtr = &v
+	}
+
+	return ports.User{
+		ID:                id,
+		PasswordHash:      passwordHashPtr,
+		ReportingCurrency: reportingCurrencyPtr,
+		CreatedAt:         createdAt,
+	}, nil
 }
