@@ -15,12 +15,11 @@ func TestListFxRates_WithAmountReturnsConvertedFigure(t *testing.T) {
 
 	seedRate(t, svc, "INR", "USD", "0.0115", "2026-08-20", "ecb")
 
-	amount := mustMoney(t, 10000000, "INR") // 100000.00 INR
 	result, err := svc.ListFxRates(ctx, app.ListFxRatesQuery{
 		From:   "INR",
 		To:     "USD",
 		Policy: app.PolicyCurrent,
-		Amount: &amount,
+		Amount: "100000.00", // parsed against From, same as any other user-typed amount
 	})
 	if err != nil {
 		t.Fatalf("ListFxRates: %v", err)
@@ -97,13 +96,18 @@ func TestListFxRates_MissingRateFailsLoudly(t *testing.T) {
 	wantErrCode(t, err, errs.NotFound)
 }
 
-func TestListFxRates_RejectsAmountCurrencyMismatch(t *testing.T) {
+// TestListFxRates_RejectsUnparsableAmount replaces a now-impossible case:
+// Amount used to be a *money.Money, so a caller could hand in one whose
+// own currency disagreed with From. Now that Amount is a raw string
+// parsed against From (like every other user-typed amount in this
+// package), that mismatch can't be expressed any more -- what can still go
+// wrong is the string itself failing to parse, which is what this checks.
+func TestListFxRates_RejectsUnparsableAmount(t *testing.T) {
 	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
 	ctx := context.Background()
 
-	amount := mustMoney(t, 100, "EUR")
 	_, err := svc.ListFxRates(ctx, app.ListFxRatesQuery{
-		From: "INR", To: "USD", Policy: app.PolicyCurrent, Amount: &amount,
+		From: "INR", To: "USD", Policy: app.PolicyCurrent, Amount: "not-a-number",
 	})
 	wantErrCode(t, err, errs.InvalidInput)
 }
@@ -112,9 +116,8 @@ func TestListFxRates_SameCurrencyIsIdentityWithNoLookup(t *testing.T) {
 	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
 	ctx := context.Background()
 
-	amount := mustMoney(t, 500, "USD")
 	result, err := svc.ListFxRates(ctx, app.ListFxRatesQuery{
-		From: "USD", To: "USD", Policy: app.PolicyCurrent, Amount: &amount,
+		From: "USD", To: "USD", Policy: app.PolicyCurrent, Amount: "5.00",
 	})
 	if err != nil {
 		t.Fatalf("ListFxRates: %v", err)
@@ -122,7 +125,8 @@ func TestListFxRates_SameCurrencyIsIdentityWithNoLookup(t *testing.T) {
 	if !result.Rate.IsIdentity() {
 		t.Errorf("Rate = %s, want identity", result.Rate)
 	}
-	if result.Converted == nil || !result.Converted.Amount.Equal(amount) {
-		t.Errorf("Converted = %+v, want an identity conversion of %s", result.Converted, amount)
+	want := mustMoney(t, 500, "USD")
+	if result.Converted == nil || !result.Converted.Amount.Equal(want) {
+		t.Errorf("Converted = %+v, want an identity conversion of %s", result.Converted, want)
 	}
 }

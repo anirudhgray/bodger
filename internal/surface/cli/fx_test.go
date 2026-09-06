@@ -281,7 +281,7 @@ func TestFxRatesList_ResolvesEachPolicy(t *testing.T) {
 }
 
 // TestFxRatesList_WithAmountConverts checks --amount forwards through
-// ListFxRatesQuery.AmountRaw (a raw string, since this package can't
+// ListFxRatesQuery.Amount (a raw string, since this package can't
 // construct a money.Money itself) and that the result's converted figure
 // is rendered alongside the rate.
 func TestFxRatesList_WithAmountConverts(t *testing.T) {

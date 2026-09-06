@@ -174,7 +174,7 @@ func printFxRate(w io.Writer, v fxRateView) {
 // newFxRatesListCmd builds "fx rates list": issue #135's pure, stored-data
 // read (ListFxRates), a single pair/policy lookup rather than an
 // enumeration despite the "list" name. --amount is forwarded as a raw
-// string via ListFxRatesQuery.AmountRaw, parsed app-side the same way
+// string via ListFxRatesQuery.Amount, parsed app-side the same way
 // every other user-typed amount in this codebase is (normalize.Amount +
 // money.NewMoney) — this package never constructs a money.Money itself.
 func newFxRatesListCmd(factory ServiceFactory) *cobra.Command {
@@ -197,7 +197,7 @@ func newFxRatesListCmd(factory ServiceFactory) *cobra.Command {
 				Policy:          app.ConversionPolicy(policy),
 				TransactionDate: transactionDate,
 				PinnedDate:      pinnedDate,
-				AmountRaw:       amount,
+				Amount:          amount,
 			})
 			if err != nil {
 				return err

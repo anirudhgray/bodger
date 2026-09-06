@@ -24,10 +24,9 @@ import (
 // never re-derives a date or re-touches FxRates.Lookup itself.
 type ListFxRatesQuery struct {
 	// From is the ISO 4217 currency code to look up a rate for. Required.
-	// When Amount is also set, Amount's own currency must equal From
-	// (InvalidInput otherwise) -- From is not silently inferred from
-	// Amount, so a caller always states the currency it's asking about
-	// explicitly, whether or not it has an amount in hand yet.
+	// Amount, when set, is parsed against this currency -- so a caller
+	// always states the currency it's asking about explicitly, whether or
+	// not it has an amount in hand yet.
 	From string
 	// To is the ISO 4217 currency code From is quoted against -- normally
 	// the caller's own resolved reporting currency, though this query
@@ -43,22 +42,22 @@ type ListFxRatesQuery struct {
 	// PinnedDate is forwarded to ConvertAmountQuery unchanged. Required
 	// when Policy is PolicyPinned.
 	PinnedDate string
-	// Amount, when non-nil, must be in currency From: it is converted into
-	// To via ConvertAmount, and the result's Converted field is populated.
-	// Leaving Amount nil still resolves and returns the rate itself
-	// (Rate/RateDate/RateSource/Stale), just with no conversion performed
-	// -- e.g. a bare "what's today's rate" display with no amount in
-	// context yet.
-	Amount *money.Money
-	// AmountRaw is the caller-facing raw-string form of Amount, for a
-	// surface (CLI, HTTP) that can't construct a money.Money itself --
-	// those packages are barred from importing internal/domain (see
-	// internal/lint's TestImportGraph), the same reason every other
-	// user-typed amount in this package arrives as a raw string (e.g.
-	// RecordTransferCommand.Amount) rather than a constructed Money.
-	// Parsed against From via normalize.Amount, exactly like those. Only
-	// consulted when Amount is nil; set at most one of the two.
-	AmountRaw string
+	// Amount, when non-empty, is parsed against From via normalize.Amount
+	// -- "800", "1,800.50", "₹800", same as every other user-typed
+	// amount in this package (e.g. RecordTransferCommand.Amount) -- and
+	// the result is converted into To via ConvertAmount, populating the
+	// result's Converted field. This is a raw string, not a *money.Money,
+	// because every real caller is a surface (CLI, HTTP) that cannot
+	// construct one itself (internal/lint's TestImportGraph bars those
+	// packages from importing internal/domain): unlike
+	// ConvertAmountQuery.Amount, which internal/app itself calls with a
+	// Money it already has in hand (e.g. balances.go's stored account
+	// balance), ListFxRates has no such internal caller -- see this
+	// struct's own doc comment above. Leaving Amount "" still resolves and
+	// returns the rate itself (Rate/RateDate/RateSource/Stale), just with
+	// no conversion performed -- e.g. a bare "what's today's rate" display
+	// with no amount in context yet.
+	Amount string
 }
 
 // ListFxRatesResult is ListFxRates' result: the resolved rate itself and
@@ -73,7 +72,7 @@ type ListFxRatesResult struct {
 	Stale      bool
 	Policy     ConversionPolicy
 	// Converted holds the full converted figure when the query's Amount
-	// was non-nil; nil otherwise.
+	// was non-empty; nil otherwise.
 	Converted *ConvertedAmount
 }
 
@@ -83,9 +82,10 @@ type ListFxRatesResult struct {
 // the *errs.Error ConvertAmount (via FxRates.Lookup) already returns for
 // it, unchanged.
 func (s *Service) ListFxRates(ctx context.Context, q ListFxRatesQuery) (ListFxRatesResult, error) {
-	amount := q.Amount
-	if amount == nil && q.AmountRaw != "" {
-		minor, err := normalize.Amount(q.AmountRaw, q.From)
+	var lookupAmount money.Money
+	hasAmount := q.Amount != ""
+	if hasAmount {
+		minor, err := normalize.Amount(q.Amount, q.From)
 		if err != nil {
 			return ListFxRatesResult{}, err
 		}
@@ -93,17 +93,7 @@ func (s *Service) ListFxRates(ctx context.Context, q ListFxRatesQuery) (ListFxRa
 		if err != nil {
 			return ListFxRatesResult{}, errs.New(errs.Internal).Wrap(err)
 		}
-		amount = &parsed
-	}
-	if amount != nil && amount.Currency() != q.From {
-		return ListFxRatesResult{}, errs.New(errs.InvalidInput).
-			Explain("The amount's currency (%s) does not match the requested From currency (%s).", amount.Currency(), q.From).
-			Field("amount")
-	}
-
-	var lookupAmount money.Money
-	if amount != nil {
-		lookupAmount = *amount
+		lookupAmount = parsed
 	} else {
 		zero, err := money.NewMoney(0, q.From)
 		if err != nil {
@@ -130,7 +120,7 @@ func (s *Service) ListFxRates(ctx context.Context, q ListFxRatesQuery) (ListFxRa
 		Stale:      converted.Stale,
 		Policy:     converted.Policy,
 	}
-	if amount != nil {
+	if hasAmount {
 		result.Converted = &converted
 	}
 	return result, nil
