@@ -28,6 +28,12 @@ close anything.
 <!--
 Include screenshots, recordings, or links to relevant artefacts if
 applicable. Otherwise, delete this section.
+
+For a PR touching a reachable UI surface (web, CLI output formatting):
+this section isn't optional just because a local file can't be dragged
+in headlessly. Note that screenshots were shared in the session (chat)
+for review, and link/embed them here if they're hosted somewhere
+reachable (e.g. already committed to docs/ as a reference image).
 -->
 
 ## Testing

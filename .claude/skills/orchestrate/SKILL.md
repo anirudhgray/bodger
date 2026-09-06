@@ -138,6 +138,25 @@ Every agent prompt (fork or fresh) should include:
 - Don't push or open a PR unless told to - the orchestrator handles
   integration once it's seen the result (this is what catches
   cross-agent conflicts before they hit GitHub).
+- **If the slice touches a reachable UI surface (web, CLI output
+  formatting), use claude-in-chrome (or the running binary, for CLI) to
+  click through the actual feature and capture one or two screenshots
+  before reporting done** - this is CLAUDE.md's existing "capture minimal
+  artefacts for PR messages" rule, made explicit here because it's been
+  missed in practice (a batch of three parallel web-UI agents shipped
+  none). Save the image(s) to the worktree's scratch space and state
+  their file paths plainly in the final report - don't just say
+  "manually verified," show it. The orchestrator can't take a screenshot
+  after the fact from a worktree that's already been torn down.
+
+Screenshots have no clean headless path into a GitHub PR body (`gh pr
+create` can't attach local files - only the web UI's drag-and-drop
+upload can) - so the orchestrator's job at integration time is to
+`Read` each screenshot the agent reported and show it inline in the chat
+for the user's own review, which is the one channel this actually
+works over. Note in the PR's Artefacts section that screenshots were
+shared in the session rather than silently deleting that section for a
+UI-touching PR.
 
 ## 5. Integrate - don't just trust the report
 
