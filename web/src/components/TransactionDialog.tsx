@@ -581,10 +581,7 @@ function TransactionDialogSheet({
                   }
                 />
                 {reportingCurrency !== '' && (
-                  <FxConversionHint
-                    hint={conversionHint}
-                    currency={reportingCurrency}
-                  />
+                  <FxConversionHint hint={conversionHint} />
                 )}
               </div>
 

@@ -9,15 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import type { FxHint } from '@/hooks/use-fx-conversion-hint'
 
-export function FxConversionHint({
-  hint,
-  currency,
-}: {
-  hint: FxHint
-  // The currency the converted figure is expressed in — always the
-  // reporting currency (see useFxConversionHint's own doc comment).
-  currency: string
-}) {
+export function FxConversionHint({ hint }: { hint: FxHint }) {
   const { state, refreshing, canRefresh, refresh } = hint
 
   if (state.status === 'idle') return null
@@ -32,7 +24,11 @@ export function FxConversionHint({
       )}
       {state.status === 'ready' && (
         <span>
-          ≈ {state.rate.converted} {currency} as of {state.rate.rate_date}
+          {/* state.rate.converted already carries its own currency code
+              (internal/surface/http/fx.go's fxRateViewFrom: "%s %s" of
+              amount and currency) — appending a separate currency here
+              would render it twice. */}
+          ≈ {state.rate.converted} as of {state.rate.rate_date}
           {state.rate.stale ? ' (stale)' : ''}
         </span>
       )}

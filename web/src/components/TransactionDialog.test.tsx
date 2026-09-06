@@ -457,7 +457,11 @@ describe('TransactionDialog (foreign-currency conversion hint)', () => {
     stale: false,
     policy: 'current',
     amount: '800',
-    converted: '9.60',
+    // The real API embeds the currency in this string already
+    // (internal/surface/http/fx.go's fxRateViewFrom: "%s %s" of amount and
+    // currency) — mocked the same way here so a test doesn't mask
+    // FxConversionHint appending its own `currency` prop on top of this.
+    converted: '9.60 USD',
   }
 
   it('never shows a hint for a single-currency user (reporting currency matches the account)', async () => {
