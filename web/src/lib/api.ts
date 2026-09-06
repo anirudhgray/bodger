@@ -160,6 +160,10 @@ export type EditTransactionBody = {
   to_account?: string
   currency?: string
   amount: string
+  // The to-leg's own amount on a transfer, independent of `amount`
+  // (issue #159) — see RecordTransferInput's toAmount for what omitting
+  // it means.
+  to_amount?: string
   date?: string
   description: string
   notes?: string
@@ -229,6 +233,12 @@ export type RecordTransferInput = {
   fromAccount: string
   toAccount: string
   amount: string
+  // The to-leg's own amount, independent of `amount` (issue #159) — when
+  // given, the implied rate is derived from these two real amounts
+  // instead of `amount`'s raw digits reused in the to-currency. Omit for
+  // same-currency transfers, where there is no separate to-leg amount to
+  // state.
+  toAmount?: string
   date?: string
   description?: string
   notes?: string
@@ -280,10 +290,73 @@ export function recordTransfer(
       from_account: input.fromAccount,
       to_account: input.toAccount,
       amount: input.amount,
+      to_amount: input.toAmount,
       date: input.date,
       description: input.description ?? '',
       notes: input.notes,
       tags: input.tags,
     }),
   })
+}
+
+// --- FX rates and reporting currency (issue #138) --------------------------
+//
+// Every lookup here only ever resolves a rate FROM a foreign currency TO
+// the reporting currency: internal/adapters/sqlite/fx_rate_repo.go's
+// Lookup does an exact base/quote match against stored rows, and POST
+// /api/v1/fx/rates/fetch only ever stores <foreign>/<reporting-currency>
+// rows (internal/app/fetch_fx_rates.go's resolveFetchPairs always quotes
+// against the resolved reporting currency) — there is no reverse lookup
+// and no support for a pair between two non-reporting currencies yet.
+// Callers pass whatever "to" they actually need and handle a 404
+// (ApiError with code "not_found") as "no rate available", rather than
+// this file pre-guessing which directions will resolve.
+
+export type FxRate = components['schemas']['FxRate']
+
+export type FxRateQuery = {
+  from: string
+  to: string
+  amount?: string
+} & (
+  | { policy: 'current' }
+  | { policy: 'transaction_date'; transactionDate: string }
+)
+
+// getFxRate is GET /api/v1/fx/rates: a pure, stored-data-only read (issue
+// #135) — it never triggers a network fetch of its own, unlike
+// fetchFxRates below.
+export function getFxRate(query: FxRateQuery): Promise<FxRate> {
+  return apiFetch<FxRate>(
+    `/api/v1/fx/rates${buildQuery({
+      from: query.from,
+      to: query.to,
+      amount: query.amount,
+      policy: query.policy,
+      transaction_date:
+        query.policy === 'transaction_date' ? query.transactionDate : undefined,
+    })}`,
+  )
+}
+
+export type FxFetchResult = components['schemas']['FxFetch']
+
+// fetchFxRates is POST /api/v1/fx/rates/fetch, scoped to exactly the
+// given base currencies and (when date is set) a single-day backfill
+// range — never the broad "every in-use pair, latest date" default,
+// matching issue #138's narrowly-scoped refresh action.
+export function fetchFxRates(
+  pairs: string[],
+  date?: string,
+): Promise<FxFetchResult> {
+  return apiFetch<FxFetchResult>('/api/v1/fx/rates/fetch', {
+    method: 'POST',
+    body: JSON.stringify({ pairs, from: date, to: date }),
+  })
+}
+
+export type ReportingCurrency = components['schemas']['ReportingCurrency']
+
+export function getReportingCurrency(): Promise<ReportingCurrency> {
+  return apiFetch<ReportingCurrency>('/api/v1/reporting-currency')
 }

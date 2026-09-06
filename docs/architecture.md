@@ -380,8 +380,40 @@ stack. All four now take an optional to-amount (`to_amount` over HTTP,
 `--to-amount` on the CLI); omitted, behaviour is unchanged, and the
 conformance suite covers both paths identically across CLI and API.
 
+[#138](https://github.com/anirudhgray/bodger/issues/138) adds the web
+transaction dialog's non-persisted foreign-currency hint: any amount
+entered in a currency other than the actor's reporting currency (spend,
+receive, or a transfer's own leg alike) shows a read-only "≈ N
+&lt;reporting-currency&gt; as of `<date>`" line via `GET /api/v1/fx/rates`,
+keyed to whichever date the transaction is booked to (today, or a
+backdated entry's own date — never `Date.now()`), with a "Fetch
+rate"/"Refresh" action scoped to just that one base currency and date via
+`POST /api/v1/fx/rates/fetch`, and a plain "no stored rate yet" state for
+a 404 rather than a raw error. None of it renders for a single-currency
+actor. Once #159 landed, the issue's other half — a second,
+independently-editable destination-amount field on a cross-currency move,
+pre-filled from the fetched rate but freely overridable, sending
+`to_amount` — was wired up too, so #138 is fully closed by this PR.
+**The pre-fill only ever resolves when the to-account's own currency
+happens to equal the reporting currency**: `GET /api/v1/fx/rates` does an
+exact base/quote match, and `POST /api/v1/fx/rates/fetch` can currently
+only ever populate a row quoted against the reporting currency
+(`internal/app/fetch_fx_rates.go`'s `resolveFetchPairs`). This is not a
+provider limitation — the Frankfurter adapter's `FetchRate` already takes
+an arbitrary base *and* quote, and
+[ADR-0012](decisions/0012-fx-rate-provider.md) chose Frankfurter
+specifically so this system would never need to triangulate through a
+fixed base currency — it's a gap in `resolveFetchPairs`, which has never
+had a caller-supplied quote wired through it. Outside that case the field
+degrades to the same "no stored rate yet" state the read-only hint
+already handles, and stays fully editable regardless, since the
+suggestion is a convenience, never a requirement to submit — though its
+"Refresh" action can't help in that case either, since it hits the same
+gap. Tracked as [#165](https://github.com/anirudhgray/bodger/issues/165):
+a direct `base/quote` fetch, not composed/derived rate math.
+
 Every other surface exposing this app-layer work
-([#138](https://github.com/anirudhgray/bodger/issues/138)–[#141](https://github.com/anirudhgray/bodger/issues/141),
+([#139](https://github.com/anirudhgray/bodger/issues/139)–[#141](https://github.com/anirudhgray/bodger/issues/141),
 [#145](https://github.com/anirudhgray/bodger/issues/145)) remains open.
 
 | Milestone | Status |

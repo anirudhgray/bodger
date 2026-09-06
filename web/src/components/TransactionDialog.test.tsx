@@ -4,9 +4,9 @@
 // round-tripping, the immutable kind label) is covered as a real
 // integration through TransactionsList.test.tsx instead of duplicated
 // here, since that's the only place edit is actually triggered from.
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>()
@@ -17,6 +17,9 @@ vi.mock('@/lib/api', async (importOriginal) => {
     recordOutflow: vi.fn(),
     recordInflow: vi.fn(),
     recordTransfer: vi.fn(),
+    getReportingCurrency: vi.fn(),
+    getFxRate: vi.fn(),
+    fetchFxRates: vi.fn(),
   }
 })
 
@@ -33,11 +36,16 @@ vi.mock('@/lib/settings', async (importOriginal) => {
 
 import {
   ApiError,
+  fetchFxRates,
+  getFxRate,
+  getReportingCurrency,
   listAccounts,
   listCategories,
   recordOutflow,
+  recordTransfer,
   type Account,
   type Category,
+  type FxRate,
   type Transaction,
 } from '@/lib/api'
 import { createCategory } from '@/lib/settings'
@@ -47,7 +55,11 @@ import { useTransactionDialog } from '@/hooks/use-transaction-dialog'
 const mockedListAccounts = vi.mocked(listAccounts)
 const mockedListCategories = vi.mocked(listCategories)
 const mockedRecordOutflow = vi.mocked(recordOutflow)
+const mockedRecordTransfer = vi.mocked(recordTransfer)
 const mockedCreateCategory = vi.mocked(createCategory)
+const mockedGetReportingCurrency = vi.mocked(getReportingCurrency)
+const mockedGetFxRate = vi.mocked(getFxRate)
+const mockedFetchFxRates = vi.mocked(fetchFxRates)
 
 const account: Account = {
   id: 'acc-1',
@@ -114,6 +126,15 @@ describe('TransactionDialog (create)', () => {
     mockedListCategories.mockReset().mockResolvedValue([category])
     mockedRecordOutflow.mockReset().mockResolvedValue(recorded)
     mockedCreateCategory.mockReset()
+    // Defaults to the same currency as `account` — the foreign-currency
+    // hint (issue #138) stays hidden unless a test deliberately sets a
+    // different reporting currency, matching "no behavior change for a
+    // single-currency user."
+    mockedGetReportingCurrency
+      .mockReset()
+      .mockResolvedValue({ currency: 'INR', is_set: true })
+    mockedGetFxRate.mockReset()
+    mockedFetchFxRates.mockReset()
   })
 
   it('records a spend and calls onSaved, closing the dialog by default', async () => {
@@ -407,5 +428,327 @@ describe('TransactionDialog (create)', () => {
     expect(
       screen.getByRole('combobox', { name: 'Category' }),
     ).toHaveTextContent('Choose a category')
+  })
+})
+
+// Issue #138's non-persisted "≈ N <reporting-currency> as of <date>" hint.
+// Uses fake timers for the hook's 400ms debounce — kept in its own
+// describe block (rather than the suite above) so real-timer-based
+// userEvent interactions elsewhere are unaffected.
+describe('TransactionDialog (foreign-currency conversion hint)', () => {
+  beforeEach(() => {
+    mockedListAccounts.mockReset().mockResolvedValue([account])
+    mockedListCategories.mockReset().mockResolvedValue([category])
+    mockedRecordOutflow.mockReset().mockResolvedValue(recorded)
+    mockedGetReportingCurrency.mockReset()
+    mockedGetFxRate.mockReset()
+    mockedFetchFxRates.mockReset()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const rate: FxRate = {
+    from: 'INR',
+    to: 'USD',
+    rate: '0.012',
+    rate_date: '2026-09-05',
+    rate_source: 'frankfurter',
+    stale: false,
+    policy: 'current',
+    amount: '800',
+    // The real API embeds the currency in this string already
+    // (internal/surface/http/fx.go's fxRateViewFrom: "%s %s" of amount and
+    // currency) — mocked the same way here so a test doesn't mask
+    // FxConversionHint appending its own `currency` prop on top of this.
+    converted: '9.60 USD',
+  }
+
+  it('never shows a hint for a single-currency user (reporting currency matches the account)', async () => {
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: 'INR',
+      is_set: true,
+    })
+    renderAndOpen()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    screen.getByText('HDFC Savings')
+
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: '800' },
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+
+    expect(mockedGetFxRate).not.toHaveBeenCalled()
+    expect(screen.queryByText(/≈/)).not.toBeInTheDocument()
+  })
+
+  it('shows a conversion hint once the account currency differs from the reporting currency', async () => {
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: 'USD',
+      is_set: true,
+    })
+    mockedGetFxRate.mockResolvedValue(rate)
+    renderAndOpen()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    screen.getByText('HDFC Savings')
+
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: '800' },
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+
+    expect(mockedGetFxRate).toHaveBeenCalledWith(
+      expect.objectContaining({ from: 'INR', to: 'USD', amount: '800' }),
+    )
+    expect(screen.getByText(/≈ 9\.60 USD as of 2026-09-05/)).toBeInTheDocument()
+  })
+
+  it('flags a stale rate and offers a narrowly-scoped refresh that re-fetches just this pair', async () => {
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: 'USD',
+      is_set: true,
+    })
+    mockedGetFxRate.mockResolvedValue({ ...rate, stale: true })
+    mockedFetchFxRates.mockResolvedValue({
+      reporting_currency: 'USD',
+      fetched: [
+        {
+          pair: 'INR/USD',
+          rate: '0.0121',
+          date: '2026-09-05',
+          source: 'frankfurter',
+        },
+      ],
+    })
+    renderAndOpen()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    screen.getByText('HDFC Savings')
+
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: '800' },
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    expect(screen.getByText(/\(stale\)/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    // Scoped to just the one currency in play, and (no date entered) no
+    // explicit date — never the broad "every in-use pair" default.
+    expect(mockedFetchFxRates).toHaveBeenCalledWith(['INR'], undefined)
+    expect(mockedGetFxRate).toHaveBeenCalledTimes(2)
+  })
+
+  it('surfaces "no stored rate yet" and a fetch action when none exists', async () => {
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: 'USD',
+      is_set: true,
+    })
+    mockedGetFxRate.mockRejectedValue(
+      new ApiError('not_found', 'No INR/USD rate available.'),
+    )
+    renderAndOpen()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    screen.getByText('HDFC Savings')
+
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: '800' },
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+
+    expect(mockedGetFxRate).toHaveBeenCalledWith(
+      expect.objectContaining({ policy: 'current' }),
+    )
+    expect(screen.getByText('No stored exchange rate yet.')).toBeInTheDocument()
+
+    mockedFetchFxRates.mockResolvedValue({
+      reporting_currency: 'USD',
+      fetched: [
+        {
+          pair: 'INR/USD',
+          rate: '0.012',
+          date: '2026-09-05',
+          source: 'frankfurter',
+        },
+      ],
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Fetch rate/ }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    expect(mockedFetchFxRates).toHaveBeenCalledWith(['INR'], undefined)
+  })
+})
+
+// Issue #138's first bullet, unblocked by #159: an independently-editable
+// destination-amount field on a cross-currency move. Uses real timers
+// (unlike the conversion-hint block above) — combining userEvent's own
+// internal scheduling with fake timers here reliably hung these tests,
+// so this block just lets the 400ms debounce run for real via `waitFor`.
+describe('TransactionDialog (cross-currency transfer destination amount)', () => {
+  const usAccount: Account = {
+    ...account,
+    id: 'acc-2',
+    name: 'US Checking',
+    currency: 'USD',
+  }
+
+  beforeEach(() => {
+    mockedListAccounts.mockReset().mockResolvedValue([account, usAccount])
+    mockedListCategories.mockReset().mockResolvedValue([category])
+    mockedRecordTransfer.mockReset().mockResolvedValue({
+      ...recorded,
+      type: 'transfer',
+      from_account_id: 'acc-1',
+      to_account_id: 'acc-2',
+      currency: 'USD',
+    })
+    mockedGetReportingCurrency.mockReset()
+    mockedGetFxRate.mockReset()
+    mockedFetchFxRates.mockReset()
+  })
+
+  // toCurrency ('USD') matches the reporting currency here deliberately —
+  // useFxConversionHint's own doc comment explains why a suggestion can
+  // only ever resolve when the to-account's currency happens to equal
+  // the reporting currency, since GET /api/v1/fx/rates has no
+  // triangulation between two arbitrary non-reporting currencies.
+  const rate: FxRate = {
+    from: 'INR',
+    to: 'USD',
+    rate: '0.012',
+    rate_date: '2026-09-05',
+    rate_source: 'frankfurter',
+    stale: false,
+    policy: 'current',
+    amount: '800',
+    converted: '9.60 USD',
+  }
+
+  async function openMoveWithToAccount(
+    user: ReturnType<typeof userEvent.setup>,
+    toAccountName: string,
+  ) {
+    renderAndOpen()
+    await waitFor(() =>
+      expect(
+        screen.getByRole('combobox', { name: 'Account' }),
+      ).toHaveTextContent('HDFC Savings'),
+    )
+    await screen.findByRole('tab', { name: 'Move' })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Move' }))
+    await user.click(screen.getByRole('combobox', { name: 'To account' }))
+    await user.click(await screen.findByRole('option', { name: toAccountName }))
+  }
+
+  it('has no destination-amount field when both transfer accounts share a currency', async () => {
+    const user = userEvent.setup()
+    mockedListAccounts.mockResolvedValue([
+      account,
+      { ...account, id: 'acc-2', name: 'Second INR Account' },
+    ])
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: 'INR',
+      is_set: true,
+    })
+    await openMoveWithToAccount(user, 'Second INR Account')
+
+    expect(screen.queryByLabelText(/Amount received/)).not.toBeInTheDocument()
+  })
+
+  it('shows an editable destination-amount field once the two accounts differ in currency', async () => {
+    const user = userEvent.setup()
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: 'USD',
+      is_set: true,
+    })
+    await openMoveWithToAccount(user, 'US Checking')
+
+    expect(screen.getByLabelText('Amount received (USD)')).toBeInTheDocument()
+  })
+
+  it('pre-fills the destination amount from the fetched rate, but stops once the user edits it themselves', async () => {
+    const user = userEvent.setup()
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: 'USD',
+      is_set: true,
+    })
+    mockedGetFxRate.mockResolvedValue(rate)
+    await openMoveWithToAccount(user, 'US Checking')
+
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: '800' },
+    })
+    await waitFor(() =>
+      expect(screen.getByLabelText('Amount received (USD)')).toHaveValue(
+        '9.60',
+      ),
+    )
+
+    // The user overrides the suggestion — a later amount change must not
+    // silently replace what they typed.
+    fireEvent.change(screen.getByLabelText('Amount received (USD)'), {
+      target: { value: '11.00' },
+    })
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: '900' },
+    })
+    await waitFor(() => expect(mockedGetFxRate).toHaveBeenCalledTimes(2))
+    expect(screen.getByLabelText('Amount received (USD)')).toHaveValue('11.00')
+  })
+
+  it('submits the destination amount as to_amount, and omits it when left blank', async () => {
+    const user = userEvent.setup()
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: 'USD',
+      is_set: true,
+    })
+    mockedGetFxRate.mockResolvedValue(rate)
+    await openMoveWithToAccount(user, 'US Checking')
+
+    fireEvent.change(screen.getByLabelText('Amount'), {
+      target: { value: '800' },
+    })
+    await waitFor(() =>
+      expect(screen.getByLabelText('Amount received (USD)')).toHaveValue(
+        '9.60',
+      ),
+    )
+    fireEvent.change(screen.getByLabelText('Amount received (USD)'), {
+      target: { value: '9.62' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Record move' }))
+
+    await waitFor(() =>
+      expect(mockedRecordTransfer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fromAccount: 'acc-1',
+          toAccount: 'acc-2',
+          amount: '800',
+          toAmount: '9.62',
+        }),
+      ),
+    )
   })
 })
