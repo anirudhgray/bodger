@@ -99,6 +99,21 @@ func categoryViewFrom(r app.CategoryResult) categoryView {
 // from_account_id/to_account_id (transfer) are populated depending on
 // type; the fields that don't apply to a given transaction's type are
 // simply omitted.
+//
+// amount/currency and to_amount/to_currency (issue #163): for a transfer,
+// amount/currency report the *from*-leg — deliberately the same field
+// names, and the same meaning, as editTransactionRequest.Amount/Currency
+// and createTransferRequest.Amount (both already "the from-leg's own
+// amount", per their own doc comments), so that resubmitting a GET
+// response's amount unchanged via PATCH is actually a no-op instead of
+// silently reinterpreting the *to*-leg as a new from-leg. to_amount/
+// to_currency are the *to*-leg's own amount, the read-side mirror of
+// editTransactionRequest.ToAmount/createTransferRequest.ToAmount. For an
+// outflow or inflow, amount/currency are that one posting's amount, and
+// to_amount/to_currency are simply absent. Before this, amount/currency
+// reported the *to*-leg for a transfer — a same-named, opposite-meaning
+// field from the write side that made a blind GET-then-PATCH round trip
+// silently corrupt a cross-currency transfer's from-leg amount.
 type transactionView struct {
 	ID            string   `json:"id"`
 	Type          string   `json:"type" enum:"transaction_kind"`
@@ -110,8 +125,10 @@ type transactionView struct {
 	CategoryID    string   `json:"category_id,omitempty" doc:"Set on an outflow or an inflow that has a category."`
 	FromAccountID string   `json:"from_account_id,omitempty" doc:"Set on a transfer: the account the money left."`
 	ToAccountID   string   `json:"to_account_id,omitempty" doc:"Set on a transfer: the account the money arrived in."`
-	Amount        string   `json:"amount" doc:"Always positive; the transaction's type says which way the money moved." format:"money"`
+	Amount        string   `json:"amount" doc:"Always positive. For an outflow or inflow, that entry's own amount. For a transfer, the from-leg's own amount — the same value PATCHing this transaction's own \"amount\" field back unchanged expects." format:"money"`
 	Currency      string   `json:"currency"`
+	ToAmount      string   `json:"to_amount,omitempty" doc:"Set only on a transfer: the to-leg's own amount, in the to-account's own currency — the same value PATCHing this transaction's own \"to_amount\" field back unchanged expects." format:"money"`
+	ToCurrency    string   `json:"to_currency,omitempty" doc:"Set only on a transfer: the to-leg's own currency."`
 	// Rate and RateSource render a transfer's implied exchange rate
 	// (issue #133's cross-currency RecordTransfer) — "1 <from currency> =
 	// <value> <to currency>" and the provenance ADR-0004 requires
@@ -149,12 +166,17 @@ func transactionViewFrom(r app.TransactionResult) transactionView {
 		// A transfer: data-model.md §14 guarantees postings[0] is the
 		// negative (from) leg and postings[1] the positive (to) leg —
 		// that order is set once, in internal/app.buildTransferPostings,
-		// and never reshuffled afterwards.
+		// and never reshuffled afterwards. amount/currency report the
+		// from-leg and to_amount/to_currency the to-leg — see this
+		// struct's own doc comment for why that split, and that
+		// direction, is deliberate (issue #163).
 		from, to := postings[0], postings[1]
 		v.FromAccountID = from.AccountID()
 		v.ToAccountID = to.AccountID()
-		v.Amount = to.Amount().Abs().AmountString()
-		v.Currency = to.Currency()
+		v.Amount = from.Amount().Abs().AmountString()
+		v.Currency = from.Currency()
+		v.ToAmount = to.Amount().Abs().AmountString()
+		v.ToCurrency = to.Currency()
 	}
 	if rate, source, ok := t.FxRate(); ok && !rate.IsIdentity() {
 		v.Rate = fmt.Sprintf("1 %s = %s %s", rate.Base(), rate.Value().String(), rate.Quote())

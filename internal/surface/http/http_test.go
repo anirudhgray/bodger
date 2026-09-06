@@ -623,10 +623,16 @@ func TestCrossCurrencyTransferAccepted(t *testing.T) {
 	if data["from_account_id"] != usd || data["to_account_id"] != inr {
 		t.Errorf("from/to account IDs = %v/%v, want %v/%v", data["from_account_id"], data["to_account_id"], usd, inr)
 	}
-	// The response's amount/currency describe the to-leg (dto.go's
-	// transactionView doc comment).
-	if data["currency"] != "INR" {
-		t.Errorf("currency = %v, want INR", data["currency"])
+	// The response's amount/currency describe the from-leg, and
+	// to_amount/to_currency the to-leg (dto.go's transactionView doc
+	// comment, issue #163). No to_amount was given here, so the to-leg
+	// reuses amount's raw digits, reinterpreted in the to-currency —
+	// "100" USD becomes "100.00" INR.
+	if data["currency"] != "USD" {
+		t.Errorf("currency = %v, want USD", data["currency"])
+	}
+	if data["to_amount"] != "100.00" || data["to_currency"] != "INR" {
+		t.Errorf("to_amount/to_currency = %v/%v, want 100.00/INR", data["to_amount"], data["to_currency"])
 	}
 	// The implied exchange rate (100 USD -> 100 INR, so 1 USD = 1 INR) is
 	// rendered alongside the transaction, with its provenance — issue
