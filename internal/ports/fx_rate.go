@@ -42,6 +42,28 @@ type FxRateRepository interface {
 	// NotFound if no candidate is within the window, and InvalidInput if
 	// windowDays is negative.
 	Lookup(ctx context.Context, base, quote string, date domain.Date, windowDays int) (fx.Selection, error)
+
+	// InUsePairs returns every distinct currency actually used across
+	// actorID's accounts and non-deleted transactions, paired against
+	// reportingCurrency — every pair a later FX-rate-management use case
+	// should default to fetching. reportingCurrency itself is never
+	// included: there is no rate to look up between a currency and
+	// itself.
+	//
+	// reportingCurrency is a plain parameter rather than something this
+	// method resolves itself: at the time this was written, per-user
+	// reporting currency (#132) may not exist yet, and this repository
+	// has no business reaching into a user repository to find out
+	// regardless — resolving "the" reporting currency is an
+	// application-layer concern (ADR-0005).
+	InUsePairs(ctx context.Context, actorID, reportingCurrency string) ([]CurrencyPair, error)
+}
+
+// CurrencyPair is a distinct (base, quote) currency pair, as returned by
+// FxRateRepository.InUsePairs.
+type CurrencyPair struct {
+	Base  string
+	Quote string
 }
 
 // FxRateRow is one row for FxRateRepository.StoreBatch — the same fields

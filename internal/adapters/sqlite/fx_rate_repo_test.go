@@ -9,6 +9,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/anirudhgray/bodger/internal/domain/fx"
+	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
 )
@@ -271,5 +272,152 @@ func TestFxRateRepository_Lookup_RejectsNegativeWindow(t *testing.T) {
 	var appErr *errs.Error
 	if !errors.As(err, &appErr) || appErr.Code != errs.InvalidInput {
 		t.Errorf("Lookup error = %v, want *errs.Error{Code: InvalidInput}", err)
+	}
+}
+
+// mustAccountWithCurrency builds an account like mustAccount but in an
+// explicit currency, for InUsePairs tests that need more than one
+// currency in play.
+func mustAccountWithCurrency(t *testing.T, id, userID, name, currency string) ledger.Account {
+	t.Helper()
+	a, err := ledger.NewAccount(id, userID, name, ledger.AccountKindBank, mustMoney(t, 0, currency), nil, nil, 0, nil)
+	if err != nil {
+		t.Fatalf("ledger.NewAccount: %v", err)
+	}
+	return a
+}
+
+func TestFxRateRepository_InUsePairs_UnionOfAccountAndPostingCurrencies(t *testing.T) {
+	db, _ := newTestDB(t)
+	ctx := context.Background()
+	accRepo := NewAccountRepository(db)
+	catRepo := NewCategoryRepository(db)
+	txnRepo := NewTransactionRepository(db)
+	fxRepo := NewFxRateRepository(db)
+
+	// acc-usd's own currency equals the reporting currency, so it must
+	// not appear on its own; acc-eur's currency is a second, distinct
+	// in-use pair; a GBP posting against acc-usd is a third, found only
+	// via postings, not accounts.
+	usdAcc := mustAccountWithCurrency(t, "acc-usd", ports.SeededUserID, "USD Account", "USD")
+	if err := accRepo.Create(ctx, ports.SeededUserID, usdAcc); err != nil {
+		t.Fatalf("create acc-usd: %v", err)
+	}
+	eurAcc := mustAccountWithCurrency(t, "acc-eur", ports.SeededUserID, "EUR Account", "EUR")
+	if err := accRepo.Create(ctx, ports.SeededUserID, eurAcc); err != nil {
+		t.Fatalf("create acc-eur: %v", err)
+	}
+	cat := mustCategory(t, "cat-1", ports.SeededUserID, nil, "cat-1-name", ledger.CategoryKindExpense)
+	if err := catRepo.Create(ctx, ports.SeededUserID, cat); err != nil {
+		t.Fatalf("create category: %v", err)
+	}
+
+	catID := "cat-1"
+	p := mustPosting(t, "post-gbp", "acc-usd", -500, "GBP", &catID)
+	txn, err := ledger.NewOutflow("txn-gbp", ports.SeededUserID, mustDate(t, 2026, time.August, 1), "Foreign expense", []ledger.Posting{p})
+	if err != nil {
+		t.Fatalf("NewOutflow: %v", err)
+	}
+	if err := txnRepo.Create(ctx, ports.SeededUserID, txn, nil); err != nil {
+		t.Fatalf("create txn: %v", err)
+	}
+
+	pairs, err := fxRepo.InUsePairs(ctx, ports.SeededUserID, "USD")
+	if err != nil {
+		t.Fatalf("InUsePairs: %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, pair := range pairs {
+		if pair.Quote != "USD" {
+			t.Errorf("pair %+v has Quote != reportingCurrency (USD)", pair)
+		}
+		got[pair.Base] = true
+	}
+	want := map[string]bool{"EUR": true, "GBP": true}
+	if len(got) != len(want) {
+		t.Fatalf("pairs = %+v, want bases exactly %v", pairs, want)
+	}
+	for c := range want {
+		if !got[c] {
+			t.Errorf("pairs missing base %s", c)
+		}
+	}
+	if got["USD"] {
+		t.Errorf("pairs should not include the reporting currency itself")
+	}
+}
+
+func TestFxRateRepository_InUsePairs_FiltersByActor(t *testing.T) {
+	db, _ := newTestDB(t)
+	ctx := context.Background()
+	accRepo := NewAccountRepository(db)
+	fxRepo := NewFxRateRepository(db)
+
+	seedOtherUser(t, db, otherUserID)
+
+	eurAcc := mustAccountWithCurrency(t, "acc-eur", ports.SeededUserID, "EUR Account", "EUR")
+	if err := accRepo.Create(ctx, ports.SeededUserID, eurAcc); err != nil {
+		t.Fatalf("create acc-eur: %v", err)
+	}
+	jpyAcc := mustAccountWithCurrency(t, "acc-jpy", otherUserID, "JPY Account", "JPY")
+	if err := accRepo.Create(ctx, otherUserID, jpyAcc); err != nil {
+		t.Fatalf("create acc-jpy: %v", err)
+	}
+
+	pairs, err := fxRepo.InUsePairs(ctx, ports.SeededUserID, "USD")
+	if err != nil {
+		t.Fatalf("InUsePairs: %v", err)
+	}
+	if len(pairs) != 1 || pairs[0].Base != "EUR" {
+		t.Errorf("InUsePairs(seeded user) = %+v, want only [{EUR USD}]", pairs)
+	}
+}
+
+func TestFxRateRepository_InUsePairs_ExcludesSoftDeletedTransactions(t *testing.T) {
+	db, _ := newTestDB(t)
+	ctx := context.Background()
+	seedAccountAndCategory(t, db, ports.SeededUserID, "acc-1", "cat-1")
+	txnRepo := NewTransactionRepository(db)
+	fxRepo := NewFxRateRepository(db)
+
+	catID := "cat-1"
+	p := mustPosting(t, "post-gbp", "acc-1", -500, "GBP", &catID)
+	txn, err := ledger.NewOutflow("txn-gbp", ports.SeededUserID, mustDate(t, 2026, time.August, 1), "Foreign expense", []ledger.Posting{p})
+	if err != nil {
+		t.Fatalf("NewOutflow: %v", err)
+	}
+	if err := txnRepo.Create(ctx, ports.SeededUserID, txn, nil); err != nil {
+		t.Fatalf("create txn: %v", err)
+	}
+
+	deleted := txn.Delete(testClockInstant)
+	if err := txnRepo.Update(ctx, ports.SeededUserID, deleted, nil); err != nil {
+		t.Fatalf("Update (soft delete): %v", err)
+	}
+
+	pairs, err := fxRepo.InUsePairs(ctx, ports.SeededUserID, "INR")
+	if err != nil {
+		t.Fatalf("InUsePairs: %v", err)
+	}
+	// acc-1 (from seedAccountAndCategory) is itself INR, so the only
+	// candidate pair would have come from the now-deleted GBP posting.
+	for _, pair := range pairs {
+		if pair.Base == "GBP" {
+			t.Errorf("pairs = %+v, want no GBP pair (its only transaction is soft-deleted)", pairs)
+		}
+	}
+}
+
+func TestFxRateRepository_InUsePairs_RejectsMissingInputs(t *testing.T) {
+	db, _ := newTestDB(t)
+	ctx := context.Background()
+	fxRepo := NewFxRateRepository(db)
+
+	if _, err := fxRepo.InUsePairs(ctx, "", "USD"); err == nil {
+		t.Errorf("InUsePairs with empty actorID: want error, got nil")
+	}
+	if _, err := fxRepo.InUsePairs(ctx, ports.SeededUserID, ""); err == nil {
+		t.Errorf("InUsePairs with empty reportingCurrency: want error, got nil")
 	}
 }

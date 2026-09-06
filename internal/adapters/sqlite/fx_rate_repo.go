@@ -139,6 +139,52 @@ func (r *FxRateRepository) Lookup(ctx context.Context, base, quote string, date 
 	return sel, nil
 }
 
+// InUsePairs implements ports.FxRateRepository. It unions every distinct
+// currency actorID's accounts declare (accounts.currency) with every
+// distinct currency actorID's non-deleted transactions' postings actually
+// record (postings.currency, via a join to transactions for the
+// deleted_at/user_id filter — postings themselves carry no user_id) —
+// "every currency actually used", not just each account's own default —
+// and pairs each one that isn't already reportingCurrency against it.
+func (r *FxRateRepository) InUsePairs(ctx context.Context, actorID, reportingCurrency string) ([]ports.CurrencyPair, error) {
+	if err := requireActorID(actorID); err != nil {
+		return nil, err
+	}
+	if reportingCurrency == "" {
+		return nil, errs.New(errs.InvalidInput).Explain("A reporting currency is required.").Field("reporting_currency")
+	}
+
+	rows, err := r.db.read.QueryContext(ctx, `
+		SELECT DISTINCT currency FROM (
+			SELECT currency FROM accounts WHERE user_id = ?
+			UNION
+			SELECT p.currency
+			FROM postings p
+			JOIN transactions t ON t.id = p.transaction_id
+			WHERE t.user_id = ? AND t.deleted_at IS NULL
+		)
+		WHERE currency != ?
+		ORDER BY currency
+	`, actorID, actorID, reportingCurrency)
+	if err != nil {
+		return nil, errs.New(errs.Internal).Wrap(err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var pairs []ports.CurrencyPair
+	for rows.Next() {
+		var currency string
+		if err := rows.Scan(&currency); err != nil {
+			return nil, errs.New(errs.Internal).Wrap(err)
+		}
+		pairs = append(pairs, ports.CurrencyPair{Base: currency, Quote: reportingCurrency})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errs.New(errs.Internal).Wrap(err)
+	}
+	return pairs, nil
+}
+
 // requireRateKey validates the fields that make up fx_rates' primary key
 // (base, quote, rate_date, source) before a write: an empty base/quote
 // can only happen via a zero-value fx.Rate{} constructed outside the fx
