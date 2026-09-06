@@ -242,20 +242,37 @@ function TransactionDialogSheet({
   const [categoryId, setCategoryId] = useState(editing?.category_id ?? '')
 
   // The destination leg's own amount on a cross-currency move (issue
-  // #138/#159) — always starts empty, on both create and edit: the
-  // to-account's *current* amount isn't independently knowable from an
-  // existing transfer's GET representation (transactionView reports only
-  // one amount/currency pair for a transfer, the to-leg's — see
-  // dto.go's transactionViewFrom), so there's nothing authoritative to
-  // pre-fill an edit with here beyond a fresh suggestion, same as create.
+  // #138/#159/#163). On edit, pre-filled from the transaction being
+  // edited: transactionView now reports a transfer's to-leg distinctly as
+  // to_amount (dto.go's transactionView doc comment, issue #163's fix —
+  // before that, a transfer's GET representation had no way to state the
+  // to-leg's own amount at all, so this always started empty). On create
+  // there is no prior transfer to read one from, so this still starts
+  // empty and is filled only by the rate-suggestion effect below.
   // Omitting this on submit falls back to exactly today's behavior
   // (the from-leg's raw digits, reinterpreted in the to-currency).
-  const [toAmount, setToAmount] = useState('')
-  // Tracks whether the user has typed into toAmount themselves, so the
-  // rate-suggestion effect below (over in the render section) stops
-  // overwriting it — the pre-fill is only ever a suggestion, never a
-  // value the user's own input gets silently replaced by.
-  const [toAmountTouched, setToAmountTouched] = useState(false)
+  const [toAmount, setToAmount] = useState(editing?.to_amount ?? '')
+  // Tracks whether toAmount already holds real, user-authoritative data —
+  // either typed by the user, or (on edit) read back from the transaction
+  // itself — so the rate-suggestion effect below (over in the render
+  // section) stops overwriting it. The pre-fill from a fetched rate is
+  // only ever a suggestion, never a value real data gets silently
+  // replaced by.
+  const [toAmountTouched, setToAmountTouched] = useState(
+    Boolean(editing?.to_amount),
+  )
+  // The exact from/to account pair `editing` itself came in with, when
+  // it's a transfer — used only to keep the toAmount pre-fill above from
+  // being wiped by the "different pair means start over" effect a little
+  // further down, which would otherwise also fire on this component's
+  // very first render (an effect's dependency array skips *re-runs* for
+  // an unchanged pair, not the initial run — there is no "previous pair"
+  // to compare against on mount).
+  const editTransferPairRef = useRef<{ from: string; to: string } | null>(
+    editing?.type === 'transfer'
+      ? { from: editing.from_account_id ?? '', to: editing.to_account_id ?? '' }
+      : null,
+  )
 
   // Create starts collapsed (ux-principles.md §4's "occasional" layer) —
   // edit shows everything immediately, since there's no fast path for
@@ -294,6 +311,12 @@ function TransactionDialogSheet({
     setAccountId(initialAccountId)
     setToAccountId(initialToAccountId)
     setCategoryId(initialCategoryId)
+    setToAmount(editing?.to_amount ?? '')
+    setToAmountTouched(Boolean(editing?.to_amount))
+    editTransferPairRef.current =
+      editing?.type === 'transfer'
+        ? { from: initialAccountId, to: initialToAccountId }
+        : null
     setShowDetails(editing !== null)
     setDate(editing?.date ?? '')
     setDescription(editing?.description ?? '')
@@ -477,8 +500,21 @@ function TransactionDialogSheet({
   }, [crossCurrencyTransfer, toAmountTouched, toAmountHint.state])
 
   // A different pair of accounts means any prior suggestion or manual
-  // entry no longer means anything for this one.
+  // entry no longer means anything for this one — except the exact pair
+  // the transfer being edited already had, whose toAmount is real data
+  // read back from the transaction (set above, and re-set by the "on
+  // open" effect), not a stale suggestion this effect should clear. That
+  // includes this effect's own first run on mount, when there is no
+  // "previous" pair to compare against.
   useEffect(() => {
+    const original = editTransferPairRef.current
+    if (
+      original &&
+      original.from === accountId &&
+      original.to === toAccountId
+    ) {
+      return
+    }
     setToAmount('')
     setToAmountTouched(false)
   }, [accountId, toAccountId])

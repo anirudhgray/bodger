@@ -747,7 +747,7 @@ export interface components {
             account_id?: string;
             /**
              * Format: money
-             * @description Always positive; the transaction's type says which way the money moved.
+             * @description Always positive. For an outflow or inflow, that entry's own amount. For a transfer, the from-leg's own amount — the same value PATCHing this transaction's own "amount" field back unchanged expects.
              */
             amount: string;
             /** @description Set on an outflow or an inflow that has a category. */
@@ -769,6 +769,13 @@ export interface components {
             tags?: string[];
             /** @description Set on a transfer: the account the money arrived in. */
             to_account_id?: string;
+            /**
+             * Format: money
+             * @description Set only on a transfer: the to-leg's own amount, in the to-account's own currency — the same value PATCHing this transaction's own "to_amount" field back unchanged expects.
+             */
+            to_amount?: string;
+            /** @description Set only on a transfer: the to-leg's own currency. */
+            to_currency?: string;
             /** @enum {string} */
             type: "outflow" | "inflow" | "transfer";
         };

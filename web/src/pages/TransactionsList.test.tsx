@@ -37,6 +37,7 @@ import {
   listTransactions,
   recordOutflow,
   updateTransaction,
+  type Account,
   type Transaction,
   type TransactionListFilter,
 } from '@/lib/api'
@@ -536,5 +537,75 @@ describe('TransactionsList', () => {
     // Partial input is preserved (ux-principles.md §5) — the dialog is
     // still open with what was typed, not discarded.
     expect(within(dialog).getByLabelText('Amount')).toHaveValue('999999.99')
+  })
+
+  // Issue #163: transactionView now reports a cross-currency transfer's
+  // from-leg as amount/currency and its to-leg as to_amount/to_currency
+  // (dto.go's transactionView doc comment) — TransactionDialog's edit-mode
+  // pre-fill must read the from-leg into "Amount" and the to-leg into the
+  // destination-amount field, not assume "Amount" is safe to resubmit
+  // as-is. Before the fix, this transfer's GET-shaped amount was the
+  // to-leg (8000.00 INR) with no to_amount at all, so the "Amount" field
+  // would have pre-filled 8000.00 and a no-op Save would have silently
+  // turned a 100 USD -> 8000 INR transfer into an 8000 USD -> 8000 INR one.
+  it('pre-fills a cross-currency move’s from-leg and to-leg separately, and a no-op save preserves both', async () => {
+    const inrSavings: Account = {
+      id: 'a3',
+      name: 'INR Savings',
+      type: 'bank',
+      currency: 'INR',
+      opening_balance: '0.00',
+      sort_order: 2,
+      archived: false,
+    }
+    const usdChecking: Account = {
+      id: 'a1',
+      name: 'Checking',
+      type: 'bank',
+      currency: 'USD',
+      opening_balance: '0.00',
+      sort_order: 0,
+      archived: false,
+    }
+    mockedListAccounts.mockResolvedValue([usdChecking, inrSavings])
+    const move: Transaction = {
+      id: 't2',
+      type: 'transfer',
+      date: '2026-08-13',
+      description: 'Transfer from Checking to INR Savings',
+      from_account_id: 'a1',
+      to_account_id: 'a3',
+      amount: '100.00',
+      currency: 'USD',
+      to_amount: '8000.00',
+      to_currency: 'INR',
+    }
+    mockedListTransactions.mockResolvedValue({ data: [move] })
+    mockedUpdateTransaction.mockResolvedValue(move)
+    renderPage()
+    await screen.findByText('Transfer from Checking to INR Savings')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Edit transaction',
+    })
+    expect(within(dialog).getByLabelText('Amount')).toHaveValue('100.00')
+    expect(
+      await within(dialog).findByLabelText('Amount received (INR)'),
+    ).toHaveValue('8000.00')
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() =>
+      expect(mockedUpdateTransaction).toHaveBeenCalledWith(
+        't2',
+        expect.objectContaining({
+          amount: '100.00',
+          to_amount: '8000.00',
+          from_account: 'a1',
+          to_account: 'a3',
+        }),
+      ),
+    )
   })
 })
