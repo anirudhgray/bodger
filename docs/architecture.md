@@ -301,6 +301,18 @@ currency is reported in the result's `Unconverted` list rather than
 failing the whole query or silently dropping that account. Fetching rates
 from a provider (`FetchFxRates`) and the ad-hoc `ListFxRates` conversion
 endpoint remain open ([#135](https://github.com/anirudhgray/bodger/issues/135)).
+[#133](https://github.com/anirudhgray/bodger/issues/133) wires that
+domain-level cross-currency support into `RecordTransfer`/`EditTransaction`
+themselves: `buildTransferPostings` no longer rejects a from/to currency
+mismatch, `ledger.Transaction` gained a `WithFxRate`/`FxRate`
+copy-transform-and-accessor pair for carrying an implied rate through
+construction and reconstruction, and `internal/adapters/sqlite`'s
+transaction repository reads and writes `transactions.fx_rate_used`/
+`fx_rate_source` — populated only for a cross-currency transfer, per
+ADR-0004, and read back as the stored value rather than re-derived from the
+postings on every `Get`/`List`. Sending the to-leg's amount independently
+(rather than reusing the from-leg's raw number across both currencies) is
+still a separate, unstarted surface change.
 
 | Milestone | Status |
 | --- | --- |
