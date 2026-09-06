@@ -21,14 +21,27 @@ import (
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
 	"github.com/anirudhgray/bodger/internal/platform/logging"
+	"github.com/anirudhgray/bodger/internal/ports"
 	clisurface "github.com/anirudhgray/bodger/internal/surface/cli"
 )
 
 // newTestFactory wires a clisurface.ServiceFactory to a fresh, migrated
 // temp-file SQLite database frozen at frozenAt — the same wiring
 // cmd/bodger's real bootstrap does, reproduced here since bootstrap lives
-// in package main and can't be imported from this test.
+// in package main and can't be imported from this test. It wires a real
+// (network-touching) Frankfurter provider — fine for every test that never
+// calls `fx rates fetch`; a test that does calls
+// newTestFactoryWithFxProvider instead so it never depends on the network.
 func newTestFactory(t *testing.T, frozenAt time.Time) clisurface.ServiceFactory {
+	t.Helper()
+	return newTestFactoryWithFxProvider(t, frozenAt, fxprovider.New("", nil))
+}
+
+// newTestFactoryWithFxProvider is newTestFactory with the FX rate provider
+// swapped out — for fx_test.go's `fx rates fetch` tests, which need a
+// deterministic, in-memory ports.FxRateProvider rather than a real
+// network call to Frankfurter.
+func newTestFactoryWithFxProvider(t *testing.T, frozenAt time.Time, provider ports.FxRateProvider) clisurface.ServiceFactory {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bodger.db")
@@ -53,7 +66,7 @@ func newTestFactory(t *testing.T, frozenAt time.Time) clisurface.ServiceFactory 
 			sqlite.NewAccountRepository(db), sqlite.NewCategoryRepository(db),
 			sqlite.NewTransactionRepository(db), sqlite.NewTagRepository(db),
 			sqlite.NewUserRepository(db), sqlite.NewSessionRepository(db), sqlite.NewAPITokenRepository(db),
-			sqlite.NewFxRateRepository(db), fxprovider.New("", nil),
+			sqlite.NewFxRateRepository(db), provider,
 		)
 		return svc, func() error { return nil }, err
 	}
@@ -267,6 +280,46 @@ func TestMove_FromAndToAreCorrectRegardlessOfPostingOrder(t *testing.T) {
 	}
 	if balanceByAccount["Checking"] != "20000.00" {
 		t.Errorf("Checking balance = %q, want 20000.00", balanceByAccount["Checking"])
+	}
+}
+
+// TestMove_CrossCurrencyRendersImpliedRate is issue #136's CLI surface for
+// #133's cross-currency RecordTransfer: moving between two accounts in
+// different currencies is accepted (no rejection, unlike before #133), and
+// the transaction's implied exchange rate (ledger.Transaction.FxRate) is
+// rendered alongside the move, with its source.
+func TestMove_CrossCurrencyRendersImpliedRate(t *testing.T) {
+	factory := newTestFactory(t, mustFrozen(t))
+	mustRun(t, factory, "accounts", "add", "Savings", "--type", "bank", "--currency", "INR")
+	mustRun(t, factory, "accounts", "add", "Yen Wallet", "--type", "cash", "--currency", "JPY")
+
+	stdout := mustRun(t, factory, "move", "1000", "--from", "Savings", "--to", "Yen Wallet", "--on", "2026-08-20", "--json")
+	var got struct {
+		Amount     string `json:"amount"`
+		Currency   string `json:"currency"`
+		Rate       string `json:"rate"`
+		RateSource string `json:"rate_source"`
+	}
+	decodeData(t, stdout, &got)
+
+	// buildTransferPostings applies the same numeric minor-unit magnitude
+	// to both legs (1000 INR = 100000 minor units at INR's 2-decimal
+	// exponent; JPY's 0-decimal exponent means the same 100000 minor units
+	// renders as 100000 JPY) — the implied rate this test asserts follows
+	// directly from that.
+	if got.Amount != "100000" || got.Currency != "JPY" {
+		t.Errorf("amount/currency = %q/%q, want 100000/JPY", got.Amount, got.Currency)
+	}
+	if got.Rate != "1 INR = 100 JPY" {
+		t.Errorf("rate = %q, want %q", got.Rate, "1 INR = 100 JPY")
+	}
+	if got.RateSource != "implied" {
+		t.Errorf("rate_source = %q, want %q", got.RateSource, "implied")
+	}
+
+	text := mustRun(t, factory, "move", "500", "--from", "Savings", "--to", "Yen Wallet", "--on", "2026-08-21")
+	if !strings.Contains(text, "rate: 1 INR = 100 JPY") {
+		t.Errorf("plain text output = %q, want a rate line", text)
 	}
 }
 
@@ -805,6 +858,83 @@ func TestBalance_EmptyInstance(t *testing.T) {
 	stdout := mustRun(t, factory, "balance")
 	if !strings.Contains(stdout, "No accounts yet") {
 		t.Errorf("stdout = %q, want a friendly empty-state message", stdout)
+	}
+}
+
+// TestBalance_CurrencyAndPolicyRenderProvenanceAndUnconverted is issue
+// #136's balance-conversion surface, end to end: a USD account converts to
+// itself as an identity (no rate to show), an INR account converts via a
+// stored rate with full ADR-0004 provenance rendered inline, and a EUR
+// account with no stored rate is listed under "unconverted" with its
+// reason rather than silently dropped from the response.
+func TestBalance_CurrencyAndPolicyRenderProvenanceAndUnconverted(t *testing.T) {
+	provider := newFakeFxProvider()
+	factory := newTestFactoryWithFxProvider(t, mustFrozen(t), provider)
+
+	mustRun(t, factory, "accounts", "add", "Wallet", "--type", "cash", "--currency", "INR", "--opening-balance", "1000")
+	mustRun(t, factory, "accounts", "add", "Checking", "--type", "bank", "--currency", "USD", "--opening-balance", "500")
+	mustRun(t, factory, "accounts", "add", "Euro Account", "--type", "bank", "--currency", "EUR", "--opening-balance", "200")
+
+	provider.setRate(t, "INR", "USD", "0.0115", mustFxTestDate(t, 2026, time.August, 14))
+	mustRun(t, factory, "fx", "rates", "fetch", "--pair", "INR")
+
+	var got struct {
+		Balances []struct {
+			Account   string `json:"account"`
+			Currency  string `json:"currency"`
+			Balance   string `json:"balance"`
+			Converted *struct {
+				Amount     string `json:"amount"`
+				Currency   string `json:"currency"`
+				Rate       string `json:"rate"`
+				RateDate   string `json:"rate_date"`
+				RateSource string `json:"rate_source"`
+				Stale      bool   `json:"stale"`
+				Policy     string `json:"policy"`
+			} `json:"converted"`
+		} `json:"balances"`
+		Unconverted []struct {
+			Account string `json:"account"`
+			Reason  string `json:"reason"`
+		} `json:"unconverted"`
+	}
+	decodeData(t, mustRun(t, factory, "balance", "--currency", "USD", "--policy", "current", "--json"), &got)
+
+	byAccount := map[string]int{}
+	for i, b := range got.Balances {
+		byAccount[b.Account] = i
+	}
+
+	wallet := got.Balances[byAccount["Wallet"]]
+	if wallet.Converted == nil {
+		t.Fatalf("Wallet.Converted is nil, want a converted figure")
+	}
+	if wallet.Converted.Amount != "11.50" || wallet.Converted.Currency != "USD" {
+		t.Errorf("Wallet converted = %+v, want 11.50 USD (1000 INR @ 0.0115)", wallet.Converted)
+	}
+	if wallet.Converted.Rate != "0.0115" || wallet.Converted.RateSource != "fake-provider" || wallet.Converted.Policy != "current" {
+		t.Errorf("Wallet converted provenance = %+v", wallet.Converted)
+	}
+	if wallet.Converted.Stale {
+		t.Errorf("Wallet.Converted.Stale = true, want false (rate fetched at today's date)")
+	}
+
+	checking := got.Balances[byAccount["Checking"]]
+	if checking.Converted == nil || checking.Converted.Amount != "500.00" || checking.Converted.RateSource != "" {
+		t.Errorf("Checking converted = %+v, want an identity conversion with no rate source", checking.Converted)
+	}
+
+	if len(got.Unconverted) != 1 || got.Unconverted[0].Account != "Euro Account" || got.Unconverted[0].Reason == "" {
+		t.Fatalf("unconverted = %+v, want Euro Account with a reason", got.Unconverted)
+	}
+
+	// The plain-text rendering points at the fix.
+	text := mustRun(t, factory, "balance", "--currency", "USD", "--policy", "current")
+	if !strings.Contains(text, "bodger fx rates fetch") {
+		t.Errorf("text = %q, want it to point at `bodger fx rates fetch`", text)
+	}
+	if !strings.Contains(text, "Euro Account") {
+		t.Errorf("text = %q, want the unconverted account named", text)
 	}
 }
 

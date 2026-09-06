@@ -325,9 +325,31 @@ transaction repository reads and writes `transactions.fx_rate_used`/
 ADR-0004, and read back as the stored value rather than re-derived from the
 postings on every `Get`/`List`. Sending the to-leg's amount independently
 (rather than reusing the from-leg's raw number across both currencies) is
-still a separate, unstarted surface change. Every surface exposing this
-app-layer work
-([#136](https://github.com/anirudhgray/bodger/issues/136)–[#141](https://github.com/anirudhgray/bodger/issues/141),
+still a separate, unstarted surface change.
+[#136](https://github.com/anirudhgray/bodger/issues/136) exposes all of the
+above through the CLI: `bodger fx rates fetch`/`bodger fx rates list` call
+`FetchFxRates`/`ListFxRates` directly; `bodger balance
+--currency`/`--policy`/`--pinned-date` wire straight into
+`AccountBalancesQuery`'s existing conversion fields, rendering rate,
+rate_date, rate_source, and policy inline per ADR-0004 and flagging a stale
+rate explicitly (`(stale, as of <date>)`), with an unconverted account
+listed plainly alongside a `bodger fx rates fetch` hint rather than dropped
+from the total; `bodger move` drops its now-obsolete cross-currency
+rejection and renders the transfer's implied rate
+(`ledger.Transaction.FxRate`) whenever the transfer is genuinely
+cross-currency; and `bodger config reporting-currency get`/`set` exposes
+#132's per-user preference. `ListFxRatesQuery.Amount` is a raw string,
+parsed via `normalize.Amount` + `money.NewMoney` the same way every other
+user-typed amount in `internal/app` is — so `bodger fx rates list --amount`
+converts a raw string without `internal/surface/cli` ever constructing a
+`money.Money` itself (still barred by `internal/lint.TestImportGraph`).
+An earlier draft typed this field `*money.Money`, copying
+`ConvertAmountQuery`'s shape without noticing that query has a real
+internal caller with a `Money` already in hand (`balances.go`), while
+`ListFxRates` never does — see `docs/contributing.md`'s "surface-facing vs.
+internal-only" note for the general rule this was fixed to follow.
+Every other surface exposing this app-layer work
+([#137](https://github.com/anirudhgray/bodger/issues/137)–[#141](https://github.com/anirudhgray/bodger/issues/141),
 [#145](https://github.com/anirudhgray/bodger/issues/145)) remains open.
 
 | Milestone | Status |
