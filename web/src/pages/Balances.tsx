@@ -13,19 +13,14 @@
 // render when the account list itself spans more than one currency.
 // See docs/design-system.md's "Balances: rate-provenance detail row"
 // section for the pattern this establishes.
-import { RefreshCcw, Wallet } from 'lucide-react'
+import { Wallet } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
+import { Collapsible } from '@/components/ui/collapsible'
 import {
   Empty,
   EmptyContent,
@@ -35,14 +30,12 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Label } from '@/components/ui/label'
+import { RateFetchPopover } from '@/components/RateFetchPopover'
 import {
-  Popover,
-  PopoverContent,
-  PopoverDescription,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+  RateAmountTrigger,
+  RateProvenanceDetail,
+  UnconvertedNote,
+} from '@/components/RateProvenance'
 import {
   Select,
   SelectContent,
@@ -282,49 +275,26 @@ export function BalancesPage() {
           )}
 
           {targetCurrency !== NO_CONVERSION && candidatePairs.length > 0 && (
-            <Popover open={refreshOpen} onOpenChange={openRefresh}>
-              <PopoverTrigger asChild>
-                <Button type="button" variant="secondary" size="sm">
-                  <RefreshCcw />
-                  Refresh rates
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="start">
-                <PopoverHeader>
-                  <PopoverTitle>Refresh rates</PopoverTitle>
-                  <PopoverDescription>
-                    Fetch today's rate for the currencies you pick.
-                  </PopoverDescription>
-                </PopoverHeader>
-                <div className="flex flex-col gap-2 py-1">
-                  {candidatePairs.map((c) => (
-                    <label key={c} className="flex items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={refreshPairs.has(c)}
-                        onCheckedChange={(checked) => {
-                          setRefreshPairs((prev) => {
-                            const next = new Set(prev)
-                            if (checked) next.add(c)
-                            else next.delete(c)
-                            return next
-                          })
-                        }}
-                      />
-                      {c}
-                    </label>
-                  ))}
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={refreshPairs.size === 0 || refreshing}
-                  onClick={handleRefresh}
-                >
-                  {refreshing && <Spinner className="size-3.5" />}
-                  Refresh
-                </Button>
-              </PopoverContent>
-            </Popover>
+            <RateFetchPopover
+              open={refreshOpen}
+              onOpenChange={openRefresh}
+              triggerLabel="Refresh rates"
+              title="Refresh rates"
+              description="Fetch today's rate for the currencies you pick."
+              candidates={candidatePairs}
+              selected={refreshPairs}
+              onToggle={(currency, checked) => {
+                setRefreshPairs((prev) => {
+                  const next = new Set(prev)
+                  if (checked) next.add(currency)
+                  else next.delete(currency)
+                  return next
+                })
+              }}
+              onConfirm={handleRefresh}
+              confirming={refreshing}
+              confirmLabel="Refresh"
+            />
           )}
         </div>
       )}
@@ -384,27 +354,12 @@ export function BalancesPage() {
                     </button>
                     <div className="flex shrink-0 items-center gap-2">
                       {b.converted && (
-                        <CollapsibleTrigger asChild>
-                          <button
-                            type="button"
-                            className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs tabular-nums underline decoration-dotted underline-offset-4"
-                          >
-                            <span>
-                              ≈ {b.converted.amount} {b.converted.currency}
-                            </span>
-                            {b.converted.stale && (
-                              <span className="text-destructive font-medium">
-                                stale
-                              </span>
-                            )}
-                          </button>
-                        </CollapsibleTrigger>
+                        <RateAmountTrigger stale={b.converted.stale}>
+                          ≈ {b.converted.amount} {b.converted.currency}
+                        </RateAmountTrigger>
                       )}
                       {isUnconverted && (
-                        <span className="text-destructive text-xs">
-                          Not converted
-                          {unconvertedReason ? ` — ${unconvertedReason}` : ''}
-                        </span>
+                        <UnconvertedNote reason={unconvertedReason} />
                       )}
                       <span className="text-sm tabular-nums">
                         {b.amount} {b.currency}
@@ -412,14 +367,14 @@ export function BalancesPage() {
                     </div>
                   </div>
                   {b.converted && (
-                    <CollapsibleContent className="border-border text-muted-foreground border-t px-4 py-2 text-xs">
+                    <RateProvenanceDetail>
                       1 {b.currency} = {b.converted.rate} {b.converted.currency}
                       {' · as of '}
                       {b.converted.rate_date}
                       {' · '}
                       {b.converted.rate_source}
                       {b.converted.stale && ' · stale'}
-                    </CollapsibleContent>
+                    </RateProvenanceDetail>
                   )}
                 </Collapsible>
               </li>
