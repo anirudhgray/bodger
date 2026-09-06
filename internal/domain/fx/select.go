@@ -14,24 +14,28 @@ import (
 const DefaultStalenessWindowDays = 7
 
 // RateCandidate is one stored rate available for selection: the calendar
-// date it was recorded for, plus the rate itself. Base/quote filtering
-// happens before SelectRate is called — the app layer's repository query
-// (a separate issue) is expected to have already restricted candidates to
-// a single currency pair; SelectRate itself is agnostic to what Base/Quote
-// its candidates carry.
+// date it was recorded for, the rate itself, and which provider it came
+// from. Base/quote filtering happens before SelectRate is called — the app
+// layer's repository query (a separate issue) is expected to have already
+// restricted candidates to a single currency pair; SelectRate itself is
+// agnostic to what Base/Quote its candidates carry.
 type RateCandidate struct {
-	Date domain.Date
-	Rate Rate
+	Date   domain.Date
+	Rate   Rate
+	Source string
 }
 
 // Selection is what SelectRate found: the chosen rate, the calendar date
 // it was actually recorded for (which may be earlier than the date that
-// was asked for), and whether it was an exact match or a stale
-// within-window substitute.
+// was asked for), which provider it came from, and whether it was an
+// exact match or a stale within-window substitute. ADR-0004 requires every
+// converted figure to carry this provenance, so Selection carries the same
+// fields the candidate it was chosen from carried.
 type Selection struct {
-	Rate  Rate
-	Date  domain.Date
-	Stale bool
+	Rate   Rate
+	Date   domain.Date
+	Source string
+	Stale  bool
 }
 
 // SelectRate implements ADR-0004's rate lookup order: an exact match on
@@ -58,7 +62,7 @@ func SelectRate(candidates []RateCandidate, want domain.Date, windowDays int) (S
 	for i := range candidates {
 		c := candidates[i]
 		if c.Date.Equal(want) {
-			return Selection{Rate: c.Rate, Date: c.Date, Stale: false}, nil
+			return Selection{Rate: c.Rate, Date: c.Date, Source: c.Source, Stale: false}, nil
 		}
 		if !c.Date.Before(want) {
 			// Later than the requested date: never a candidate — ADR-0004
@@ -76,7 +80,7 @@ func SelectRate(candidates []RateCandidate, want domain.Date, windowDays int) (S
 	if best == nil {
 		return Selection{}, ErrNoRateWithinWindow
 	}
-	return Selection{Rate: best.Rate, Date: best.Date, Stale: true}, nil
+	return Selection{Rate: best.Rate, Date: best.Date, Source: best.Source, Stale: true}, nil
 }
 
 // daysBetween returns the number of calendar days between earlier and

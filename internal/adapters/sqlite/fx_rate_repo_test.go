@@ -213,6 +213,9 @@ func TestFxRateRepository_Lookup_ExactMatch(t *testing.T) {
 	if sel.Rate.Value().String() != "0.0115" {
 		t.Errorf("Rate = %v, want 0.0115", sel.Rate.Value())
 	}
+	if sel.Source != "frankfurter" {
+		t.Errorf("Source = %q, want %q", sel.Source, "frankfurter")
+	}
 }
 
 func TestFxRateRepository_Lookup_NearestEarlierWithinWindow(t *testing.T) {

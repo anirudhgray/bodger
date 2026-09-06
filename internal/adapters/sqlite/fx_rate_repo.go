@@ -88,7 +88,7 @@ func (r *FxRateRepository) Lookup(ctx context.Context, base, quote string, date 
 	}
 
 	rows, err := r.db.read.QueryContext(ctx, `
-		SELECT rate_date, rate FROM fx_rates
+		SELECT rate_date, rate, source FROM fx_rates
 		WHERE base = ? AND quote = ? AND rate_date <= ?
 	`, base, quote, formatDate(date))
 	if err != nil {
@@ -98,8 +98,8 @@ func (r *FxRateRepository) Lookup(ctx context.Context, base, quote string, date 
 
 	var candidates []fx.RateCandidate
 	for rows.Next() {
-		var dateCol, rateCol string
-		if err := rows.Scan(&dateCol, &rateCol); err != nil {
+		var dateCol, rateCol, sourceCol string
+		if err := rows.Scan(&dateCol, &rateCol, &sourceCol); err != nil {
 			return fx.Selection{}, errs.New(errs.Internal).Wrap(err)
 		}
 		d, err := parseDate(dateCol)
@@ -114,7 +114,7 @@ func (r *FxRateRepository) Lookup(ctx context.Context, base, quote string, date 
 		if err != nil {
 			return fx.Selection{}, errs.New(errs.Internal).Wrap(err)
 		}
-		candidates = append(candidates, fx.RateCandidate{Date: d, Rate: rate})
+		candidates = append(candidates, fx.RateCandidate{Date: d, Rate: rate, Source: sourceCol})
 	}
 	if err := rows.Err(); err != nil {
 		return fx.Selection{}, errs.New(errs.Internal).Wrap(err)
