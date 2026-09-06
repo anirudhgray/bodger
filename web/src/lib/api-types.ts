@@ -178,7 +178,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Every account's balance as of a date. */
+        /**
+         * Every account's balance as of a date.
+         * @description Setting "currency" converts every account's balance into it, under "policy" (ADR-0004) - the response's "balances[].converted" carries the converted figure and its full provenance, and any account the conversion couldn't cover is reported under "unconverted" rather than silently dropped.
+         */
         get: operations["getBalances"];
         put?: never;
         post?: never;
@@ -229,6 +232,64 @@ export interface paths {
          * @description The request body must set exactly one of "name" or "parent" (an empty "parent" moves the category to top-level) - these are two separate operations at the application layer, and a request naming both or neither is rejected.
          */
         patch: operations["patchCategory"];
+        trace?: never;
+    };
+    "/api/v1/fx/rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Look up the exchange rate between two currencies.
+         * @description A pure read over already-stored rates - this never calls out to the configured FX provider (use POST /api/v1/fx/rates/fetch for that). Setting "amount" also returns the converted figure.
+         */
+        get: operations["listFxRates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fx/rates/fetch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fetch and store exchange rates from the configured provider.
+         * @description With no "pairs", fetches every currency pair actually in use across the actor's accounts and transactions, quoted against their reporting currency, at today's date. Pass "pairs" to restrict the fetch to specific base currencies, and "from"/"to" together for a historical backfill instead of just today.
+         */
+        post: operations["fetchFxRates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting-currency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** See the acting user's configured reporting currency. */
+        get: operations["getReportingCurrency"];
+        put?: never;
+        /** Set the acting user's reporting currency. */
+        post: operations["setReportingCurrency"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/transactions": {
@@ -389,6 +450,7 @@ export interface components {
              * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
              */
             amount: string;
+            converted?: components["schemas"]["ConvertedBalance"];
             currency: string;
         };
         Balances: {
@@ -398,6 +460,7 @@ export interface components {
              */
             as_of: string;
             balances: components["schemas"]["Balance"][];
+            unconverted?: components["schemas"]["UnconvertedBalance"][];
         };
         BalancesEnvelope: {
             data: components["schemas"]["Balances"];
@@ -426,6 +489,21 @@ export interface components {
         };
         ChangePasswordRequest: {
             new_password: string;
+        };
+        ConvertedBalance: {
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            amount: string;
+            currency: string;
+            /** @enum {string} */
+            policy: "transaction_date" | "current" | "pinned";
+            rate: string;
+            /** Format: date */
+            rate_date: string;
+            rate_source: string;
+            stale: boolean;
         };
         CreateAPITokenRequest: {
             /**
@@ -558,6 +636,53 @@ export interface components {
         ErrorEnvelope: {
             error: components["schemas"]["Error"];
         };
+        FetchFxRatesRequest: {
+            /**
+             * Format: date
+             * @description Backfill range start date, inclusive (requires "to").
+             */
+            from?: string;
+            /** @description Restrict the fetch to these base currencies, quoted against the resolved reporting currency. Omit to fetch every in-use pair. */
+            pairs?: string[];
+            /**
+             * Format: date
+             * @description Backfill range end date, inclusive (requires "from").
+             */
+            to?: string;
+        };
+        FetchedRate: {
+            /** Format: date */
+            date: string;
+            /** @description The currency pair fetched, as "<base>/<quote>". */
+            pair: string;
+            rate: string;
+            source: string;
+        };
+        FxFetch: {
+            fetched: components["schemas"]["FetchedRate"][];
+            reporting_currency: string;
+        };
+        FxFetchEnvelope: {
+            data: components["schemas"]["FxFetch"];
+        };
+        FxRate: {
+            /** @description The requested amount, in the from currency. Set only when "amount" was given. */
+            amount?: string;
+            /** @description The converted figure, in the to currency. Set only when "amount" was given. */
+            converted?: string;
+            from: string;
+            /** @enum {string} */
+            policy: "transaction_date" | "current" | "pinned";
+            rate: string;
+            /** Format: date */
+            rate_date: string;
+            rate_source: string;
+            stale: boolean;
+            to: string;
+        };
+        FxRateEnvelope: {
+            data: components["schemas"]["FxRate"];
+        };
         Healthz: {
             /** @enum {string} */
             status: "ok";
@@ -594,6 +719,17 @@ export interface components {
             /** @description A parent category's ID or unique name. An empty string moves the category to the top level. */
             parent?: string | null;
         };
+        ReportingCurrency: {
+            currency: string;
+            /** @description False when this actor has never set a reporting currency; the instance default is used instead. */
+            is_set: boolean;
+        };
+        ReportingCurrencyEnvelope: {
+            data: components["schemas"]["ReportingCurrency"];
+        };
+        SetReportingCurrencyRequest: {
+            currency: string;
+        };
         Transaction: {
             /** @description Set on an outflow or an inflow. */
             account_id?: string;
@@ -615,6 +751,9 @@ export interface components {
             from_account_id?: string;
             id: string;
             notes?: string;
+            /** @description A transfer's implied exchange rate, "1 <from currency> = <value> <to currency>". Set only for a cross-currency transfer. */
+            rate?: string;
+            rate_source?: string;
             tags?: string[];
             /** @description Set on a transfer: the account the money arrived in. */
             to_account_id?: string;
@@ -631,6 +770,10 @@ export interface components {
         };
         TransactionListEnvelope: {
             data: components["schemas"]["TransactionList"];
+        };
+        UnconvertedBalance: {
+            account: string;
+            reason: string;
         };
     };
     responses: {
@@ -959,6 +1102,12 @@ export interface operations {
             query?: {
                 /** @description Defaults to today in the actor's own timezone when omitted. */
                 as_of?: string;
+                /** @description Convert every account's balance into this currency. */
+                currency?: string;
+                /** @description Which conversion policy to use when "currency" is set. */
+                policy?: "transaction_date" | "current" | "pinned";
+                /** @description The pinned date to convert at (required when "policy" is "pinned" and "currency" is set). */
+                pinned_date?: string;
             };
             header?: never;
             path?: never;
@@ -975,6 +1124,7 @@ export interface operations {
                     "application/json": components["schemas"]["BalancesEnvelope"];
                 };
             };
+            422: components["responses"]["InvalidInput"];
         };
     };
     listCategories: {
@@ -1096,6 +1246,112 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    listFxRates: {
+        parameters: {
+            query?: {
+                /** @description The currency to look up a rate for (required). */
+                from?: string;
+                /** @description The currency it's quoted against (required). */
+                to?: string;
+                /** @description Which conversion policy to use (required). */
+                policy?: "transaction_date" | "current" | "pinned";
+                /** @description The transaction date to look the rate up at (required with policy=transaction_date). */
+                transaction_date?: string;
+                /** @description The pinned date to look the rate up at (required with policy=pinned). */
+                pinned_date?: string;
+                /** @description An amount in "from"'s currency to convert (optional). */
+                amount?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The resolved rate and (when "amount" was set) the converted figure. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FxRateEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    fetchFxRates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FetchFxRatesRequest"];
+            };
+        };
+        responses: {
+            /** @description Every rate fetched and stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FxFetchEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    getReportingCurrency: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The configured reporting currency, or that none is set. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportingCurrencyEnvelope"];
+                };
+            };
+        };
+    };
+    setReportingCurrency: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetReportingCurrencyRequest"];
+            };
+        };
+        responses: {
+            /** @description The reporting currency was set. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkEnvelope"];
+                };
+            };
             422: components["responses"]["InvalidInput"];
         };
     };
