@@ -167,6 +167,37 @@ func TestFxRatesFetch_PairFilter(t *testing.T) {
 	}
 }
 
+// TestFxRatesFetch_QuoteFetchesDirectPair checks issue #165's "quote"
+// field: "pairs" is fetched against "quote" instead of the reporting
+// currency, and the quote currency's own reporting-quoted rate is fetched
+// alongside it in the same call.
+func TestFxRatesFetch_QuoteFetchesDirectPair(t *testing.T) {
+	frozenAt := time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC)
+	provider := newFakeFxProvider()
+	srv := newTestServerWithFxProvider(t, frozenAt, "UTC", provider)
+
+	do(t, srv, http.MethodPost, "/api/v1/accounts", map[string]any{"name": "Wallet", "type": "cash", "currency": "INR"})
+
+	today := mustFxTestDate(t, 2026, time.August, 14)
+	provider.setRate(t, "INR", "EUR", "0.0106", today)
+	provider.setRate(t, "EUR", "USD", "1.08", today)
+
+	status, decoded := do(t, srv, http.MethodPost, "/api/v1/fx/rates/fetch", map[string]any{
+		"pairs": []string{"INR"}, "quote": "EUR",
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %+v", status, decoded)
+	}
+	fetched, _ := dataOf(t, decoded)["fetched"].([]any)
+	pairs := map[string]bool{}
+	for _, f := range fetched {
+		pairs[f.(map[string]any)["pair"].(string)] = true
+	}
+	if len(fetched) != 2 || !pairs["INR/EUR"] || !pairs["EUR/USD"] {
+		t.Errorf("fetched = %+v, want INR/EUR and EUR/USD", fetched)
+	}
+}
+
 // TestFxRatesFetch_Backfill checks the "from"/"to" historical range fetch:
 // FetchFxRates delegates to FxProvider.FetchRange, which can (and here
 // does) return several distinct dates in one response.

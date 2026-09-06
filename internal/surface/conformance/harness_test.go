@@ -45,6 +45,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/platform/config"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
+	"github.com/anirudhgray/bodger/internal/ports"
 	clisurface "github.com/anirudhgray/bodger/internal/surface/cli"
 	httpsurface "github.com/anirudhgray/bodger/internal/surface/http"
 )
@@ -84,6 +85,17 @@ type harness struct {
 // service instance backs both surfaces at once.
 func newHarness(t *testing.T) *harness {
 	t.Helper()
+	return newHarnessWithFxProvider(t, fxprovider.New("", nil))
+}
+
+// newHarnessWithFxProvider is newHarness, but with the given FX provider
+// wired in instead of the real Frankfurter adapter — for a case (like
+// fx_fetch_conformance_test.go's) that needs FetchFxRates to actually
+// resolve a canned rate rather than reach the network, the same reason
+// internal/surface/cli/fx_test.go's and internal/surface/http/fx_test.go's
+// own newTestFactoryWithFxProvider/newTestServerWithFxProvider exist.
+func newHarnessWithFxProvider(t *testing.T, provider ports.FxRateProvider) *harness {
+	t.Helper()
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bodger.db")
@@ -111,7 +123,7 @@ func newHarness(t *testing.T) *harness {
 		sqlite.NewTransactionRepository(db), sqlite.NewTagRepository(db),
 		sqlite.NewUserRepository(db), sqlite.NewSessionRepository(db), sqlite.NewAPITokenRepository(db),
 		sqlite.NewFxRateRepository(db),
-		fxprovider.New("", nil),
+		provider,
 	)
 	if err != nil {
 		t.Fatalf("app.NewService: %v", err)

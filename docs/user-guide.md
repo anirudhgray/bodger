@@ -309,12 +309,12 @@ curl -H 'Authorization: Bearer bdg_...' \
 
 You can also do this from the command line with `bodger fx rates list`.
 
-`POST /api/v1/fx/rates/fetch` is the one route that actually reaches out to your configured rate provider and stores what it gets back. With no `pairs`, it fetches every currency pair you actually use, quoted against your reporting currency, at today's date; pass `pairs` to restrict it to specific currencies, and `from`/`to` together for a historical backfill instead of just today:
+`POST /api/v1/fx/rates/fetch` is the one route that actually reaches out to your configured rate provider and stores what it gets back. With no `pairs`, it fetches every currency pair you actually use, quoted against your reporting currency, at today's date; pass `pairs` to restrict it to specific currencies, `quote` to quote them against a currency other than your reporting currency, and `from`/`to` together for a historical backfill instead of just today:
 
 ```sh
 curl -X POST -H 'Authorization: Bearer bdg_...' \
   http://127.0.0.1:8080/api/v1/fx/rates/fetch \
-  -d '{"pairs":["INR"]}'
+  -d '{"pairs":["INR"],"quote":"EUR"}'
 ```
 
 You can also do this from the command line with `bodger fx rates fetch`.
@@ -415,7 +415,7 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | `bodger auth token create <name> [--expires]` | Create a new API token |
 | `bodger auth token list` | List your API tokens |
 | `bodger auth token revoke <id>` | Revoke an API token |
-| `bodger fx rates fetch [--pair] [--from] [--to]` | Fetch and store exchange rates from the configured provider — defaults to every currency pair you actually use; add `--from`/`--to` for a historical backfill |
+| `bodger fx rates fetch [--pair] [--quote] [--from] [--to]` | Fetch and store exchange rates from the configured provider — defaults to every currency pair you actually use, quoted against your reporting currency; add `--quote` to quote `--pair` entries against a different currency, and `--from`/`--to` for a historical backfill |
 | `bodger fx rates list --from <currency> --to <currency> --policy <policy> [--transaction-date] [--pinned-date] [--amount]` | Look up the exchange rate between two currencies under a given conversion policy, optionally converting an amount |
 | `bodger config reporting-currency get` | See your configured reporting currency |
 | `bodger config reporting-currency set <currency>` | Set your reporting currency |

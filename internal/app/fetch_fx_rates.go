@@ -24,24 +24,40 @@ const maxBackfillRangeDays = 3653 // 10 years, inclusive of leap days
 // FetchFxRatesCommand is issue #135's one explicit, network-touching,
 // store-writing FX action -- nothing else in this codebase calls
 // Service.FxProvider or writes to fx_rates. Every fetched pair is quoted
-// against ActorID's own resolved reporting currency (ADR-0004's currency
-// ladder, resolved the same way CreateAccount resolves it): there is no
-// caller-supplied quote currency, because fx_rates only ever needs rates
-// against whichever currency conversions are ultimately reported in.
+// against ActorID's own resolved reporting currency by default (ADR-0004's
+// currency ladder, resolved the same way CreateAccount resolves it), or
+// against Quote when the caller supplies one (issue #165) -- Frankfurter
+// takes an arbitrary base *and* quote (ADR-0012), so a direct non-reporting
+// pair is a real single-provider-call fetch, never triangulation.
 type FetchFxRatesCommand struct {
 	ActorID string
 
 	// Pairs optionally restricts the fetch to these base ISO 4217 currency
-	// codes, each quoted against the resolved reporting currency. Empty
-	// (the default) fetches every pair ports.FxRateRepository.InUsePairs
-	// reports for ActorID -- the balances-screen "refresh everything"
-	// action. A caller with just one or two currencies in view (e.g. the
+	// codes, each quoted against Quote (or the resolved reporting currency
+	// when Quote is empty). Empty (the default) fetches every pair
+	// ports.FxRateRepository.InUsePairs reports for ActorID -- the
+	// balances-screen "refresh everything" action, which never sets Quote
+	// either. A caller with just one or two currencies in view (e.g. the
 	// transaction-entry screen) passes exactly those instead of paying for
-	// every in-use pair. A base equal to the resolved reporting currency
-	// is silently skipped -- there's no rate to fetch for a currency
-	// against itself, the same reasoning InUsePairs itself already
-	// applies to its own default set.
+	// every in-use pair. A base equal to the resolved quote currency is
+	// silently skipped -- there's no rate to fetch for a currency against
+	// itself, the same reasoning InUsePairs itself already applies to its
+	// own default set.
 	Pairs []string
+
+	// Quote optionally overrides the quote currency every Pairs entry is
+	// fetched against, instead of the resolved reporting currency -- a
+	// known ISO 4217 code, validated the same way Pairs' own entries are.
+	// Empty (the default) keeps today's behavior: every pair quoted
+	// against the reporting currency. Ignored (has no effect) when Pairs
+	// is also empty, since InUsePairs' default set has no notion of an
+	// alternate quote. When set and different from the reporting
+	// currency, the reporting-quoted `Quote/reportingCurrency` rate is
+	// also fetched and stored in the same call -- cheap to pick up
+	// alongside the requested pair, and keeps every in-use currency's own
+	// reporting-quoted rate available for balances/reports without a
+	// second fetch action later.
+	Quote string
 
 	// From and To optionally bound a historical backfill range (inclusive
 	// calendar dates, both resolved via normalize.DateOf). Both must be
@@ -141,10 +157,12 @@ func (s *Service) FetchFxRates(ctx context.Context, cmd FetchFxRatesCommand) (Fe
 // the way down ADR-0004's ladder (entry and account rungs don't apply
 // here -- there is no entry or account in play, only the actor's own
 // preference and the instance default), the same way CreateAccount
-// resolves it. Unlike AccountBalancesQuery.TargetCurrency, FetchFxRates
-// has no caller-supplied quote currency to fall back on: it needs a
-// concrete currency to pass to InUsePairs and to quote every pair
-// against, so "no opinion" must still resolve to something real.
+// resolves it. Unlike AccountBalancesQuery.TargetCurrency, this is never
+// overridden by a caller-supplied quote (cmd.Quote overrides
+// resolveFetchPairs' own per-pair quote, not this): it needs a concrete
+// currency to pass to InUsePairs and as the quote every pair's
+// reporting-quoted counterpart lands against, so "no opinion" must still
+// resolve to something real.
 func (s *Service) resolveFetchReportingCurrency(ctx context.Context, actorID string) (string, error) {
 	preference, err := s.resolveReportingCurrency(ctx, actorID)
 	if err != nil {
@@ -155,21 +173,40 @@ func (s *Service) resolveFetchReportingCurrency(ctx context.Context, actorID str
 
 // resolveFetchPairs resolves cmd.Pairs to the FxRateRepository.CurrencyPair
 // pairs to actually fetch, forwarding to InUsePairs for the empty
-// (default) case.
+// (default) case -- which also means cmd.Quote is ignored there, since
+// InUsePairs' own default set has no notion of an alternate quote.
+//
+// For an explicit Pairs list, each base is quoted against cmd.Quote when
+// set (issue #165), or reportingCurrency otherwise. When Quote is set and
+// differs from reportingCurrency, this also appends
+// Quote/reportingCurrency itself -- the destination currency's own
+// reporting-quoted rate, fetched in the same round-trip so it's available
+// for balances/reports without a second fetch action later.
 func (s *Service) resolveFetchPairs(ctx context.Context, cmd FetchFxRatesCommand, reportingCurrency string) ([]ports.CurrencyPair, error) {
 	if len(cmd.Pairs) == 0 {
 		return s.FxRates.InUsePairs(ctx, cmd.ActorID, reportingCurrency)
 	}
 
-	pairs := make([]ports.CurrencyPair, 0, len(cmd.Pairs))
+	quote := reportingCurrency
+	if cmd.Quote != "" {
+		if _, ok := money.LookupCurrency(cmd.Quote); !ok {
+			return nil, errs.New(errs.InvalidInput).Explain("%q is not a known currency.", cmd.Quote).Field("quote")
+		}
+		quote = cmd.Quote
+	}
+
+	pairs := make([]ports.CurrencyPair, 0, len(cmd.Pairs)+1)
 	for _, base := range cmd.Pairs {
 		if _, ok := money.LookupCurrency(base); !ok {
 			return nil, errs.New(errs.InvalidInput).Explain("%q is not a known currency.", base).Field("pairs")
 		}
-		if base == reportingCurrency {
+		if base == quote {
 			continue
 		}
-		pairs = append(pairs, ports.CurrencyPair{Base: base, Quote: reportingCurrency})
+		pairs = append(pairs, ports.CurrencyPair{Base: base, Quote: quote})
+	}
+	if quote != reportingCurrency {
+		pairs = append(pairs, ports.CurrencyPair{Base: quote, Quote: reportingCurrency})
 	}
 	return pairs, nil
 }

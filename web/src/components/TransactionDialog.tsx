@@ -440,13 +440,12 @@ function TransactionDialogSheet({
   // by #159's to_amount support): only shown for a transfer whose two
   // accounts actually differ in currency. toCurrency here is the
   // *to*-account's own currency, which is not necessarily the reporting
-  // currency — GET /api/v1/fx/rates only ever resolves a pair stored
-  // against the reporting currency (useFxConversionHint's own doc
-  // comment), so this lookup, and its refresh, are only ever able to
-  // suggest a rate when toCurrency happens to equal reportingCurrency.
-  // Otherwise it degrades to the same "no stored rate yet" state the
-  // read-only hint already handles — the field itself stays fully
-  // editable regardless, since a suggestion is never required to submit.
+  // currency — the hook's own refresh fetches this exact pair directly
+  // (issue #165), not just pairs quoted against the reporting currency.
+  // Until a rate is actually fetched, this degrades to the same "no
+  // stored rate yet" state the read-only hint already handles — the
+  // field itself stays fully editable regardless, since a suggestion is
+  // never required to submit.
   const toCurrency = accounts.find((a) => a.id === toAccountId)?.currency ?? ''
   const crossCurrencyTransfer =
     kind === 'transfer' &&

@@ -31,13 +31,14 @@ func fetchedRateViewFrom(f app.FetchedRate) fetchedRateView {
 	}
 }
 
-// fetchFxRatesRequest is POST /api/v1/fx/rates/fetch's request body — all
-// three fields optional, matching app.FetchFxRatesCommand's own optional
+// fetchFxRatesRequest is POST /api/v1/fx/rates/fetch's request body —
+// every field optional, matching app.FetchFxRatesCommand's own optional
 // fields exactly: no pairs fetches every in-use pair, and from/to together
 // ask for a historical backfill instead of just today (both-or-neither is
 // FetchFxRates' own validation to enforce, not duplicated here).
 type fetchFxRatesRequest struct {
-	Pairs []string `json:"pairs,omitempty" doc:"Restrict the fetch to these base currencies, quoted against the resolved reporting currency. Omit to fetch every in-use pair."`
+	Pairs []string `json:"pairs,omitempty" doc:"Restrict the fetch to these base currencies. Omit to fetch every in-use pair (quote is ignored in that case)."`
+	Quote string   `json:"quote,omitempty" doc:"Quote currency for every pairs entry, instead of the resolved reporting currency. Ignored when pairs is omitted."`
 	From  string   `json:"from,omitempty" doc:"Backfill range start date, inclusive (requires \"to\")." format:"date"`
 	To    string   `json:"to,omitempty" doc:"Backfill range end date, inclusive (requires \"from\")." format:"date"`
 }
@@ -59,6 +60,7 @@ func (h *handlers) fetchFxRates(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.FetchFxRates(r.Context(), app.FetchFxRatesCommand{
 		ActorID: actorID(r),
 		Pairs:   body.Pairs,
+		Quote:   body.Quote,
 		From:    body.From,
 		To:      body.To,
 	})

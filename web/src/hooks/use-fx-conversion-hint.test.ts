@@ -221,7 +221,11 @@ describe('useFxConversionHint', () => {
       await vi.advanceTimersByTimeAsync(0)
     })
 
-    expect(mockedFetchFxRates).toHaveBeenCalledWith(['INR'], '2026-08-14')
+    expect(mockedFetchFxRates).toHaveBeenCalledWith(
+      ['INR'],
+      '2026-08-14',
+      'USD',
+    )
     expect(result.current.refreshing).toBe(false)
     // refresh() re-runs load() directly (not through the debounce), so
     // the rate lookup ran a second time.

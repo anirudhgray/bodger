@@ -81,21 +81,22 @@ func printFxFetch(w io.Writer, v fxFetchView) {
 
 // newFxRatesFetchCmd builds "fx rates fetch": issue #135's fetch-and-store
 // use case. With no --pair flags it fetches every currency pair actually
-// in use (FetchFxRatesCommand.Pairs left empty); --from/--to together ask
-// for a historical backfill instead of just today — both-or-neither is
-// FetchFxRates' own validation to enforce (InvalidInput, field "from"),
-// not duplicated here.
+// in use (FetchFxRatesCommand.Pairs left empty, --quote ignored); --from/--to
+// together ask for a historical backfill instead of just today —
+// both-or-neither is FetchFxRates' own validation to enforce (InvalidInput,
+// field "from"), not duplicated here.
 func newFxRatesFetchCmd(factory ServiceFactory) *cobra.Command {
 	var pairs []string
-	var from, to string
+	var quote, from, to string
 	cmd := &cobra.Command{
 		Use:   "fetch",
 		Short: "Fetch and store exchange rates from the configured provider",
 		Long: "Fetch and store exchange rates from the configured provider.\n\n" +
 			"With no --pair flags, fetches every currency pair actually in use across your accounts and " +
 			"transactions, quoted against your reporting currency, at today's date. Pass --pair to restrict " +
-			"the fetch to specific base currencies, and --from/--to together for a historical backfill " +
-			"instead of just today.",
+			"the fetch to specific base currencies (add --quote to quote them against a currency other than " +
+			"your reporting currency), and --from/--to together for a historical backfill instead of just " +
+			"today.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
@@ -108,6 +109,7 @@ func newFxRatesFetchCmd(factory ServiceFactory) *cobra.Command {
 			result, err := svc.FetchFxRates(ctx, app.FetchFxRatesCommand{
 				ActorID: ports.SeededUserID,
 				Pairs:   pairs,
+				Quote:   quote,
 				From:    from,
 				To:      to,
 			})
@@ -120,6 +122,8 @@ func newFxRatesFetchCmd(factory ServiceFactory) *cobra.Command {
 	}
 	cmd.Flags().StringArrayVar(&pairs, "pair", nil,
 		"restrict the fetch to this base currency, quoted against your reporting currency (repeatable; defaults to every in-use pair)")
+	cmd.Flags().StringVar(&quote, "quote", "",
+		"quote currency for every --pair entry, instead of your reporting currency (ignored with no --pair flags)")
 	cmd.Flags().StringVar(&from, "from", "", "backfill range start date, inclusive (requires --to)")
 	cmd.Flags().StringVar(&to, "to", "", "backfill range end date, inclusive (requires --from)")
 	return cmd
