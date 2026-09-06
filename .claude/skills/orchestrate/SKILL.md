@@ -255,6 +255,20 @@ just going to get lost. Concretely:
   either. Open an issue.
 - **A natural follow-up revealed by finishing something** - open an issue
   for it rather than letting the current PR grow to cover it.
+- **A dependency's own "Out of scope" section points at a follow-up that
+  was never actually created.** This has happened at least once for real:
+  #133 (`RecordTransfer`) explicitly deferred "CLI/API request shape
+  changes to actually send two different currencies on a transfer" to "a
+  separate surface issue" - but when #136/#137 (the CLI/API surface
+  issues) were scoped afterward, that thread wasn't picked up, and their
+  scopes just said "drop the cross-currency rejection." The gap sat
+  silent for three more issues until a web-UI slice (#138) tripped over
+  it. When step 1 reads a candidate issue's body, also skim the "Out of
+  scope" sections of the issues it depends on for language like "separate
+  issue," "future change," or "not this issue" - then check
+  `gh issue list --state all` for whether that separate issue actually
+  exists. If it doesn't, that's exactly this pattern: open it now, before
+  picking up the issue that assumed it was already tracked.
 - **A deferred/future idea surfaces** that isn't in scope for the current
   milestone. Open it with the appropriate deferred/future label, not just
   a mention in conversation or a docs/ paragraph.
