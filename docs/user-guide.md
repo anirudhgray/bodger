@@ -341,11 +341,12 @@ A **Move** between two accounts in different currencies shows a second "Amount r
 
 The **Transactions** screen lists what you've recorded, newest first. Click **Filters** to narrow it down by account, category, type, or date range — the same filters `bodger transactions list` offers, tucked one click away rather than shown by default; the category filter shows the same nesting and search as the transaction form's own category field. Click **Edit** on any row to correct it in place — as with the CLI, an edit replaces the whole transaction, so the form starts pre-filled with everything it currently has; change what's wrong and save. **Delete** removes a transaction immediately, with no confirmation prompt — same as the CLI, nothing is erased from your database, so you keep a record of what was there.
 
-The **Settings** area covers everything about your account and ledger setup, split into its own page per section with a tab strip across the top to switch between them. It's also expandable straight from the sidebar — click **Settings** there to reveal Password, API tokens, Accounts, and Categories without visiting the page first:
+The **Settings** area covers everything about your account and ledger setup, split into its own page per section with a tab strip across the top to switch between them. It's also expandable straight from the sidebar — click **Settings** there to reveal Password, API tokens, Accounts, Categories, and Currency without visiting the page first:
 
 - **Password** — change it without going back to the CLI. This signs you out everywhere, including the browser you just used, so you'll land back on the login screen afterward.
 - **API tokens** — create, list, and revoke them, the same as `bodger auth token create`/`list`/`revoke`. A newly created token's value is shown once, right there on the screen — copy it before navigating away, since it can't be shown again.
 - **Accounts** and **Categories** — each on its own page: add, rename, and archive either, and move a category under a different parent (or back to the top level). The category list is shown as a tree, each one indented under its parent, matching `bodger categories tree` on the command line; the "Parent" field you reparent from shows that same nesting. This is the same CRUD the CLI's `bodger accounts` and `bodger categories` commands expose, for whenever a browser is more convenient than a terminal.
+- **Currency** — set the currency balances and reports convert into, the same as `bodger config reporting-currency get`/`set`. If you've never set one, the field shows as empty and the page tells you it's falling back to this instance's default.
 
 ---
 

@@ -19,6 +19,7 @@ import { Placeholder } from '@/pages/Placeholder'
 import { AccountsSettings } from '@/pages/settings/Accounts'
 import { ApiTokensSettings } from '@/pages/settings/ApiTokens'
 import { CategoriesSettings } from '@/pages/settings/Categories'
+import { CurrencySettings } from '@/pages/settings/Currency'
 import { PasswordSettings } from '@/pages/settings/Password'
 import { SettingsLayout } from '@/pages/settings/SettingsLayout'
 import { TransactionsList } from '@/pages/TransactionsList'
@@ -117,6 +118,7 @@ export const routes: RouteObject[] = [
           { path: 'tokens', element: <ApiTokensSettings /> },
           { path: 'accounts', element: <AccountsSettings /> },
           { path: 'categories', element: <CategoriesSettings /> },
+          { path: 'currency', element: <CurrencySettings /> },
         ],
       },
       {
