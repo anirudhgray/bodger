@@ -39,7 +39,6 @@ export function SettingsLayout() {
       <Tabs value={activeSection}>
         <div className="-mx-1 overflow-x-auto px-1">
           <TabsList
-            variant="line"
             aria-label="Settings sections"
             className="w-fit min-w-full justify-start sm:min-w-0"
           >
