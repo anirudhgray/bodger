@@ -65,6 +65,7 @@ var enumSets = map[string][]string{
 	"category_kind":               {"expense", "income"},
 	"transaction_kind":            {"outflow", "inflow", "transfer"},
 	"recordable_transaction_kind": {"outflow", "inflow"},
+	"conversion_policy":           {"transaction_date", "current", "pinned"},
 	"health_status":               {"ok"},
 	"error_code":                  errorCodeValues(),
 }

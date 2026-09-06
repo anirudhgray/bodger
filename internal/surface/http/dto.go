@@ -1,6 +1,10 @@
 package http
 
-import "github.com/anirudhgray/bodger/internal/app"
+import (
+	"fmt"
+
+	"github.com/anirudhgray/bodger/internal/app"
+)
 
 // accountView is the JSON shape of an account. currency and every money
 // field are strings (ADR-0004: never a JSON number). opening_balance
@@ -108,6 +112,14 @@ type transactionView struct {
 	ToAccountID   string   `json:"to_account_id,omitempty" doc:"Set on a transfer: the account the money arrived in."`
 	Amount        string   `json:"amount" doc:"Always positive; the transaction's type says which way the money moved." format:"money"`
 	Currency      string   `json:"currency"`
+	// Rate and RateSource render a transfer's implied exchange rate
+	// (issue #133's cross-currency RecordTransfer) — "1 <from currency> =
+	// <value> <to currency>" and the provenance ADR-0004 requires
+	// alongside it, the same way internal/surface/cli's moveView does.
+	// Both are empty for a same-currency transfer, or for an outflow or
+	// inflow (only a transfer ever has an implied rate).
+	Rate       string `json:"rate,omitempty" doc:"A transfer's implied exchange rate, \"1 <from currency> = <value> <to currency>\". Set only for a cross-currency transfer."`
+	RateSource string `json:"rate_source,omitempty"`
 }
 
 func transactionViewFrom(r app.TransactionResult) transactionView {
@@ -144,25 +156,64 @@ func transactionViewFrom(r app.TransactionResult) transactionView {
 		v.Amount = to.Amount().Abs().AmountString()
 		v.Currency = to.Currency()
 	}
+	if rate, source, ok := t.FxRate(); ok && !rate.IsIdentity() {
+		v.Rate = fmt.Sprintf("1 %s = %s %s", rate.Base(), rate.Value().String(), rate.Quote())
+		v.RateSource = source
+	}
 	return v
+}
+
+// convertedBalanceView renders a ConvertedAmount inline on a balance
+// entry: ADR-0004's "every surface must render provenance somewhere" rule
+// applied to this surface — rate, rate_date, rate_source, and policy
+// travel alongside the converted figure itself, never just the bare
+// number. Mirrors internal/surface/cli/balance.go's convertedBalanceView
+// field-for-field.
+type convertedBalanceView struct {
+	Amount     string `json:"amount" format:"money"`
+	Currency   string `json:"currency"`
+	Rate       string `json:"rate"`
+	RateDate   string `json:"rate_date" format:"date"`
+	RateSource string `json:"rate_source"`
+	Stale      bool   `json:"stale"`
+	Policy     string `json:"policy" enum:"conversion_policy"`
+}
+
+func convertedBalanceViewFrom(c app.ConvertedAmount) *convertedBalanceView {
+	return &convertedBalanceView{
+		Amount:     c.Amount.AmountString(),
+		Currency:   c.Amount.Currency(),
+		Rate:       c.Rate.Value().String(),
+		RateDate:   c.RateDate.String(),
+		RateSource: c.RateSource,
+		Stale:      c.Stale,
+		Policy:     string(c.Policy),
+	}
 }
 
 // balanceView pairs one account with its computed balance as of the
 // query's as-of date (app.AccountBalancesResult already carries both, in
 // one app call — no second lookup needed to render the account's name
-// here).
+// here). Converted carries the balance's converted figure and full
+// ADR-0004 provenance when the request set a target currency and a rate
+// was available for this account's currency; nil otherwise.
 type balanceView struct {
-	AccountID string `json:"account_id"`
-	Account   string `json:"account" doc:"The account's name."`
-	Amount    string `json:"amount" format:"money"`
-	Currency  string `json:"currency"`
+	AccountID string                `json:"account_id"`
+	Account   string                `json:"account" doc:"The account's name."`
+	Amount    string                `json:"amount" format:"money"`
+	Currency  string                `json:"currency"`
+	Converted *convertedBalanceView `json:"converted,omitempty"`
 }
 
 func balanceViewFrom(b app.AccountBalance) balanceView {
-	return balanceView{
+	v := balanceView{
 		AccountID: b.Account.ID(),
 		Account:   b.Account.Name(),
 		Amount:    b.Balance.AmountString(),
 		Currency:  b.Balance.Currency(),
 	}
+	if b.Converted != nil {
+		v.Converted = convertedBalanceViewFrom(*b.Converted)
+	}
+	return v
 }

@@ -351,11 +351,63 @@ var routeTable = []route{
 		Handler: func(h *handlers) http.HandlerFunc { return h.getBalances },
 
 		OperationID: "getBalances", Summary: "Every account's balance as of a date.",
+		Description:   "Setting \"currency\" converts every account's balance into it, under \"policy\" (ADR-0004) - the response's \"balances[].converted\" carries the converted figure and its full provenance, and any account the conversion couldn't cover is reported under \"unconverted\" rather than silently dropped.",
 		SuccessStatus: http.StatusOK, SuccessDescription: "Every account's balance as of the resolved date.",
 		Response: balancesView{},
+		Errors:   []int{http.StatusUnprocessableEntity},
 		Query: []queryParam{
 			{Name: "as_of", Description: "Defaults to today in the actor's own timezone when omitted.", Type: "string", Format: "date"},
+			{Name: "currency", Description: "Convert every account's balance into this currency.", Type: "string"},
+			{Name: "policy", Description: "Which conversion policy to use when \"currency\" is set.", Type: "string", Enum: []string{"transaction_date", "current", "pinned"}},
+			{Name: "pinned_date", Description: "The pinned date to convert at (required when \"policy\" is \"pinned\" and \"currency\" is set).", Type: "string", Format: "date"},
 		},
+	},
+
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/fx/rates",
+		Handler: func(h *handlers) http.HandlerFunc { return h.listFxRates },
+
+		OperationID: "listFxRates", Summary: "Look up the exchange rate between two currencies.",
+		Description:   "A pure read over already-stored rates - this never calls out to the configured FX provider (use POST /api/v1/fx/rates/fetch for that). Setting \"amount\" also returns the converted figure.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The resolved rate and (when \"amount\" was set) the converted figure.",
+		Response: fxRateView{},
+		Errors:   []int{http.StatusNotFound, http.StatusUnprocessableEntity},
+		Query: []queryParam{
+			{Name: "from", Description: "The currency to look up a rate for (required).", Type: "string"},
+			{Name: "to", Description: "The currency it's quoted against (required).", Type: "string"},
+			{Name: "policy", Description: "Which conversion policy to use (required).", Type: "string", Enum: []string{"transaction_date", "current", "pinned"}},
+			{Name: "transaction_date", Description: "The transaction date to look the rate up at (required with policy=transaction_date).", Type: "string", Format: "date"},
+			{Name: "pinned_date", Description: "The pinned date to look the rate up at (required with policy=pinned).", Type: "string", Format: "date"},
+			{Name: "amount", Description: "An amount in \"from\"'s currency to convert (optional).", Type: "string"},
+		},
+	},
+	{
+		Method: http.MethodPost, Pattern: "/api/v1/fx/rates/fetch",
+		Handler: func(h *handlers) http.HandlerFunc { return h.fetchFxRates },
+
+		OperationID: "fetchFxRates", Summary: "Fetch and store exchange rates from the configured provider.",
+		Description:   "With no \"pairs\", fetches every currency pair actually in use across the actor's accounts and transactions, quoted against their reporting currency, at today's date. Pass \"pairs\" to restrict the fetch to specific base currencies, and \"from\"/\"to\" together for a historical backfill instead of just today.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "Every rate fetched and stored.",
+		Request: fetchFxRatesRequest{}, Response: fxFetchView{},
+		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
+	},
+
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/reporting-currency",
+		Handler: func(h *handlers) http.HandlerFunc { return h.getReportingCurrency },
+
+		OperationID: "getReportingCurrency", Summary: "See the acting user's configured reporting currency.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The configured reporting currency, or that none is set.",
+		Response: reportingCurrencyView{},
+	},
+	{
+		Method: http.MethodPost, Pattern: "/api/v1/reporting-currency",
+		Handler: func(h *handlers) http.HandlerFunc { return h.setReportingCurrency },
+
+		OperationID: "setReportingCurrency", Summary: "Set the acting user's reporting currency.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The reporting currency was set.",
+		Request: setReportingCurrencyRequest{}, Response: okView{},
+		Errors: []int{http.StatusUnprocessableEntity},
 	},
 }
 
