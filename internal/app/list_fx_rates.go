@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 
+	"github.com/anirudhgray/bodger/internal/app/normalize"
 	"github.com/anirudhgray/bodger/internal/domain"
 	"github.com/anirudhgray/bodger/internal/domain/fx"
 	"github.com/anirudhgray/bodger/internal/domain/money"
@@ -49,6 +50,15 @@ type ListFxRatesQuery struct {
 	// -- e.g. a bare "what's today's rate" display with no amount in
 	// context yet.
 	Amount *money.Money
+	// AmountRaw is the caller-facing raw-string form of Amount, for a
+	// surface (CLI, HTTP) that can't construct a money.Money itself --
+	// those packages are barred from importing internal/domain (see
+	// internal/lint's TestImportGraph), the same reason every other
+	// user-typed amount in this package arrives as a raw string (e.g.
+	// RecordTransferCommand.Amount) rather than a constructed Money.
+	// Parsed against From via normalize.Amount, exactly like those. Only
+	// consulted when Amount is nil; set at most one of the two.
+	AmountRaw string
 }
 
 // ListFxRatesResult is ListFxRates' result: the resolved rate itself and
@@ -74,6 +84,17 @@ type ListFxRatesResult struct {
 // it, unchanged.
 func (s *Service) ListFxRates(ctx context.Context, q ListFxRatesQuery) (ListFxRatesResult, error) {
 	amount := q.Amount
+	if amount == nil && q.AmountRaw != "" {
+		minor, err := normalize.Amount(q.AmountRaw, q.From)
+		if err != nil {
+			return ListFxRatesResult{}, err
+		}
+		parsed, err := money.NewMoney(minor, q.From)
+		if err != nil {
+			return ListFxRatesResult{}, errs.New(errs.Internal).Wrap(err)
+		}
+		amount = &parsed
+	}
 	if amount != nil && amount.Currency() != q.From {
 		return ListFxRatesResult{}, errs.New(errs.InvalidInput).
 			Explain("The amount's currency (%s) does not match the requested From currency (%s).", amount.Currency(), q.From).

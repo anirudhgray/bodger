@@ -365,7 +365,7 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | `bodger auth token list` | List your API tokens |
 | `bodger auth token revoke <id>` | Revoke an API token |
 | `bodger fx rates fetch [--pair] [--from] [--to]` | Fetch and store exchange rates from the configured provider — defaults to every currency pair you actually use; add `--from`/`--to` for a historical backfill |
-| `bodger fx rates list --from <currency> --to <currency> --policy <policy> [--transaction-date] [--pinned-date]` | Look up the exchange rate between two currencies under a given conversion policy |
+| `bodger fx rates list --from <currency> --to <currency> --policy <policy> [--transaction-date] [--pinned-date] [--amount]` | Look up the exchange rate between two currencies under a given conversion policy, optionally converting an amount |
 | `bodger config reporting-currency get` | See your configured reporting currency |
 | `bodger config reporting-currency set <currency>` | Set your reporting currency |
 

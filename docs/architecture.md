@@ -338,14 +338,13 @@ from the total; `bodger move` drops its now-obsolete cross-currency
 rejection and renders the transfer's implied rate
 (`ledger.Transaction.FxRate`) whenever the transfer is genuinely
 cross-currency; and `bodger config reporting-currency get`/`set` exposes
-#132's per-user preference. `ListFxRatesQuery.Amount`'s optional
-converted-figure read (`--amount`) is not exposed by this CLI surface: the
-field is typed `*money.Money`, a domain-layer construction
-`internal/surface`'s own import-graph rule (`internal/lint.TestImportGraph`)
-forbids this package from performing itself, and no app-layer helper exists
-yet to build one from a raw string the way every other command's `Amount`
-field does — left open for a follow-up rather than worked around. Every
-other surface exposing this app-layer work
+#132's per-user preference. `ListFxRatesQuery` gained an `AmountRaw string`
+field alongside its existing `Amount *money.Money` one, parsed via
+`normalize.Amount` + `money.NewMoney` the same way every other user-typed
+amount in `internal/app` is — so `bodger fx rates list --amount` converts a
+raw string without `internal/surface/cli` ever constructing a
+`money.Money` itself (still barred by `internal/lint.TestImportGraph`).
+Every other surface exposing this app-layer work
 ([#137](https://github.com/anirudhgray/bodger/issues/137)–[#141](https://github.com/anirudhgray/bodger/issues/141),
 [#145](https://github.com/anirudhgray/bodger/issues/145)) remains open.
 

@@ -219,6 +219,8 @@ type fxRateResult struct {
 	RateSource string `json:"rate_source"`
 	Stale      bool   `json:"stale"`
 	Policy     string `json:"policy"`
+	Amount     string `json:"amount"`
+	Converted  string `json:"converted"`
 }
 
 // TestFxRatesList_ResolvesEachPolicy exercises all three ADR-0004 policies
@@ -276,6 +278,28 @@ func TestFxRatesList_ResolvesEachPolicy(t *testing.T) {
 			t.Errorf("got %+v, want the 08-01 rate flagged stale", got)
 		}
 	})
+}
+
+// TestFxRatesList_WithAmountConverts checks --amount forwards through
+// ListFxRatesQuery.AmountRaw (a raw string, since this package can't
+// construct a money.Money itself) and that the result's converted figure
+// is rendered alongside the rate.
+func TestFxRatesList_WithAmountConverts(t *testing.T) {
+	provider := newFakeFxProvider()
+	factory := newTestFactoryWithFxProvider(t, mustFrozen(t), provider)
+	mustRun(t, factory, "accounts", "add", "Wallet", "--type", "cash", "--currency", "INR")
+	provider.setRate(t, "INR", "USD", "0.0125", mustFxTestDate(t, 2026, time.August, 14)) // today
+	mustRun(t, factory, "fx", "rates", "fetch", "--pair", "INR")
+
+	var got fxRateResult
+	decodeData(t, mustRun(t, factory, "fx", "rates", "list", "--from", "INR", "--to", "USD",
+		"--policy", "current", "--amount", "1000", "--json"), &got)
+	if got.Amount != "1000.00 INR" {
+		t.Errorf("amount = %q, want 1000.00 INR", got.Amount)
+	}
+	if got.Converted != "12.50 USD" {
+		t.Errorf("converted = %q, want 12.50 USD", got.Converted)
+	}
 }
 
 // TestFxRatesList_InvalidPolicyForwardsAppError checks this package

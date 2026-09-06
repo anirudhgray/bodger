@@ -2,23 +2,6 @@
 // internal/app/fetch_fx_rates.go and internal/app/list_fx_rates.go's use
 // cases (issue #135) the same one-command, one-application-call way as
 // every other command in this package.
-//
-// Judgment call: internal/app/list_fx_rates.go's ListFxRatesQuery.Amount
-// field is typed *money.Money (a domain type internal/domain/money owns).
-// This package is never permitted to import internal/domain or any of its
-// subpackages (see this package's own doc comment in cli.go, and
-// internal/lint's TestImportGraph, which fails the build if it does) —
-// every other command in this codebase that accepts a user-typed amount
-// passes it through to internal/app as a raw string field instead (see
-// e.g. RecordTransferCommand.Amount), which internal/app itself parses
-// into a money.Money via normalize.Amount + money.NewMoney. ListFxRates
-// has no such string-typed alternative: it requires an already-constructed
-// *money.Money, which this package has no way to build without either
-// violating that import rule or internal/app growing a small exported
-// parsing helper (out of scope for this CLI-surface-only issue — flagged
-// back to the issue rather than added here). So "rates list" implements
-// the read-only rate lookup (every policy, staleness flagging) but not the
-// issue's optional --amount conversion; a --amount flag is not offered.
 package cli
 
 import (
@@ -143,7 +126,8 @@ func newFxRatesFetchCmd(factory ServiceFactory) *cobra.Command {
 }
 
 // fxRateView renders a ListFxRatesResult: the resolved rate and its full
-// ADR-0004 provenance.
+// ADR-0004 provenance, plus (only when --amount was given) the converted
+// figure.
 type fxRateView struct {
 	From       string `json:"from"`
 	To         string `json:"to"`
@@ -152,10 +136,12 @@ type fxRateView struct {
 	RateSource string `json:"rate_source"`
 	Stale      bool   `json:"stale"`
 	Policy     string `json:"policy"`
+	Amount     string `json:"amount,omitempty"`
+	Converted  string `json:"converted,omitempty"`
 }
 
 func fxRateViewFrom(from, to string, r app.ListFxRatesResult) fxRateView {
-	return fxRateView{
+	v := fxRateView{
 		From:       from,
 		To:         to,
 		Rate:       r.Rate.Value().String(),
@@ -164,6 +150,11 @@ func fxRateViewFrom(from, to string, r app.ListFxRatesResult) fxRateView {
 		Stale:      r.Stale,
 		Policy:     string(r.Policy),
 	}
+	if r.Converted != nil {
+		v.Amount = fmt.Sprintf("%s %s", r.Converted.ConvertedFrom.AmountString(), r.Converted.ConvertedFrom.Currency())
+		v.Converted = fmt.Sprintf("%s %s", r.Converted.Amount.AmountString(), r.Converted.Amount.Currency())
+	}
+	return v
 }
 
 func printFxRate(w io.Writer, v fxRateView) {
@@ -175,14 +166,19 @@ func printFxRate(w io.Writer, v fxRateView) {
 		_, _ = fmt.Fprintf(w, ", stale, as of %s", v.RateDate)
 	}
 	_, _ = fmt.Fprintln(w, ")")
+	if v.Converted != "" {
+		_, _ = fmt.Fprintf(w, "%s = %s\n", v.Amount, v.Converted)
+	}
 }
 
 // newFxRatesListCmd builds "fx rates list": issue #135's pure, stored-data
 // read (ListFxRates), a single pair/policy lookup rather than an
-// enumeration despite the "list" name. See this file's doc comment for why
-// --amount isn't offered.
+// enumeration despite the "list" name. --amount is forwarded as a raw
+// string via ListFxRatesQuery.AmountRaw, parsed app-side the same way
+// every other user-typed amount in this codebase is (normalize.Amount +
+// money.NewMoney) — this package never constructs a money.Money itself.
 func newFxRatesListCmd(factory ServiceFactory) *cobra.Command {
-	var from, to, policy, transactionDate, pinnedDate string
+	var from, to, policy, transactionDate, pinnedDate, amount string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "Look up the exchange rate between two currencies",
@@ -201,6 +197,7 @@ func newFxRatesListCmd(factory ServiceFactory) *cobra.Command {
 				Policy:          app.ConversionPolicy(policy),
 				TransactionDate: transactionDate,
 				PinnedDate:      pinnedDate,
+				AmountRaw:       amount,
 			})
 			if err != nil {
 				return err
@@ -217,6 +214,7 @@ func newFxRatesListCmd(factory ServiceFactory) *cobra.Command {
 		"the transaction date to look the rate up at (required with --policy transaction_date)")
 	cmd.Flags().StringVar(&pinnedDate, "pinned-date", "",
 		"the pinned date to look the rate up at (required with --policy pinned)")
+	cmd.Flags().StringVar(&amount, "amount", "", "an amount in --from's currency to convert (optional)")
 	_ = cmd.MarkFlagRequired("from")
 	_ = cmd.MarkFlagRequired("to")
 	_ = cmd.MarkFlagRequired("policy")
