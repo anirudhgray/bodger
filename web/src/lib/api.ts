@@ -287,3 +287,65 @@ export function recordTransfer(
     }),
   })
 }
+
+// --- FX rates and reporting currency (issue #138) --------------------------
+//
+// Every lookup here only ever resolves a rate FROM a foreign currency TO
+// the reporting currency: internal/adapters/sqlite/fx_rate_repo.go's
+// Lookup does an exact base/quote match against stored rows, and POST
+// /api/v1/fx/rates/fetch only ever stores <foreign>/<reporting-currency>
+// rows (internal/app/fetch_fx_rates.go's resolveFetchPairs always quotes
+// against the resolved reporting currency) — there is no reverse lookup
+// and no support for a pair between two non-reporting currencies yet.
+// Callers pass whatever "to" they actually need and handle a 404
+// (ApiError with code "not_found") as "no rate available", rather than
+// this file pre-guessing which directions will resolve.
+
+export type FxRate = components['schemas']['FxRate']
+
+export type FxRateQuery = {
+  from: string
+  to: string
+  amount?: string
+} & (
+  | { policy: 'current' }
+  | { policy: 'transaction_date'; transactionDate: string }
+)
+
+// getFxRate is GET /api/v1/fx/rates: a pure, stored-data-only read (issue
+// #135) — it never triggers a network fetch of its own, unlike
+// fetchFxRates below.
+export function getFxRate(query: FxRateQuery): Promise<FxRate> {
+  return apiFetch<FxRate>(
+    `/api/v1/fx/rates${buildQuery({
+      from: query.from,
+      to: query.to,
+      amount: query.amount,
+      policy: query.policy,
+      transaction_date:
+        query.policy === 'transaction_date' ? query.transactionDate : undefined,
+    })}`,
+  )
+}
+
+export type FxFetchResult = components['schemas']['FxFetch']
+
+// fetchFxRates is POST /api/v1/fx/rates/fetch, scoped to exactly the
+// given base currencies and (when date is set) a single-day backfill
+// range — never the broad "every in-use pair, latest date" default,
+// matching issue #138's narrowly-scoped refresh action.
+export function fetchFxRates(
+  pairs: string[],
+  date?: string,
+): Promise<FxFetchResult> {
+  return apiFetch<FxFetchResult>('/api/v1/fx/rates/fetch', {
+    method: 'POST',
+    body: JSON.stringify({ pairs, from: date, to: date }),
+  })
+}
+
+export type ReportingCurrency = components['schemas']['ReportingCurrency']
+
+export function getReportingCurrency(): Promise<ReportingCurrency> {
+  return apiFetch<ReportingCurrency>('/api/v1/reporting-currency')
+}
