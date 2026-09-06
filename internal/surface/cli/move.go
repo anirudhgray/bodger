@@ -27,6 +27,15 @@ type moveView struct {
 	ToAccountID   string   `json:"to_account_id"`
 	Amount        string   `json:"amount"`
 	Currency      string   `json:"currency"`
+	// Rate and RateSource render the transfer's implied exchange rate
+	// (issue #133's cross-currency RecordTransfer, issue #136's CLI
+	// surface for it) — "1 <from currency> = <value> <to currency>" and
+	// the provenance ADR-0004 requires alongside it. Both are empty for a
+	// same-currency transfer, which carries no rate worth showing
+	// (ledger.Transaction.FxRate's own doc comment: "only a cross-currency
+	// transfer ever has one").
+	Rate       string `json:"rate,omitempty"`
+	RateSource string `json:"rate_source,omitempty"`
 }
 
 // moveViewFrom builds a moveView from a RecordTransfer result. fromLabel
@@ -59,11 +68,18 @@ func moveViewFrom(fromLabel, toLabel string, r app.TransactionResult) moveView {
 		v.Amount = p.Amount().AmountString()
 		v.Currency = p.Currency()
 	}
+	if rate, source, ok := r.Transaction.FxRate(); ok && !rate.IsIdentity() {
+		v.Rate = fmt.Sprintf("1 %s = %s %s", rate.Base(), rate.Value().String(), rate.Quote())
+		v.RateSource = source
+	}
 	return v
 }
 
 func printMove(w io.Writer, v moveView) {
 	_, _ = fmt.Fprintf(w, "Moved %s %s from %s to %s (%s)\n", v.Amount, v.Currency, v.From, v.To, v.Date)
+	if v.Rate != "" {
+		_, _ = fmt.Fprintf(w, "rate: %s (source: %s)\n", v.Rate, v.RateSource)
+	}
 	_, _ = fmt.Fprintf(w, "id: %s\n", v.ID)
 }
 

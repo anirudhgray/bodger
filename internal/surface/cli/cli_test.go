@@ -283,6 +283,46 @@ func TestMove_FromAndToAreCorrectRegardlessOfPostingOrder(t *testing.T) {
 	}
 }
 
+// TestMove_CrossCurrencyRendersImpliedRate is issue #136's CLI surface for
+// #133's cross-currency RecordTransfer: moving between two accounts in
+// different currencies is accepted (no rejection, unlike before #133), and
+// the transaction's implied exchange rate (ledger.Transaction.FxRate) is
+// rendered alongside the move, with its source.
+func TestMove_CrossCurrencyRendersImpliedRate(t *testing.T) {
+	factory := newTestFactory(t, mustFrozen(t))
+	mustRun(t, factory, "accounts", "add", "Savings", "--type", "bank", "--currency", "INR")
+	mustRun(t, factory, "accounts", "add", "Yen Wallet", "--type", "cash", "--currency", "JPY")
+
+	stdout := mustRun(t, factory, "move", "1000", "--from", "Savings", "--to", "Yen Wallet", "--on", "2026-08-20", "--json")
+	var got struct {
+		Amount     string `json:"amount"`
+		Currency   string `json:"currency"`
+		Rate       string `json:"rate"`
+		RateSource string `json:"rate_source"`
+	}
+	decodeData(t, stdout, &got)
+
+	// buildTransferPostings applies the same numeric minor-unit magnitude
+	// to both legs (1000 INR = 100000 minor units at INR's 2-decimal
+	// exponent; JPY's 0-decimal exponent means the same 100000 minor units
+	// renders as 100000 JPY) — the implied rate this test asserts follows
+	// directly from that.
+	if got.Amount != "100000" || got.Currency != "JPY" {
+		t.Errorf("amount/currency = %q/%q, want 100000/JPY", got.Amount, got.Currency)
+	}
+	if got.Rate != "1 INR = 100 JPY" {
+		t.Errorf("rate = %q, want %q", got.Rate, "1 INR = 100 JPY")
+	}
+	if got.RateSource != "implied" {
+		t.Errorf("rate_source = %q, want %q", got.RateSource, "implied")
+	}
+
+	text := mustRun(t, factory, "move", "500", "--from", "Savings", "--to", "Yen Wallet", "--on", "2026-08-21")
+	if !strings.Contains(text, "rate: 1 INR = 100 JPY") {
+		t.Errorf("plain text output = %q, want a rate line", text)
+	}
+}
+
 func TestAccounts_AddListArchiveSetOpeningBalance(t *testing.T) {
 	factory := newTestFactory(t, mustFrozen(t))
 
