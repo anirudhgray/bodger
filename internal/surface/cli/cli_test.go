@@ -21,14 +21,27 @@ import (
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
 	"github.com/anirudhgray/bodger/internal/platform/logging"
+	"github.com/anirudhgray/bodger/internal/ports"
 	clisurface "github.com/anirudhgray/bodger/internal/surface/cli"
 )
 
 // newTestFactory wires a clisurface.ServiceFactory to a fresh, migrated
 // temp-file SQLite database frozen at frozenAt — the same wiring
 // cmd/bodger's real bootstrap does, reproduced here since bootstrap lives
-// in package main and can't be imported from this test.
+// in package main and can't be imported from this test. It wires a real
+// (network-touching) Frankfurter provider — fine for every test that never
+// calls `fx rates fetch`; a test that does calls
+// newTestFactoryWithFxProvider instead so it never depends on the network.
 func newTestFactory(t *testing.T, frozenAt time.Time) clisurface.ServiceFactory {
+	t.Helper()
+	return newTestFactoryWithFxProvider(t, frozenAt, fxprovider.New("", nil))
+}
+
+// newTestFactoryWithFxProvider is newTestFactory with the FX rate provider
+// swapped out — for fx_test.go's `fx rates fetch` tests, which need a
+// deterministic, in-memory ports.FxRateProvider rather than a real
+// network call to Frankfurter.
+func newTestFactoryWithFxProvider(t *testing.T, frozenAt time.Time, provider ports.FxRateProvider) clisurface.ServiceFactory {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bodger.db")
@@ -53,7 +66,7 @@ func newTestFactory(t *testing.T, frozenAt time.Time) clisurface.ServiceFactory 
 			sqlite.NewAccountRepository(db), sqlite.NewCategoryRepository(db),
 			sqlite.NewTransactionRepository(db), sqlite.NewTagRepository(db),
 			sqlite.NewUserRepository(db), sqlite.NewSessionRepository(db), sqlite.NewAPITokenRepository(db),
-			sqlite.NewFxRateRepository(db), fxprovider.New("", nil),
+			sqlite.NewFxRateRepository(db), provider,
 		)
 		return svc, func() error { return nil }, err
 	}
