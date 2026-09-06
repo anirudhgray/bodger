@@ -5,6 +5,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/anirudhgray/bodger/internal/domain"
+	"github.com/anirudhgray/bodger/internal/domain/fx"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
@@ -500,3 +502,58 @@ func (m *memAPITokens) Revoke(_ context.Context, actorID, id string, revokedAt t
 }
 
 var _ ports.APITokenRepository = (*memAPITokens)(nil)
+
+// memFxRates is an in-memory ports.FxRateRepository, for whatever
+// FX-management use case (a later issue) needs one wired into
+// newTestService. Store/StoreBatch/Lookup mirror the real sqlite
+// adapter's behaviour (upsert on (base, quote, date, source);
+// fx.SelectRate does the actual selection — domain.Date's fields are all
+// comparable, so it works directly as part of a map key). InUsePairs has
+// no accounts or transactions of its own to inspect — that data lives in
+// memAccounts/memTransactions, not here — so it always returns no pairs;
+// nothing in this package's use-case tests calls it yet.
+type memFxRateKey struct {
+	base, quote, source string
+	date                domain.Date
+}
+
+type memFxRates struct {
+	byKey map[memFxRateKey]fx.Rate
+}
+
+func newMemFxRates() *memFxRates { return &memFxRates{byKey: map[memFxRateKey]fx.Rate{}} }
+
+func (m *memFxRates) Store(_ context.Context, rate fx.Rate, date domain.Date, source string) error {
+	m.byKey[memFxRateKey{rate.Base(), rate.Quote(), source, date}] = rate
+	return nil
+}
+
+func (m *memFxRates) StoreBatch(ctx context.Context, rows []ports.FxRateRow) error {
+	for _, row := range rows {
+		if err := m.Store(ctx, row.Rate, row.Date, row.Source); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *memFxRates) Lookup(_ context.Context, base, quote string, date domain.Date, windowDays int) (fx.Selection, error) {
+	var candidates []fx.RateCandidate
+	for key, rate := range m.byKey {
+		if key.base != base || key.quote != quote {
+			continue
+		}
+		candidates = append(candidates, fx.RateCandidate{Date: key.date, Rate: rate})
+	}
+	sel, err := fx.SelectRate(candidates, date, windowDays)
+	if err != nil {
+		return fx.Selection{}, errs.New(errs.NotFound).Explain("No %s/%s rate available.", base, quote).Wrap(err)
+	}
+	return sel, nil
+}
+
+func (m *memFxRates) InUsePairs(context.Context, string, string) ([]ports.CurrencyPair, error) {
+	return nil, nil
+}
+
+var _ ports.FxRateRepository = (*memFxRates)(nil)

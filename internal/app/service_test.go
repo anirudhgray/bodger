@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/anirudhgray/bodger/internal/app"
+	"github.com/anirudhgray/bodger/internal/domain"
+	"github.com/anirudhgray/bodger/internal/domain/fx"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/clock"
 	"github.com/anirudhgray/bodger/internal/platform/config"
@@ -86,6 +88,17 @@ func (fakeAPITokens) List(context.Context, string) ([]ports.APIToken, error)  { 
 func (fakeAPITokens) Touch(context.Context, string, string, time.Time) error  { return nil }
 func (fakeAPITokens) Revoke(context.Context, string, string, time.Time) error { return nil }
 
+type fakeFxRates struct{}
+
+func (fakeFxRates) Store(context.Context, fx.Rate, domain.Date, string) error { return nil }
+func (fakeFxRates) StoreBatch(context.Context, []ports.FxRateRow) error       { return nil }
+func (fakeFxRates) Lookup(context.Context, string, string, domain.Date, int) (fx.Selection, error) {
+	return fx.Selection{}, nil
+}
+func (fakeFxRates) InUsePairs(context.Context, string, string) ([]ports.CurrencyPair, error) {
+	return nil, nil
+}
+
 // TestNewService_RejectsMissingDependencies checks both halves of
 // ADR-0011's safe/internal split for a mis-wired container: the caller gets
 // an *errs.Error coded Internal (so a surface has an exit code and a
@@ -109,6 +122,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 		users        ports.UserRepository
 		sessions     ports.SessionRepository
 		apiTokens    ports.APITokenRepository
+		fxRates      ports.FxRateRepository
 		wantCause    string
 	}{
 		{
@@ -122,6 +136,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			users:        fakeUsers{},
 			sessions:     fakeSessions{},
 			apiTokens:    fakeAPITokens{},
+			fxRates:      fakeFxRates{},
 			wantCause:    "clock",
 		},
 		{
@@ -135,6 +150,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			users:        fakeUsers{},
 			sessions:     fakeSessions{},
 			apiTokens:    fakeAPITokens{},
+			fxRates:      fakeFxRates{},
 			wantCause:    "id generator",
 		},
 		{
@@ -148,6 +164,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			users:        fakeUsers{},
 			sessions:     fakeSessions{},
 			apiTokens:    fakeAPITokens{},
+			fxRates:      fakeFxRates{},
 			wantCause:    "account repository",
 		},
 		{
@@ -161,6 +178,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			users:        fakeUsers{},
 			sessions:     fakeSessions{},
 			apiTokens:    fakeAPITokens{},
+			fxRates:      fakeFxRates{},
 			wantCause:    "category repository",
 		},
 		{
@@ -174,6 +192,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			users:        fakeUsers{},
 			sessions:     fakeSessions{},
 			apiTokens:    fakeAPITokens{},
+			fxRates:      fakeFxRates{},
 			wantCause:    "transaction repository",
 		},
 		{
@@ -187,6 +206,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			users:        fakeUsers{},
 			sessions:     fakeSessions{},
 			apiTokens:    fakeAPITokens{},
+			fxRates:      fakeFxRates{},
 			wantCause:    "tag repository",
 		},
 		{
@@ -200,6 +220,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			users:        nil,
 			sessions:     fakeSessions{},
 			apiTokens:    fakeAPITokens{},
+			fxRates:      fakeFxRates{},
 			wantCause:    "user repository",
 		},
 		{
@@ -213,6 +234,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			users:        fakeUsers{},
 			sessions:     nil,
 			apiTokens:    fakeAPITokens{},
+			fxRates:      fakeFxRates{},
 			wantCause:    "session repository",
 		},
 		{
@@ -226,7 +248,22 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			users:        fakeUsers{},
 			sessions:     fakeSessions{},
 			apiTokens:    nil,
+			fxRates:      fakeFxRates{},
 			wantCause:    "API token repository",
+		},
+		{
+			name:         "nil FX rate repository",
+			clk:          clk,
+			ids:          ids,
+			accounts:     fakeAccounts{},
+			categories:   fakeCategories{},
+			transactions: fakeTransactions{},
+			tags:         fakeTags{},
+			users:        fakeUsers{},
+			sessions:     fakeSessions{},
+			apiTokens:    fakeAPITokens{},
+			fxRates:      nil,
+			wantCause:    "FX rate repository",
 		},
 	}
 
@@ -234,7 +271,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := app.NewService(
 				tt.clk, cfg, tt.ids, tt.accounts, tt.categories, tt.transactions, tt.tags,
-				tt.users, tt.sessions, tt.apiTokens,
+				tt.users, tt.sessions, tt.apiTokens, tt.fxRates,
 			)
 			if err == nil {
 				t.Fatalf("NewService(...) returned no error, want one caused by a nil %s", tt.wantCause)
@@ -267,7 +304,7 @@ func TestNewService_BuildsWithEveryDependency(t *testing.T) {
 
 	svc, err := app.NewService(
 		clk, cfg, ids, fakeAccounts{}, fakeCategories{}, fakeTransactions{}, fakeTags{},
-		fakeUsers{}, fakeSessions{}, fakeAPITokens{},
+		fakeUsers{}, fakeSessions{}, fakeAPITokens{}, fakeFxRates{},
 	)
 	if err != nil {
 		t.Fatalf("NewService(...) unexpected error: %v", err)
@@ -287,6 +324,9 @@ func TestNewService_BuildsWithEveryDependency(t *testing.T) {
 	if svc.Users == nil || svc.Sessions == nil || svc.APITokens == nil {
 		t.Error("Service auth repositories should all be non-nil after a successful NewService call")
 	}
+	if svc.FxRates == nil {
+		t.Error("Service.FxRates should be non-nil after a successful NewService call")
+	}
 }
 
 // TestService_UsesInjectedClockNotWallClock is a light guard that Service
@@ -300,7 +340,7 @@ func TestService_UsesInjectedClockNotWallClock(t *testing.T) {
 
 	svc, err := app.NewService(
 		clk, config.Defaults, idgen.NewSequence("t"), fakeAccounts{}, fakeCategories{}, fakeTransactions{}, fakeTags{},
-		fakeUsers{}, fakeSessions{}, fakeAPITokens{},
+		fakeUsers{}, fakeSessions{}, fakeAPITokens{}, fakeFxRates{},
 	)
 	if err != nil {
 		t.Fatalf("NewService(...) unexpected error: %v", err)
