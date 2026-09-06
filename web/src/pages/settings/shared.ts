@@ -27,4 +27,5 @@ export const SETTINGS_SECTIONS: { to: string; slug: string; label: string }[] =
     { to: '/settings/tokens', slug: 'tokens', label: 'API tokens' },
     { to: '/settings/accounts', slug: 'accounts', label: 'Accounts' },
     { to: '/settings/categories', slug: 'categories', label: 'Categories' },
+    { to: '/settings/currency', slug: 'currency', label: 'Currency' },
   ]

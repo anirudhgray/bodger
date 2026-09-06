@@ -19,6 +19,25 @@ export async function changePassword(newPassword: string): Promise<void> {
   })
 }
 
+// ReportingCurrency mirrors GET /api/v1/reporting-currency's response
+// (internal/surface/http/config.go's reportingCurrencyView): is_set
+// distinguishes "never configured" (currency is "") from an actual
+// choice, since the instance default currency isn't itself exposed over
+// this API (only the CLI, which runs server-side, can name it — see
+// internal/surface/cli/config.go's printReportingCurrency).
+export type ReportingCurrency = components['schemas']['ReportingCurrency']
+
+export async function getReportingCurrency(): Promise<ReportingCurrency> {
+  return apiFetch<ReportingCurrency>('/api/v1/reporting-currency')
+}
+
+export async function setReportingCurrency(currency: string): Promise<void> {
+  await apiFetch('/api/v1/reporting-currency', {
+    method: 'POST',
+    body: JSON.stringify({ currency }),
+  })
+}
+
 // ApiToken/CreatedApiToken are generated from openapi.json (issue #83),
 // not hand-transcribed — see the Account/Category comment further down
 // for why that matters. CreatedApiToken (POST's response) genuinely
