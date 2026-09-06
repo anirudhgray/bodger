@@ -48,4 +48,12 @@ var (
 	// negative window. Zero is valid (exact-match-only); negative makes
 	// no sense as a number of days to look back.
 	ErrInvalidStalenessWindow = errors.New("fx: staleness window must not be negative")
+
+	// ErrRateCurrencyMismatch is returned by Convert when rate doesn't
+	// directly relate the amount's currency to the requested target
+	// currency: rate.Base() must equal the amount's currency, and
+	// rate.Quote() must equal the target currency. Convert never inverts
+	// or composes rates — the caller is responsible for looking one up in
+	// the right orientation.
+	ErrRateCurrencyMismatch = errors.New("fx: rate does not relate the amount's currency to the target currency")
 )

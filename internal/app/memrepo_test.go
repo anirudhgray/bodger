@@ -553,7 +553,7 @@ func (m *memFxRates) Lookup(_ context.Context, base, quote string, date domain.D
 		if key.base != base || key.quote != quote {
 			continue
 		}
-		candidates = append(candidates, fx.RateCandidate{Date: key.date, Rate: rate})
+		candidates = append(candidates, fx.RateCandidate{Date: key.date, Rate: rate, Source: key.source})
 	}
 	sel, err := fx.SelectRate(candidates, date, windowDays)
 	if err != nil {

@@ -143,6 +143,17 @@ Every agent prompt (fork or fresh) should include:
 
 An agent's self-report is a claim, not a fact. Before pushing anything:
 
+**Never merge a PR into `main` without the user's explicit, per-PR
+consent.** CLAUDE.md is explicit here: "Request the user to do squash
+merges... when merging into the main branch, or they may merge via
+GitHub" - integrating stops at opening the PR and confirming it's green
+and mergeable. A prior approval to merge one PR is not standing
+permission for the next one, even within the same session; ask again (or
+just hand over the link and say it's ready) each time. This applies
+regardless of what the mechanics below describe - `gh pr merge` is
+something to run only once the user has said, for that specific PR, to go
+ahead.
+
 - `cd` into the worktree and independently run the same
   build/vet/fmt/test commands.
 - Before the first push of a new branch, check `git remote show origin`
@@ -187,14 +198,16 @@ An agent's self-report is a claim, not a fact. Before pushing anything:
   confirm it's clean; a CI failure on a commit that "already passed
   locally" almost always means the fix that made it pass was never
   committed.
-- `gh pr merge --squash --delete-branch` can report a failure that's only
-  the local-branch deletion (typically because a worktree still has that
+- Check `gh api repos/<org>/<repo>/pulls/<N> --jq '{mergeable,
+mergeable_state}'` once a PR exists, as a confirmation it's actually
+  mergeable (`true`/`clean` once CI settles) before telling the user it's
+  ready.
+- Once the user has explicitly said to merge this PR: `gh pr merge
+  --squash --delete-branch` can report a failure that's only the
+  local-branch deletion (typically because a worktree still has that
   branch checked out), not a failed merge. Confirm the real outcome with
   `gh pr view <N> --json state,mergedAt` before treating the error as a
   problem to fix.
-- Check `gh api repos/<org>/<repo>/pulls/<N> --jq '{mergeable,
-mergeable_state}'` once a PR exists, as a second confirmation - it
-  should read `clean`/`true` after the merge-in above.
 - Resolve conflicts by hand for anything additive/mechanical; stop and ask
   if a conflict looks like a real semantic disagreement rather than two
   independent additions landing in the same spot.

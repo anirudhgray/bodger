@@ -141,3 +141,51 @@ func (r Rate) IsIdentity() bool {
 func (r Rate) String() string {
 	return r.value.StringFixed(maxRateDecimalPlaces)
 }
+
+// Convert applies rate to amount, returning the equivalent value in
+// targetCurrency. This is the symmetric counterpart to DeriveImpliedRate:
+// where that function derives a Rate from two authoritative amounts,
+// Convert derives an amount from an authoritative Rate — both pure
+// domain math with no I/O, no clock, and (crucially for ADR-0004's "this
+// is a pure read over already-stored rates") no FX-provider call of any
+// kind. Which date's rate to look up, and fetching it, are entirely the
+// caller's concern (internal/app/convert.go's ConvertAmount).
+//
+// rate must directly relate amount's currency to targetCurrency:
+// rate.Base() must equal amount.Currency(), and rate.Quote() must equal
+// targetCurrency. Convert never inverts a rate (quote-to-base) or
+// composes two rates through a third currency — a caller that looked up
+// a rate in the wrong orientation gets ErrRateCurrencyMismatch rather
+// than a silently wrong answer.
+//
+// The two currencies may have different minor-unit exponents (JPY's 0
+// against INR's 2, say): Convert converts amount to its currency's
+// major-unit decimal, multiplies by rate's value, and rounds to
+// targetCurrency's minor-unit exponent using round-half-away-from-zero
+// (decimal.Round's rule) — ordinary money rounding, not banker's
+// rounding.
+func Convert(amount money.Money, targetCurrency string, rate Rate) (money.Money, error) {
+	if rate.Base() != amount.Currency() {
+		return money.Money{}, fmt.Errorf("%w: rate base %q, amount currency %q", ErrRateCurrencyMismatch, rate.Base(), amount.Currency())
+	}
+	if rate.Quote() != targetCurrency {
+		return money.Money{}, fmt.Errorf("%w: rate quote %q, target currency %q", ErrRateCurrencyMismatch, rate.Quote(), targetCurrency)
+	}
+
+	sourceCur, ok := money.LookupCurrency(amount.Currency())
+	if !ok {
+		return money.Money{}, fmt.Errorf("%w: %q", ErrRateUnknownCurrency, amount.Currency())
+	}
+	targetCur, ok := money.LookupCurrency(targetCurrency)
+	if !ok {
+		return money.Money{}, fmt.Errorf("%w: %q", ErrRateUnknownCurrency, targetCurrency)
+	}
+
+	sourceMajor := decimal.New(amount.AmountMinor(), int32(-sourceCur.MinorUnitExponent))
+	targetMajor := sourceMajor.Mul(rate.Value())
+	// Shift is exact (just moves the decimal point); Round(0) is the one
+	// place any precision is actually discarded, at targetCurrency's own
+	// minor-unit scale rather than some fixed guess.
+	targetMinor := targetMajor.Shift(int32(targetCur.MinorUnitExponent)).Round(0)
+	return money.NewMoney(targetMinor.IntPart(), targetCurrency)
+}

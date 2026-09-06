@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 
 	"github.com/anirudhgray/bodger/internal/app/normalize"
 	"github.com/anirudhgray/bodger/internal/domain"
@@ -15,25 +16,75 @@ import (
 // (ADR-0002): opening balance plus every non-deleted posting on or before
 // that date. AsOf resolves through normalize.DateOf, so an empty string
 // means "today" in the actor's configured timezone.
+//
+// TargetCurrency, Policy, and PinnedDate are all optional together: leaving
+// TargetCurrency empty keeps this query's original single-currency
+// behaviour exactly (no conversion, no provenance, Unconverted always
+// empty) -- existing callers are unaffected. Setting TargetCurrency
+// converts every account's balance into it via ConvertAmount, under
+// Policy, which must then be set too.
 type AccountBalancesQuery struct {
 	ActorID string
 	AsOf    string
+
+	// TargetCurrency, when non-empty, is the ISO 4217 currency code to
+	// convert every account's balance into.
+	TargetCurrency string
+	// Policy selects which of ADR-0004's conversion policies converts each
+	// balance -- see ConversionPolicy. Required when TargetCurrency is
+	// set; ignored otherwise.
+	//
+	// PolicyTransactionDate converts each balance at the resolved AsOf
+	// date's rate: a balance "as of" a date is exactly the reproducible,
+	// historical figure that policy is for. PolicyCurrent converts every
+	// balance at today's rate regardless of AsOf -- ADR-0004's own example
+	// of what that policy is for ("current balances, net worth").
+	// PolicyPinned converts at PinnedDate.
+	Policy ConversionPolicy
+	// PinnedDate is the date to convert at when Policy is PolicyPinned.
+	// Required in that case; ignored otherwise.
+	PinnedDate string
 }
 
 // AccountBalance pairs one Account with its computed balance as of the
-// query's AsOf date.
+// query's AsOf date, plus (when the query set a TargetCurrency) that
+// balance's converted figure and provenance.
 type AccountBalance struct {
 	Account ledger.Account
 	Balance money.Money
+	// Converted holds Balance's converted figure and full ADR-0004
+	// provenance when the query set a TargetCurrency and a rate was
+	// available for this account's currency; nil when the query didn't
+	// ask for a conversion, or when this account's balance couldn't be
+	// converted (see AccountBalancesResult.Unconverted).
+	Converted *ConvertedAmount
+}
+
+// UnconvertedBalance names an account whose balance the query's requested
+// conversion could not produce -- no rate was available for its currency
+// within the staleness window. ADR-0004's "mixed-policy aggregates are
+// forbidden... if some transactions in a range have no available rate, the
+// response reports the shortfall explicitly... rather than silently
+// omitting them or falling back to a different policy for those rows": an
+// unconvertible account is reported here, not dropped from Balances and
+// not converted under some other policy.
+type UnconvertedBalance struct {
+	Account ledger.Account
+	// Reason is the safe, human-readable explanation the failed
+	// ConvertAmount call returned (e.g. "no INR/EUR rate available for
+	// 2026-08-14 within 7 day(s).").
+	Reason string
 }
 
 // AccountBalancesResult is AccountBalances' result: the resolved AsOf date
 // (so a caller that passed "" or "today" can see what date it actually
-// resolved to), and every account's balance, in the same name order
-// ports.AccountRepository.List returns.
+// resolved to), every account's balance, in the same name order
+// ports.AccountRepository.List returns, and (only when the query requested
+// a conversion) any accounts that conversion couldn't cover.
 type AccountBalancesResult struct {
-	AsOf     domain.Date
-	Balances []AccountBalance
+	AsOf        domain.Date
+	Balances    []AccountBalance
+	Unconverted []UnconvertedBalance
 }
 
 // AccountBalances implements issue #6's AccountBalances use case. Nothing
@@ -70,13 +121,56 @@ func (s *Service) AccountBalances(ctx context.Context, q AccountBalancesQuery) (
 		return AccountBalancesResult{}, err
 	}
 
+	convert := q.TargetCurrency != ""
+
 	balances := make([]AccountBalance, 0, len(accounts))
+	var unconverted []UnconvertedBalance
 	for _, account := range accounts {
 		balance, err := ledger.Balance(account, asOf, txns)
 		if err != nil {
 			return AccountBalancesResult{}, errs.New(errs.Internal).Wrap(err)
 		}
-		balances = append(balances, AccountBalance{Account: account, Balance: balance})
+
+		ab := AccountBalance{Account: account, Balance: balance}
+		if convert {
+			converted, err := s.ConvertAmount(ctx, ConvertAmountQuery{
+				Amount:          balance,
+				To:              q.TargetCurrency,
+				Policy:          q.Policy,
+				TransactionDate: asOf.String(),
+				PinnedDate:      q.PinnedDate,
+			})
+			switch {
+			case err == nil:
+				ab.Converted = &converted
+			case isNotFoundErr(err):
+				// A missing rate for this one account's currency is the
+				// shortfall ADR-0004 says to report explicitly, not a
+				// reason to fail every other account's balance too.
+				unconverted = append(unconverted, UnconvertedBalance{Account: account, Reason: errSafeMessage(err)})
+			default:
+				// Anything else (an unrecognised policy, a missing
+				// required date, an unknown target currency) is the same
+				// for every account in this query, not a per-account data
+				// gap -- fail the whole query rather than silently
+				// omitting it.
+				return AccountBalancesResult{}, err
+			}
+		}
+		balances = append(balances, ab)
 	}
-	return AccountBalancesResult{AsOf: asOf, Balances: balances}, nil
+	return AccountBalancesResult{AsOf: asOf, Balances: balances, Unconverted: unconverted}, nil
+}
+
+// errSafeMessage returns err's user-safe message when it's an *errs.Error
+// (never its wrapped internal cause), or its plain Error() text otherwise.
+// UnconvertedBalance.Reason uses this rather than err.Error() directly so
+// it never accidentally leaks an *errs.Error's internal cause chain into a
+// field the response surfaces to the user.
+func errSafeMessage(err error) string {
+	var e *errs.Error
+	if errors.As(err, &e) {
+		return e.Message
+	}
+	return err.Error()
 }

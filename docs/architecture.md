@@ -292,6 +292,15 @@ last missing rung — per-user reporting currency — into
 `internal/app/normalize`'s resolution and the two call sites
 (`CreateAccount`, `buildOutflowOrInflowPosting`) that previously hardcoded
 it to `""`.
+[#134](https://github.com/anirudhgray/bodger/issues/134) adds
+`internal/app.ConvertAmount`, the single policy-aware conversion query
+ADR-0004 calls for (`transaction_date`/`current`/`pinned`, each resolving
+its own lookup date rather than defaulting to "today"), and extends
+`AccountBalances` to convert through it — a missing rate for one account's
+currency is reported in the result's `Unconverted` list rather than
+failing the whole query or silently dropping that account. Fetching rates
+from a provider (`FetchFxRates`) and the ad-hoc `ListFxRates` conversion
+endpoint remain open ([#135](https://github.com/anirudhgray/bodger/issues/135)).
 
 | Milestone | Status |
 | --- | --- |
