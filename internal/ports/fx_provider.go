@@ -60,4 +60,14 @@ type FxRateProvider interface {
 	// malformed request, Unavailable if the provider could not be
 	// reached.
 	FetchRange(ctx context.Context, base, quote string, from, to domain.Date) ([]ProviderRate, error)
+
+	// Name identifies which provider produced a fetched rate -- FetchFxRates
+	// (issue #135) stores this verbatim as FxRateRepository's `source`
+	// column alongside every row it writes. It lives on the port rather
+	// than being hardcoded in the application layer because ADR-0007 keeps
+	// internal/app depending only on this interface, never on a concrete
+	// adapters/fxprovider package -- "which provider this rate came from"
+	// is exactly the kind of adapter-specific fact the port boundary
+	// exists to carry across without leaking the adapter itself upward.
+	Name() string
 }
