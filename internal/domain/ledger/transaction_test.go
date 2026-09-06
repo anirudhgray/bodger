@@ -7,6 +7,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"github.com/anirudhgray/bodger/internal/domain/fx"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 )
 
@@ -613,7 +614,50 @@ func TestTransactionOptions(t *testing.T) {
 		if _, ok := tx.RelatedTransactionID(); ok {
 			t.Errorf("RelatedTransactionID() ok = true, want false")
 		}
+		if _, _, ok := tx.FxRate(); ok {
+			t.Errorf("FxRate() ok = true, want false")
+		}
 	})
+}
+
+// TestTransactionWithFxRate exercises WithFxRate/FxRate directly, decoupled
+// from NewTransfer's own derivation — issue #133's app and sqlite layers
+// both need to attach an already-known fx.Rate (respectively: the one
+// NewTransfer just returned, and one reconstructed from stored columns)
+// onto a Transaction they already have in hand, which is why WithFxRate is
+// a Delete-style post-construction copy-transform rather than a
+// TransactionOption (those only apply inside the constructor, before the
+// rate is known).
+func TestTransactionWithFxRate(t *testing.T) {
+	t.Parallel()
+
+	postings := []ledger.Posting{mustPosting(t, "post-1", "acc-hdfc", -100, "USD", nil)}
+	tx, err := ledger.NewOutflow("tx-1", "user-1", mustDate(t, 2026, 8, 1), "Coffee", postings)
+	if err != nil {
+		t.Fatalf("NewOutflow() = %v, want success", err)
+	}
+
+	rate, err := fx.NewRate("INR", "USD", decimal.RequireFromString("0.0115"))
+	if err != nil {
+		t.Fatalf("fx.NewRate: %v", err)
+	}
+
+	withRate := tx.WithFxRate(rate, ledger.FxRateSourceImplied)
+
+	if _, _, ok := tx.FxRate(); ok {
+		t.Errorf("original Transaction's FxRate() ok = true, want false (WithFxRate must not mutate the receiver)")
+	}
+
+	gotRate, gotSource, ok := withRate.FxRate()
+	if !ok {
+		t.Fatalf("FxRate() ok = false, want true")
+	}
+	if gotSource != ledger.FxRateSourceImplied {
+		t.Errorf("FxRate() source = %q, want %q", gotSource, ledger.FxRateSourceImplied)
+	}
+	if gotRate.Base() != "INR" || gotRate.Quote() != "USD" || !gotRate.Value().Equal(rate.Value()) {
+		t.Errorf("FxRate() rate = %s %s/%s, want %s INR/USD", gotRate, gotRate.Base(), gotRate.Quote(), rate)
+	}
 }
 
 func TestTransactionPostingsReturnsACopy(t *testing.T) {

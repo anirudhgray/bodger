@@ -40,7 +40,16 @@ type Transaction struct {
 	externalID           *string
 	relatedTransactionID *string
 	postings             []Posting
+	fxRate               *fx.Rate
+	fxRateSource         string
 }
+
+// FxRateSourceImplied is the fx_rate_source value ADR-0004 specifies for a
+// cross-currency transfer's derived rate ("Cross-currency transfers record
+// both legs") — the only source WithFxRate is used with in practice, since
+// there is no manual-entry path (migration 00011_add_fx_rates.sql's doc
+// comment).
+const FxRateSourceImplied = "implied"
 
 // TransactionOption sets one of a Transaction's optional fields at
 // construction time. See WithNotes, WithPostedDate,
@@ -344,4 +353,33 @@ func (t Transaction) DeletedAt() (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return *t.deletedAt, true
+}
+
+// FxRate returns the transaction's persisted exchange rate and its source,
+// and false if none was attached. Only a cross-currency transfer ever has
+// one — NewTransfer computes a same-currency transfer's trivial 1:1 rate
+// too, but nothing attaches it here, per ADR-0004's "the implied rate ...
+// is derived and stored on the transaction" applying to the cross-currency
+// case alone.
+func (t Transaction) FxRate() (fx.Rate, string, bool) {
+	if t.fxRate == nil {
+		return fx.Rate{}, "", false
+	}
+	return *t.fxRate, t.fxRateSource, true
+}
+
+// WithFxRate returns a copy of t carrying rate as its persisted exchange
+// rate, attributed to source; t itself is unchanged. This is a
+// post-construction copy-transform in the same shape as Delete, not a
+// TransactionOption: both RecordTransfer/EditTransaction (issue #133) and
+// the sqlite adapter's read path only have a rate to attach *after* they
+// already hold a Transaction in hand — the former because NewTransfer
+// computes and returns the rate itself rather than accepting one as an
+// option, and the latter because it is restoring an already-computed value
+// straight from storage, not re-deriving it from postings.
+func (t Transaction) WithFxRate(rate fx.Rate, source string) Transaction {
+	r := rate
+	t.fxRate = &r
+	t.fxRateSource = source
+	return t
 }
