@@ -13,11 +13,8 @@ export type FxHint = {
   state: FxHintState
   refreshing: boolean
   // Only true when a refresh can actually target this exact pair (issue
-  // #138's narrowly-scoped refresh): POST /api/v1/fx/rates/fetch's
-  // "pairs" always fetches <base>/<reporting-currency> — see this file's
-  // own doc comment for why "to" other than the reporting currency is
-  // never fetchable, so the caller shouldn't offer a refresh action it
-  // can't honour.
+  // #138's narrowly-scoped refresh) — false whenever the hook itself is
+  // disabled (empty from/to/amount, or from === to).
   canRefresh: boolean
   refresh: () => void
 }
@@ -29,13 +26,12 @@ export type FxHint = {
 // actually submitted (which happens through the normal amount/account
 // fields, not through this hook).
 //
-// This only ever asks for a rate quoted against the reporting currency:
 // internal/adapters/sqlite/fx_rate_repo.go's Lookup does an exact
-// base/quote match against stored rows, and every stored row's quote is
-// the actor's reporting currency (internal/app/fetch_fx_rates.go's
-// resolveFetchPairs) — so `to` here should always be the reporting
-// currency, never an arbitrary second account's own currency (there is
-// no cross-rate/triangulation support yet to resolve that).
+// base/quote match against stored rows, so `to` is whatever currency the
+// caller actually wants a rate against — the reporting currency for the
+// read-only hint, or an arbitrary second account's own currency for the
+// destination-amount field (issue #165's direct base/quote fetch, no
+// triangulation involved).
 //
 // `date` is the *entered* transaction date, not today's — an empty date
 // means "today" the same way the rest of the dialog treats it, resolved
@@ -110,7 +106,11 @@ export function useFxConversionHint({
   const refresh = useCallback(() => {
     if (!enabled || refreshing) return
     setRefreshing(true)
-    fetchFxRates([from], date || undefined)
+    // Pass `to` explicitly as the quote (issue #165): a no-op for the
+    // read-only hint, where `to` is already the reporting currency, and
+    // the actual fix for the destination-amount field's own hint
+    // instance, whose `to` is the to-account's own currency.
+    fetchFxRates([from], date || undefined, to)
       .then(() => load())
       .catch((err: unknown) => {
         setState({
@@ -122,7 +122,7 @@ export function useFxConversionHint({
         })
       })
       .finally(() => setRefreshing(false))
-  }, [enabled, refreshing, from, date, load])
+  }, [enabled, refreshing, from, to, date, load])
 
   return { state, refreshing, canRefresh: enabled, refresh }
 }

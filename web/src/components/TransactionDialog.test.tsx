@@ -551,7 +551,7 @@ describe('TransactionDialog (foreign-currency conversion hint)', () => {
 
     // Scoped to just the one currency in play, and (no date entered) no
     // explicit date — never the broad "every in-use pair" default.
-    expect(mockedFetchFxRates).toHaveBeenCalledWith(['INR'], undefined)
+    expect(mockedFetchFxRates).toHaveBeenCalledWith(['INR'], undefined, 'USD')
     expect(mockedGetFxRate).toHaveBeenCalledTimes(2)
   })
 
@@ -597,7 +597,7 @@ describe('TransactionDialog (foreign-currency conversion hint)', () => {
       await vi.advanceTimersByTimeAsync(0)
     })
 
-    expect(mockedFetchFxRates).toHaveBeenCalledWith(['INR'], undefined)
+    expect(mockedFetchFxRates).toHaveBeenCalledWith(['INR'], undefined, 'USD')
   })
 })
 

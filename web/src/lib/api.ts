@@ -362,14 +362,17 @@ export type FxFetchResult = components['schemas']['FxFetch']
 // fetchFxRates is POST /api/v1/fx/rates/fetch, scoped to exactly the
 // given base currencies and (when date is set) a single-day backfill
 // range — never the broad "every in-use pair, latest date" default,
-// matching issue #138's narrowly-scoped refresh action.
+// matching issue #138's narrowly-scoped refresh action. quote (issue
+// #165) fetches pairs against that currency instead of the reporting
+// currency — omit it to keep today's default.
 export function fetchFxRates(
   pairs: string[],
   date?: string,
+  quote?: string,
 ): Promise<FxFetchResult> {
   return apiFetch<FxFetchResult>('/api/v1/fx/rates/fetch', {
     method: 'POST',
-    body: JSON.stringify({ pairs, from: date, to: date }),
+    body: JSON.stringify({ pairs, quote, from: date, to: date }),
   })
 }
 

@@ -652,8 +652,10 @@ export interface components {
              * @description Backfill range start date, inclusive (requires "to").
              */
             from?: string;
-            /** @description Restrict the fetch to these base currencies, quoted against the resolved reporting currency. Omit to fetch every in-use pair. */
+            /** @description Restrict the fetch to these base currencies. Omit to fetch every in-use pair (quote is ignored in that case). */
             pairs?: string[];
+            /** @description Quote currency for every pairs entry, instead of the resolved reporting currency. Ignored when pairs is omitted. */
+            quote?: string;
             /**
              * Format: date
              * @description Backfill range end date, inclusive (requires "from").
