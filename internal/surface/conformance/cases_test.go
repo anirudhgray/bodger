@@ -188,6 +188,19 @@ var cases = []conformanceCase{
 		toAccount:   "ICICI Checking",
 	},
 	{
+		// A cross-currency transfer (issue #133/#136/#137): both surfaces
+		// must derive and render the same implied exchange rate and
+		// source for the same raw input — see comparableKeys' "rate"/
+		// "rate_source" entries below, which is what actually asserts
+		// that agreement rather than just amount/currency.
+		name:        "cross-currency transfer renders its implied rate identically",
+		kind:        transfer,
+		amount:      "100",
+		date:        "2026-01-15",
+		fromAccount: "Cash",         // USD
+		toAccount:   "HDFC Savings", // INR
+	},
+	{
 		name:        "ambiguous account name matches more than one candidate",
 		kind:        outflow,
 		amount:      "500",
@@ -416,10 +429,17 @@ func decodeEnvelope(t *testing.T, output string) map[string]any {
 // the raw text a person typed rather than a resolved value), and
 // description (deliberately excluded — see conformanceCase.httpBody) are
 // asymmetric, and none of those describe what was normalised and stored.
+//
+// "rate" and "rate_source" (issue #137) are a cross-currency transfer's
+// implied exchange rate and its provenance — both surfaces derive and
+// render them identically (CLI's moveView, HTTP's transactionView), so a
+// divergence here would mean the two surfaces disagree on the actual
+// derived rate, not just on how they format it.
 var comparableKeys = []string{
 	"date", "amount", "currency",
 	"account_id", "category_id", "from_account_id", "to_account_id",
 	"notes", "tags",
+	"rate", "rate_source",
 }
 
 // comparableFields projects data down to comparableKeys, so a field only
