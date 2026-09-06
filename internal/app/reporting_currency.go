@@ -47,15 +47,22 @@ func (s *Service) SetReportingCurrency(ctx context.Context, actorID, currency st
 // resolveReportingCurrency is GetReportingCurrency with one difference: a
 // NotFound actor resolves to "" (no opinion) instead of propagating the
 // error. It's what CreateAccount and buildOutflowOrInflowPosting call to
-// fill in ADR-0004's ladder's "user" rung — internal, best-effort
-// personalisation of a value the ladder already knows how to skip over,
-// not an authorisation check (that's resolveOwnedAccount/resolveOwnedCategory's
-// job, decided separately and earlier in every caller that has one). A
-// real actor always has a user row (ADR-0006: every actor is the single
-// seeded user), so NotFound here can only happen for a synthetic actor
-// nothing in this codebase treats as requiring one - CreateAccount itself
-// has never checked that its ActorID names a real user, and this must not
-// be the place that starts.
+// fill in ADR-0004's ladder's "user" rung.
+//
+// Why swallow NotFound: CreateAccount and buildOutflowOrInflowPosting have
+// never required ActorID to name a real row in users — only that it owns
+// whatever account/category is being touched, which
+// resolveOwnedAccount/resolveOwnedCategory already check separately and
+// earlier. Several existing tests rely on this: they call CreateAccount
+// with a synthetic ActorID like "someone-else" that has no corresponding
+// users row (see e.g. accounts_test.go's cross-actor-isolation tests).
+// Looking up a reporting-currency preference is pure personalisation on
+// top of that; if it errored for an actor nothing has ever required to
+// exist, CreateAccount would start failing for callers it used to accept
+// — a regression this feature has no business introducing. So a
+// not-found actor is treated exactly like a real actor who simply hasn't
+// set a reporting currency: "" falls through to the instance default via
+// normalize.Currency's ladder, unchanged from before this field existed.
 func (s *Service) resolveReportingCurrency(ctx context.Context, actorID string) (string, error) {
 	currency, err := s.GetReportingCurrency(ctx, actorID)
 	if err != nil {
