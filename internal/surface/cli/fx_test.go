@@ -166,6 +166,31 @@ func TestFxRatesFetch_PairFilter(t *testing.T) {
 	}
 }
 
+// TestFxRatesFetch_QuoteFetchesDirectPair checks issue #165's --quote flag:
+// --pair is fetched against --quote instead of the reporting currency, and
+// the quote currency's own reporting-quoted rate is fetched alongside it
+// in the same call.
+func TestFxRatesFetch_QuoteFetchesDirectPair(t *testing.T) {
+	provider := newFakeFxProvider()
+	factory := newTestFactoryWithFxProvider(t, mustFrozen(t), provider)
+	mustRun(t, factory, "accounts", "add", "Wallet", "--type", "cash", "--currency", "INR")
+
+	today := mustFxTestDate(t, 2026, time.August, 14)
+	provider.setRate(t, "INR", "EUR", "0.0106", today)
+	provider.setRate(t, "EUR", "USD", "1.08", today)
+
+	var got fxFetchResult
+	decodeData(t, mustRun(t, factory, "fx", "rates", "fetch", "--pair", "INR", "--quote", "EUR", "--json"), &got)
+
+	pairs := map[string]bool{}
+	for _, f := range got.Fetched {
+		pairs[f.Pair] = true
+	}
+	if len(got.Fetched) != 2 || !pairs["INR/EUR"] || !pairs["EUR/USD"] {
+		t.Errorf("fetched = %+v, want INR/EUR and EUR/USD", got.Fetched)
+	}
+}
+
 // TestFxRatesFetch_Backfill checks --from/--to's historical range fetch:
 // FetchFxRates delegates to FxProvider.FetchRange, which can (and here
 // does) return several distinct dates in one response.
