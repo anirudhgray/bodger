@@ -150,10 +150,12 @@ Primitives present as of this milestone: `button`, `input`, `label`,
 `select` (native, hand-written — see the audit note below), `card`,
 `sidebar`, `popover`, `calendar`, `tabs`, `dialog`, `alert-dialog`,
 `dropdown-menu`, `tooltip`, `separator`, `skeleton`, `spinner`, `kbd`,
-`empty`, `sonner` (shadcn's current toast component — see the note
-below for why this isn't a hand-built Radix Toast), `command` and
-`combobox` (issue #106 — see the "Combobox and category hierarchy"
-section below; the first primitives here not built on Radix).
+`collapsible`, `checkbox` (issue #139 — see "Balances: rate-provenance
+detail row" below), `empty`, `sonner` (shadcn's current toast component
+— see the note below for why this isn't a hand-built Radix Toast),
+`command` and `combobox` (issue #106 — see the "Combobox and category
+hierarchy" section below; the first primitives here not built on
+Radix).
 
 **`cn`** (`web/src/lib/utils.ts`) re-exports the
 [`cn` npm package](https://github.com/shadcn-ui/cn) — shadcn's own
@@ -443,6 +445,50 @@ inline — there's no dedicated error slot inside the combobox's own
 create row, and a toast doesn't block or clear the transaction still
 mid-entry underneath it — and leaves the popover open with the typed
 text still in place, ready to retry.
+
+## Balances: rate-provenance detail row
+
+ADR-0004 flags this as deferred design work: show "converted at 0.0115 on
+14 Aug" without cluttering a table. Issue #139 (`pages/Balances.tsx`)
+settles it as a **click-to-expand detail row**, not a hover tooltip: the
+converted figure ("≈ 1380.00 EUR") is itself a `Collapsible` trigger
+(`components/ui/collapsible.tsx`, the same primitive `AppSidebar`'s
+Settings submenu already uses) — clicking it expands a row directly
+beneath the account, inside the same `<li>`, carrying the full sentence
+("1 USD = 0.92 EUR · as of 2026-09-03 · frankfurter"). A stale rate gets
+an inline "stale" flag next to the converted figure itself, not only
+inside the expanded detail — someone scanning the collapsed table still
+sees it.
+
+Tooltip (`components/ui/tooltip.tsx`) was the other option ADR-0004's own
+wording suggests, and was deliberately not used here: it's hover-only
+(no touch equivalent, and this is a primary mobile-reachable screen),
+requires an app-wide `TooltipProvider` that nothing in the app has
+needed yet, and its Radix implementation is fussier to drive in tests
+(portal + hover timing) than a plain controlled `open` boolean toggled
+by a click. A future screen reusing this pattern (the issue's own note:
+"whatever scope M5 eventually gets should reuse this same stale/
+unconverted/refresh pattern") should default to the same click-to-expand
+row unless it has a specific reason a tooltip fits better.
+
+The same screen's **unconverted** accounts (ADR-0004's
+mixed-policy-aggregate-forbidden rule: never silently drop a row a
+conversion couldn't cover) get a plain inline `text-destructive` "Not
+converted — `<reason>`" label next to the original amount, not a
+collapsible — there's no provenance to show for a conversion that never
+happened, so a detail row would be empty.
+
+**Refresh popover.** Both the stale flag and the unconverted label share
+one "Refresh rates" affordance (`components/ui/popover.tsx` +
+`components/ui/checkbox.tsx`): a button next to the currency selector
+opens a popover listing every in-use currency other than the selected
+target as a checkbox, pre-checked for whichever are actually stale or
+unconverted, and calling `POST /api/v1/fx/rates/fetch` only for the
+ones left checked on confirm. Balances always fetches at today's date
+(the `current` policy this screen uses has no other sensible date), so
+the popover never exposes `from`/`to` — that range-fetch mode is
+`fetchFxRates`' own concern for a `transaction_date`-policy screen (the
+issue's own contrast with #145), not this one.
 
 ## Casing enum values for display
 

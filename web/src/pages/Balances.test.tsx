@@ -1,20 +1,36 @@
-// Component tests for the balances screen (issue #63). lib/api's
-// getBalances is mocked so these exercise only the screen's own
-// rendering: loading, the real per-account list, an empty ledger, and a
-// server error — not apiFetch's own behaviour (covered in api.test.ts).
+// Component tests for the balances screen (issue #63, extended by #139
+// for currency conversion). lib/api's getBalances/getReportingCurrency/
+// fetchFxRates are mocked so these exercise only the screen's own
+// rendering: loading, the real per-account list, an empty ledger, a
+// server error, and (issue #139) the currency selector, rate-provenance
+// detail row, unconverted flagging, and refresh popover — not apiFetch's
+// own behaviour (covered in api.test.ts).
 import { fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
-  return { ...actual, getBalances: vi.fn() }
+  return {
+    ...actual,
+    getBalances: vi.fn(),
+    getReportingCurrency: vi.fn(),
+    fetchFxRates: vi.fn(),
+  }
 })
 
-import { ApiError, getBalances } from '@/lib/api'
+import {
+  ApiError,
+  fetchFxRates,
+  getBalances,
+  getReportingCurrency,
+} from '@/lib/api'
 import { BalancesPage } from './Balances'
 
 const mockedGetBalances = vi.mocked(getBalances)
+const mockedGetReportingCurrency = vi.mocked(getReportingCurrency)
+const mockedFetchFxRates = vi.mocked(fetchFxRates)
 
 // Renders the account filter the router state carried to /transactions,
 // standing in for the real TransactionsList so this test only asserts on
@@ -40,6 +56,12 @@ function renderPage() {
 describe('BalancesPage', () => {
   beforeEach(() => {
     mockedGetBalances.mockReset()
+    mockedGetReportingCurrency.mockReset()
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: '',
+      is_set: false,
+    })
+    mockedFetchFxRates.mockReset()
   })
 
   it('renders every account balance exactly as the API returned it', async () => {
@@ -115,5 +137,245 @@ describe('BalancesPage', () => {
     fireEvent.click(await screen.findByText('Checking'))
 
     expect(await screen.findByText('account filter: a1')).toBeInTheDocument()
+  })
+
+  it('shows no currency selector for a single-currency ledger', async () => {
+    mockedGetBalances.mockResolvedValue({
+      as_of: '2026-09-03',
+      balances: [
+        {
+          account_id: 'a1',
+          account: 'Checking',
+          amount: '1500.00',
+          currency: 'USD',
+        },
+        {
+          account_id: 'a2',
+          account: 'Savings',
+          amount: '2000.00',
+          currency: 'USD',
+        },
+      ],
+    })
+
+    renderPage()
+
+    await screen.findByText('Checking')
+    expect(
+      screen.queryByRole('combobox', { name: 'Show in' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('converts balances into the chosen currency and shows rate provenance on demand', async () => {
+    const user = userEvent.setup()
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: 'EUR',
+      is_set: true,
+    })
+    mockedGetBalances.mockResolvedValueOnce({
+      as_of: '2026-09-03',
+      balances: [
+        {
+          account_id: 'a1',
+          account: 'Checking',
+          amount: '1500.00',
+          currency: 'USD',
+        },
+        {
+          account_id: 'a2',
+          account: 'Savings',
+          amount: '900.00',
+          currency: 'EUR',
+        },
+      ],
+    })
+    mockedGetBalances.mockResolvedValueOnce({
+      as_of: '2026-09-03',
+      balances: [
+        {
+          account_id: 'a1',
+          account: 'Checking',
+          amount: '1500.00',
+          currency: 'USD',
+          converted: {
+            amount: '1380.00',
+            currency: 'EUR',
+            policy: 'current',
+            rate: '0.92',
+            rate_date: '2026-09-03',
+            rate_source: 'frankfurter',
+            stale: true,
+          },
+        },
+        {
+          account_id: 'a2',
+          account: 'Savings',
+          amount: '900.00',
+          currency: 'EUR',
+        },
+      ],
+    })
+
+    renderPage()
+    await screen.findByText('Checking')
+
+    await user.click(screen.getByRole('combobox', { name: 'Show in' }))
+    await user.click(
+      await screen.findByRole('option', { name: /EUR \(reporting currency\)/ }),
+    )
+
+    expect(mockedGetBalances).toHaveBeenLastCalledWith({
+      currency: 'EUR',
+      policy: 'current',
+    })
+
+    const approx = await screen.findByText('≈ 1380.00 EUR')
+    expect(screen.getByText('stale')).toBeInTheDocument()
+
+    await user.click(approx)
+    expect(
+      screen.getByText(/1 USD = 0.92 EUR.*frankfurter/),
+    ).toBeInTheDocument()
+  })
+
+  it('flags an unconverted account with its reason instead of dropping it', async () => {
+    const user = userEvent.setup()
+    mockedGetBalances.mockResolvedValueOnce({
+      as_of: '2026-09-03',
+      balances: [
+        {
+          account_id: 'a1',
+          account: 'Checking',
+          amount: '1500.00',
+          currency: 'USD',
+        },
+        {
+          account_id: 'a2',
+          account: 'Rupee wallet',
+          amount: '5000.00',
+          currency: 'INR',
+        },
+      ],
+    })
+    mockedGetBalances.mockResolvedValueOnce({
+      as_of: '2026-09-03',
+      balances: [
+        {
+          account_id: 'a1',
+          account: 'Checking',
+          amount: '1500.00',
+          currency: 'USD',
+        },
+        {
+          account_id: 'a2',
+          account: 'Rupee wallet',
+          amount: '5000.00',
+          currency: 'INR',
+        },
+      ],
+      unconverted: [
+        { account: 'Rupee wallet', reason: 'no USD/INR rate available' },
+      ],
+    })
+
+    renderPage()
+    await screen.findByText('Checking')
+
+    await user.click(screen.getByRole('combobox', { name: 'Show in' }))
+    await user.click(await screen.findByRole('option', { name: 'USD' }))
+
+    expect(
+      await screen.findByText('Not converted — no USD/INR rate available'),
+    ).toBeInTheDocument()
+  })
+
+  it('refreshes only the picked pairs and reloads balances', async () => {
+    const user = userEvent.setup()
+    mockedGetBalances.mockResolvedValueOnce({
+      as_of: '2026-09-03',
+      balances: [
+        {
+          account_id: 'a1',
+          account: 'Checking',
+          amount: '1500.00',
+          currency: 'USD',
+        },
+        {
+          account_id: 'a2',
+          account: 'Savings',
+          amount: '900.00',
+          currency: 'EUR',
+        },
+      ],
+    })
+    mockedGetBalances.mockResolvedValueOnce({
+      as_of: '2026-09-03',
+      balances: [
+        {
+          account_id: 'a1',
+          account: 'Checking',
+          amount: '1500.00',
+          currency: 'USD',
+        },
+        {
+          account_id: 'a2',
+          account: 'Savings',
+          amount: '900.00',
+          currency: 'EUR',
+        },
+      ],
+    })
+    mockedFetchFxRates.mockResolvedValue({
+      reporting_currency: 'EUR',
+      fetched: [
+        {
+          pair: 'USD/EUR',
+          rate: '0.93',
+          date: '2026-09-03',
+          source: 'frankfurter',
+        },
+      ],
+    })
+    mockedGetBalances.mockResolvedValueOnce({
+      as_of: '2026-09-03',
+      balances: [
+        {
+          account_id: 'a1',
+          account: 'Checking',
+          amount: '1500.00',
+          currency: 'USD',
+          converted: {
+            amount: '1400.00',
+            currency: 'EUR',
+            policy: 'current',
+            rate: '0.93',
+            rate_date: '2026-09-03',
+            rate_source: 'frankfurter',
+            stale: false,
+          },
+        },
+        {
+          account_id: 'a2',
+          account: 'Savings',
+          amount: '900.00',
+          currency: 'EUR',
+        },
+      ],
+    })
+
+    renderPage()
+    await screen.findByText('Checking')
+
+    await user.click(screen.getByRole('combobox', { name: 'Show in' }))
+    await user.click(await screen.findByRole('option', { name: 'EUR' }))
+    await screen.findByText('900.00 EUR')
+
+    await user.click(screen.getByRole('button', { name: /Refresh rates/ }))
+    const checkbox = await screen.findByRole('checkbox', { name: 'USD' })
+    await user.click(checkbox)
+    await user.click(screen.getByRole('button', { name: 'Refresh' }))
+
+    expect(mockedFetchFxRates).toHaveBeenCalledWith(['USD'])
+    expect(await screen.findByText('≈ 1400.00 EUR')).toBeInTheDocument()
   })
 })
