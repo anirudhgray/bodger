@@ -425,9 +425,25 @@ instance default, since that value isn't itself exposed over this API —
 only `bodger config reporting-currency get`, which runs server-side, can
 name it.
 
+[#139](https://github.com/anirudhgray/bodger/issues/139) adds
+`Balances.tsx`'s currency selector and cross-account conversion, calling
+the extended `GET /api/v1/balances` (#137). It defaults to "Original
+currencies" (no auto-convert) so a single-currency instance's behavior is
+byte-for-byte unchanged and there's no surprise fetch on load; the screen
+always uses the `current` policy (a point-in-time snapshot has no other
+sensible date), so there is no date picker. Rate provenance renders as a
+click-to-expand detail row rather than a hover tooltip — touch-friendly,
+no app-wide `TooltipProvider` needed — documented in `docs/design-system.md`
+as the pattern later screens (M5's analytics work) should reuse rather than
+re-deriving. Stale or missing rates share one "refresh rates" popover (a
+currency multi-select over in-use pairs, calling `POST
+/api/v1/fx/rates/fetch` with `pairs` only — never `from`/`to`, since this
+screen only ever targets today), and `unconverted` accounts render inline
+with their reason rather than being dropped from view, per ADR-0004's
+mixed-policy-aggregate-forbidden rule.
+
 Every other surface exposing this app-layer work
-([#139](https://github.com/anirudhgray/bodger/issues/139),
-[#141](https://github.com/anirudhgray/bodger/issues/141),
+([#141](https://github.com/anirudhgray/bodger/issues/141),
 [#145](https://github.com/anirudhgray/bodger/issues/145)) remains open.
 
 | Milestone | Status |
