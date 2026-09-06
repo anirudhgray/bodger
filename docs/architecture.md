@@ -396,17 +396,21 @@ pre-filled from the fetched rate but freely overridable, sending
 `to_amount` — was wired up too, so #138 is fully closed by this PR.
 **The pre-fill only ever resolves when the to-account's own currency
 happens to equal the reporting currency**: `GET /api/v1/fx/rates` does an
-exact base/quote match, and every stored rate is quoted against the
-reporting currency (#135's `resolveFetchPairs`) — there is no
-triangulation between two arbitrary non-reporting currencies yet. Outside
-that case the field degrades to the same "no stored rate yet" state the
-read-only hint already handles, and stays fully editable regardless,
-since the suggestion is a convenience, never a requirement to submit —
-though its "Refresh" action can't help in that case either, since the
-fetch endpoint has the identical against-reporting-currency-only
-constraint; tracked as [#165](https://github.com/anirudhgray/bodger/issues/165),
-which also covers hiding that misleading affordance as an interim
-mitigation.
+exact base/quote match, and `POST /api/v1/fx/rates/fetch` can currently
+only ever populate a row quoted against the reporting currency
+(`internal/app/fetch_fx_rates.go`'s `resolveFetchPairs`). This is not a
+provider limitation — the Frankfurter adapter's `FetchRate` already takes
+an arbitrary base *and* quote, and
+[ADR-0012](decisions/0012-fx-rate-provider.md) chose Frankfurter
+specifically so this system would never need to triangulate through a
+fixed base currency — it's a gap in `resolveFetchPairs`, which has never
+had a caller-supplied quote wired through it. Outside that case the field
+degrades to the same "no stored rate yet" state the read-only hint
+already handles, and stays fully editable regardless, since the
+suggestion is a convenience, never a requirement to submit — though its
+"Refresh" action can't help in that case either, since it hits the same
+gap. Tracked as [#165](https://github.com/anirudhgray/bodger/issues/165):
+a direct `base/quote` fetch, not composed/derived rate math.
 
 Every other surface exposing this app-layer work
 ([#139](https://github.com/anirudhgray/bodger/issues/139)–[#141](https://github.com/anirudhgray/bodger/issues/141),
