@@ -199,7 +199,11 @@ mergeable_state}'` once a PR exists, as a second confirmation - it
   if a conflict looks like a real semantic disagreement rather than two
   independent additions landing in the same spot.
 - Write the PR body in `pull_request_template.md`'s section structure -
-  Summary, Changes, Dependencies, Artefacts (delete this section if
+  Summary, Closes (a literal "Closes #N" per issue this PR resolves -
+  delete the section if it doesn't close anything - so GitHub auto-closes
+  the issue on merge instead of a separate `gh issue close` call, which
+  auto mode's permission classifier has been observed to block as a
+  visible action), Changes, Dependencies, Artefacts (delete this section if
   there's nothing to attach), Testing. `gh pr create --body` bypasses
   GitHub's auto-populated template entirely, so this only happens if
   the body is written to match it deliberately. This doesn't mean
@@ -287,10 +291,11 @@ As part of the PR that completes or changes scope of a milestone item
   If no existing doc is really the right home for something genuinely new,
   create one rather than stretching an existing doc to cover it, and link
   it in from wherever a reader would actually arrive at it.
-- Reference the GitHub issue it resolves; close it (or update it if only
-  partially addressed) once the PR is confirmed mergeable - don't wait
-  for the user to merge first if the work is genuinely done, but say so
-  explicitly in the report.
+- Reference the GitHub issue it resolves via a "Closes #N" line in the PR
+  body (the template's Closes section) - GitHub closes it automatically on
+  merge, so there's no separate `gh issue close` call needed for the
+  fully-resolved case. If only partially addressed, comment on the issue
+  explaining what's left instead of closing it.
 - Grep the changed files for anything that looks like an internal
   reference (an ADR, a package name, an issue number) leaking into a
   user-facing string before calling it done.
