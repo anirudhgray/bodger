@@ -23,11 +23,11 @@ type AccountResult struct {
 
 // CreateAccountCommand creates a new account. Name and Institution are
 // normalised via normalize.Text; Kind is validated against ledger's closed
-// set; Currency walks ADR-0004's precedence ladder (entry, here, ->
-// instance default - there is no "account" rung yet, since the account
-// being created is what a future entry's ladder would resolve against, and
-// no "user" rung yet, since M1 has no per-user reporting currency separate
-// from the instance default). OpeningBalance defaults to zero when empty;
+// set; Currency walks ADR-0004's precedence ladder (entry, here, -> the
+// actor's reporting currency (GetReportingCurrency) -> instance default -
+// there is no "account" rung here, since the account being created is what
+// a future entry's ladder would resolve against). OpeningBalance defaults
+// to zero when empty;
 // OpeningBalanceDate is nil (no declared date) when empty, per
 // optionalDate's doc comment - this is deliberately not the same as
 // resolving to "today".
@@ -62,7 +62,11 @@ func (s *Service) CreateAccount(ctx context.Context, cmd CreateAccountCommand) (
 		return AccountResult{}, err
 	}
 
-	currency, err := normalize.Currency(cmd.Currency, "", "", s.Config.DefaultCurrency)
+	reportingCurrency, err := s.resolveReportingCurrency(ctx, cmd.ActorID)
+	if err != nil {
+		return AccountResult{}, err
+	}
+	currency, err := normalize.Currency(cmd.Currency, "", reportingCurrency, s.Config.DefaultCurrency)
 	if err != nil {
 		return AccountResult{}, err
 	}

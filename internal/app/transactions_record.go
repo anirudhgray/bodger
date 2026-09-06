@@ -87,7 +87,11 @@ func (s *Service) buildOutflowOrInflowPosting(ctx context.Context, actorID, acco
 		return ledger.Posting{}, attachField(err, "account_ref")
 	}
 
-	resolvedCurrency, err := normalize.Currency(currency, account.Currency(), "", s.Config.DefaultCurrency)
+	reportingCurrency, err := s.resolveReportingCurrency(ctx, actorID)
+	if err != nil {
+		return ledger.Posting{}, err
+	}
+	resolvedCurrency, err := normalize.Currency(currency, account.Currency(), reportingCurrency, s.Config.DefaultCurrency)
 	if err != nil {
 		return ledger.Posting{}, err
 	}

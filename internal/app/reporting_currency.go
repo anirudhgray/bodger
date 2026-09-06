@@ -43,3 +43,26 @@ func (s *Service) SetReportingCurrency(ctx context.Context, actorID, currency st
 	}
 	return s.Users.SetReportingCurrency(ctx, actorID, currency)
 }
+
+// resolveReportingCurrency is GetReportingCurrency with one difference: a
+// NotFound actor resolves to "" (no opinion) instead of propagating the
+// error. It's what CreateAccount and buildOutflowOrInflowPosting call to
+// fill in ADR-0004's ladder's "user" rung — internal, best-effort
+// personalisation of a value the ladder already knows how to skip over,
+// not an authorisation check (that's resolveOwnedAccount/resolveOwnedCategory's
+// job, decided separately and earlier in every caller that has one). A
+// real actor always has a user row (ADR-0006: every actor is the single
+// seeded user), so NotFound here can only happen for a synthetic actor
+// nothing in this codebase treats as requiring one - CreateAccount itself
+// has never checked that its ActorID names a real user, and this must not
+// be the place that starts.
+func (s *Service) resolveReportingCurrency(ctx context.Context, actorID string) (string, error) {
+	currency, err := s.GetReportingCurrency(ctx, actorID)
+	if err != nil {
+		if isNotFoundErr(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return currency, nil
+}
