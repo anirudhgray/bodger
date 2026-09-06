@@ -578,7 +578,7 @@ func TestListTransactions_CursorPagination(t *testing.T) {
 	}
 }
 
-func TestCrossCurrencyTransferRejected(t *testing.T) {
+func TestCrossCurrencyTransferAccepted(t *testing.T) {
 	srv := newTestServer(t, time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC), "UTC")
 
 	_, decoded := do(t, srv, http.MethodPost, "/api/v1/accounts", map[string]any{"name": "USD Account", "type": "bank", "currency": "USD"})
@@ -589,8 +589,18 @@ func TestCrossCurrencyTransferRejected(t *testing.T) {
 	status, decoded := do(t, srv, http.MethodPost, "/api/v1/transfers", map[string]any{
 		"from_account": usd, "to_account": inr, "amount": "100", "description": "cross-currency",
 	})
-	if status != http.StatusUnprocessableEntity {
-		t.Fatalf("status = %d, want 422: %+v", status, decoded)
+	if status != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %+v", status, decoded)
+	}
+	data := dataOf(t, decoded)
+	if data["from_account_id"] != usd || data["to_account_id"] != inr {
+		t.Errorf("from/to account IDs = %v/%v, want %v/%v", data["from_account_id"], data["to_account_id"], usd, inr)
+	}
+	// The response's amount/currency describe the to-leg (dto.go's
+	// transactionView doc comment); the implied fx rate itself isn't part
+	// of this response shape yet — that's a separate surface change.
+	if data["currency"] != "INR" {
+		t.Errorf("currency = %v, want INR", data["currency"])
 	}
 }
 

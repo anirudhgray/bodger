@@ -340,7 +340,7 @@ var routeTable = []route{
 		Handler: func(h *handlers) http.HandlerFunc { return h.createTransfer },
 
 		OperationID: "createTransfer", Summary: "Move money between two of the actor's own accounts.",
-		Description:   "A transfer between accounts in different currencies is rejected; cross-currency transfers aren't supported yet.",
+		Description:   "A transfer between accounts in different currencies is allowed: the implied exchange rate between the two legs is derived and recorded automatically.",
 		SuccessStatus: http.StatusCreated, SuccessDescription: "The recorded transfer.",
 		Request: createTransferRequest{}, Response: transactionView{},
 		Errors: []int{http.StatusUnprocessableEntity},

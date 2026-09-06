@@ -288,7 +288,7 @@ export interface paths {
         put?: never;
         /**
          * Move money between two of the actor's own accounts.
-         * @description A transfer between accounts in different currencies is rejected; cross-currency transfers aren't supported yet.
+         * @description A transfer between accounts in different currencies is allowed: the implied exchange rate between the two legs is derived and recorded automatically.
          */
         post: operations["createTransfer"];
         delete?: never;
