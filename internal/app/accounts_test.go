@@ -11,6 +11,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/platform/config"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
+	"github.com/anirudhgray/bodger/internal/ports"
 )
 
 const testActorID = "actor-1"
@@ -33,9 +34,17 @@ func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
 	cfg := config.Defaults
 	cfg.UserTimezone = tz
 	categories := newMemCategories()
+	// newMemUsersSeeded only seeds ports.SeededUserID, the identity issue
+	// #55's auth use cases hardcode. Every account/category/transaction
+	// use-case test in this package uses testActorID instead - a distinct,
+	// arbitrary actor that predates issue #55 entirely - so it needs its
+	// own row too, now that CreateAccount/RecordOutflow/RecordInflow read
+	// the acting user's reporting currency (issue #132).
+	users := newMemUsersSeeded()
+	users.byID[testActorID] = ports.User{ID: testActorID}
 	svc, err := app.NewService(
 		clk, cfg, idgen.New(), newMemAccounts(), categories, newMemTransactions(categories), newMemTags(),
-		newMemUsersSeeded(), newMemSessions(), newMemAPITokens(), newMemFxRates(),
+		users, newMemSessions(), newMemAPITokens(), newMemFxRates(),
 	)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
