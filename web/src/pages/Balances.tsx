@@ -4,14 +4,28 @@
 // exactly as the REST API computed it. This screen must never sum across
 // accounts or currencies, or reformat amount through anything that
 // parses it as a number — docs/architecture.md §3 reserves that decision
-// for the application layer, and multi-currency conversion doesn't even
-// exist until M3.
-import { Wallet } from 'lucide-react'
-import { useEffect, useState } from 'react'
+// for the application layer.
+//
+// Issue #139 layers currency conversion on top, but only once a second
+// currency is actually in play (docs/ux-principles.md §4 — a
+// single-currency user must never meet any of this): the currency
+// selector, the rate-provenance detail row, and the refresh popover only
+// render when the account list itself spans more than one currency.
+// See docs/design-system.md's "Balances: rate-provenance detail row"
+// section for the pattern this establishes.
+import { RefreshCcw, Wallet } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import {
   Empty,
   EmptyContent,
@@ -20,32 +34,153 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
+import { Label } from '@/components/ui/label'
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
-import { ApiError, getBalances, type Balances } from '@/lib/api'
+import {
+  ApiError,
+  fetchFxRates,
+  getBalances,
+  getReportingCurrency,
+  type Balances,
+} from '@/lib/api'
+
+function errorMessage(err: unknown): string {
+  return err instanceof ApiError
+    ? err.message
+    : 'Couldn’t reach the server. Try again.'
+}
+
+// The sentinel Select value for "no conversion, show each account in its
+// own currency" — the screen's original (M2) behaviour. Radix Select
+// doesn't allow an empty-string item value, so this has to be a real,
+// non-conflicting token rather than ''.
+const NO_CONVERSION = 'original'
 
 export function BalancesPage() {
-  const [balances, setBalances] = useState<Balances | null>(null)
+  const [initial, setInitial] = useState<Balances | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [reportingCurrency, setReportingCurrency] = useState<string | null>(
+    null,
+  )
+  const [targetCurrency, setTargetCurrency] = useState(NO_CONVERSION)
+  const [converted, setConverted] = useState<Balances | null>(null)
+  const [converting, setConverting] = useState(false)
+  const [convertError, setConvertError] = useState<string | null>(null)
+  const [expandedAccountId, setExpandedAccountId] = useState<string | null>(
+    null,
+  )
+  const [refreshOpen, setRefreshOpen] = useState(false)
+  const [refreshPairs, setRefreshPairs] = useState<Set<string>>(new Set())
+  const [refreshing, setRefreshing] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
     let cancelled = false
     getBalances()
       .then((result) => {
-        if (!cancelled) setBalances(result)
+        if (!cancelled) setInitial(result)
       })
       .catch((err: unknown) => {
-        if (cancelled) return
-        setError(
-          err instanceof ApiError
-            ? err.message
-            : 'Couldn’t reach the server. Try again.',
-        )
+        if (!cancelled) setError(errorMessage(err))
       })
+    // Best-effort only: this just labels which currency option is the
+    // user's reporting currency in the selector below. A failure here
+    // doesn't block the balances themselves from rendering.
+    getReportingCurrency()
+      .then((result) => {
+        if (!cancelled && result.is_set) setReportingCurrency(result.currency)
+      })
+      .catch(() => {})
     return () => {
       cancelled = true
     }
   }, [])
+
+  // Every currency actually in use across the account list — the single
+  // source of truth for whether multi-currency UI may appear at all.
+  const currencies = useMemo(() => {
+    if (!initial) return []
+    return Array.from(new Set(initial.balances.map((b) => b.currency))).sort()
+  }, [initial])
+
+  const isMultiCurrency = currencies.length > 1
+
+  const candidatePairs = useMemo(
+    () => currencies.filter((c) => c !== targetCurrency),
+    [currencies, targetCurrency],
+  )
+
+  function loadConverted(currency: string) {
+    setConverting(true)
+    setConvertError(null)
+    getBalances({ currency, policy: 'current' })
+      .then((result) => {
+        setConverted(result)
+      })
+      .catch((err: unknown) => {
+        setConvertError(errorMessage(err))
+      })
+      .finally(() => setConverting(false))
+  }
+
+  function handleCurrencyChange(value: string) {
+    setTargetCurrency(value)
+    setExpandedAccountId(null)
+    if (value === NO_CONVERSION) {
+      setConverted(null)
+      setConvertError(null)
+      return
+    }
+    loadConverted(value)
+  }
+
+  function openRefresh(open: boolean) {
+    setRefreshOpen(open)
+    if (!open) return
+    // Default the popover's checkboxes to whichever pairs actually need
+    // it (stale or missing entirely) — every candidate stays selectable,
+    // this just saves the common case a click.
+    const unconvertedNames = new Set(
+      (displayed?.unconverted ?? []).map((u) => u.account),
+    )
+    const needsRefresh = new Set<string>()
+    for (const b of displayed?.balances ?? []) {
+      if (b.currency === targetCurrency) continue
+      if (b.converted?.stale || unconvertedNames.has(b.account)) {
+        needsRefresh.add(b.currency)
+      }
+    }
+    setRefreshPairs(needsRefresh.size > 0 ? needsRefresh : new Set())
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    try {
+      await fetchFxRates(Array.from(refreshPairs))
+      toast.success('Rates refreshed.')
+      setRefreshOpen(false)
+      loadConverted(targetCurrency)
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   if (error) {
     return (
@@ -57,7 +192,7 @@ export function BalancesPage() {
     )
   }
 
-  if (balances === null) {
+  if (initial === null) {
     return (
       <div className="flex flex-1 flex-col gap-6 p-4 sm:p-6">
         <h1 className="text-2xl font-semibold tracking-tight">Balances</h1>
@@ -69,7 +204,7 @@ export function BalancesPage() {
     )
   }
 
-  if (balances.balances.length === 0) {
+  if (initial.balances.length === 0) {
     return (
       <div className="flex flex-1 flex-col gap-6 p-4 sm:p-6">
         <h1 className="text-2xl font-semibold tracking-tight">Balances</h1>
@@ -93,32 +228,203 @@ export function BalancesPage() {
     )
   }
 
+  // Fall back to the uncoverted list while a conversion is in flight (or
+  // failed) rather than blanking the whole table — amounts just show in
+  // their own currency until the converted view arrives.
+  const displayed =
+    targetCurrency === NO_CONVERSION ? initial : (converted ?? initial)
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 sm:p-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">Balances</h1>
-        <p className="text-muted-foreground text-sm">As of {balances.as_of}</p>
+        <p className="text-muted-foreground text-sm">As of {displayed.as_of}</p>
       </div>
+
+      {isMultiCurrency && (
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Label
+              htmlFor="balances-currency"
+              className="text-muted-foreground text-sm font-normal"
+            >
+              Show in
+            </Label>
+            <Select value={targetCurrency} onValueChange={handleCurrencyChange}>
+              <SelectTrigger id="balances-currency" className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_CONVERSION}>
+                  Original currencies
+                </SelectItem>
+                {currencies.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                    {c === reportingCurrency ? ' (reporting currency)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {converting && (
+            <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
+              <Spinner className="size-3.5" />
+              Converting…
+            </span>
+          )}
+
+          {convertError && (
+            <span role="alert" className="text-destructive text-xs">
+              {convertError}
+            </span>
+          )}
+
+          {targetCurrency !== NO_CONVERSION && candidatePairs.length > 0 && (
+            <Popover open={refreshOpen} onOpenChange={openRefresh}>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="secondary" size="sm">
+                  <RefreshCcw />
+                  Refresh rates
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start">
+                <PopoverHeader>
+                  <PopoverTitle>Refresh rates</PopoverTitle>
+                  <PopoverDescription>
+                    Fetch today's rate for the currencies you pick.
+                  </PopoverDescription>
+                </PopoverHeader>
+                <div className="flex flex-col gap-2 py-1">
+                  {candidatePairs.map((c) => (
+                    <label key={c} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={refreshPairs.has(c)}
+                        onCheckedChange={(checked) => {
+                          setRefreshPairs((prev) => {
+                            const next = new Set(prev)
+                            if (checked) next.add(c)
+                            else next.delete(c)
+                            return next
+                          })
+                        }}
+                      />
+                      {c}
+                    </label>
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={refreshPairs.size === 0 || refreshing}
+                  onClick={handleRefresh}
+                >
+                  {refreshing && <Spinner className="size-3.5" />}
+                  Refresh
+                </Button>
+              </PopoverContent>
+            </Popover>
+          )}
+        </div>
+      )}
+
       <Card className="max-w-md [--card-spacing:0]">
         <ul className="divide-border divide-y">
-          {balances.balances.map((b) => (
-            <li key={b.account_id}>
-              <button
-                type="button"
-                onClick={() =>
-                  navigate('/transactions', {
-                    state: { filter: { account: b.account_id } },
-                  })
-                }
-                className="hover:bg-accent/50 flex w-full items-center justify-between px-4 py-3 text-left transition-colors"
-              >
-                <span className="text-sm font-medium">{b.account}</span>
-                <span className="text-sm tabular-nums">
-                  {b.amount} {b.currency}
-                </span>
-              </button>
-            </li>
-          ))}
+          {displayed.balances.map((b) => {
+            if (!isMultiCurrency) {
+              return (
+                <li key={b.account_id}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate('/transactions', {
+                        state: { filter: { account: b.account_id } },
+                      })
+                    }
+                    className="hover:bg-accent/50 flex w-full items-center justify-between px-4 py-3 text-left transition-colors"
+                  >
+                    <span className="text-sm font-medium">{b.account}</span>
+                    <span className="text-sm tabular-nums">
+                      {b.amount} {b.currency}
+                    </span>
+                  </button>
+                </li>
+              )
+            }
+
+            const isTarget = b.currency === targetCurrency
+            const isUnconverted =
+              targetCurrency !== NO_CONVERSION && !isTarget && !b.converted
+            const unconvertedReason = isUnconverted
+              ? displayed.unconverted?.find((u) => u.account === b.account)
+                  ?.reason
+              : undefined
+            const expanded = expandedAccountId === b.account_id
+
+            return (
+              <li key={b.account_id}>
+                <Collapsible
+                  open={expanded}
+                  onOpenChange={(open) =>
+                    setExpandedAccountId(open ? b.account_id : null)
+                  }
+                >
+                  <div className="hover:bg-accent/50 flex w-full items-center justify-between gap-3 px-4 py-3 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate('/transactions', {
+                          state: { filter: { account: b.account_id } },
+                        })
+                      }
+                      className="min-w-0 flex-1 truncate text-left text-sm font-medium"
+                    >
+                      {b.account}
+                    </button>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {b.converted && (
+                        <CollapsibleTrigger asChild>
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs tabular-nums underline decoration-dotted underline-offset-4"
+                          >
+                            <span>
+                              ≈ {b.converted.amount} {b.converted.currency}
+                            </span>
+                            {b.converted.stale && (
+                              <span className="text-destructive font-medium">
+                                stale
+                              </span>
+                            )}
+                          </button>
+                        </CollapsibleTrigger>
+                      )}
+                      {isUnconverted && (
+                        <span className="text-destructive text-xs">
+                          Not converted
+                          {unconvertedReason ? ` — ${unconvertedReason}` : ''}
+                        </span>
+                      )}
+                      <span className="text-sm tabular-nums">
+                        {b.amount} {b.currency}
+                      </span>
+                    </div>
+                  </div>
+                  {b.converted && (
+                    <CollapsibleContent className="border-border text-muted-foreground border-t px-4 py-2 text-xs">
+                      1 {b.currency} = {b.converted.rate} {b.converted.currency}
+                      {' · as of '}
+                      {b.converted.rate_date}
+                      {' · '}
+                      {b.converted.rate_source}
+                      {b.converted.stale && ' · stale'}
+                    </CollapsibleContent>
+                  )}
+                </Collapsible>
+              </li>
+            )
+          })}
         </ul>
       </Card>
     </div>
