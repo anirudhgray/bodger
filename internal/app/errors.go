@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 
+	"github.com/anirudhgray/bodger/internal/domain/fx"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 )
@@ -49,15 +50,16 @@ func wrapLedgerError(err error) error {
 }
 
 // wrapTransferError is wrapLedgerError's transfer-specific counterpart: it
-// recognises the ledger sentinel errors ledger.NewTransfer can return and
-// gives each one a specific, user-safe message and field, falling back to
+// recognises the sentinel errors ledger.NewTransfer can return and gives
+// each one a specific, user-safe message and field, falling back to
 // wrapLedgerError's generic message for anything else. By the time this
 // package calls ledger.NewTransfer, the accounts are already known
-// distinct-or-not from data it fetched itself (and same-currency, since
-// buildTransferPostings rejects a cross-currency pair itself before ever
-// reaching ledger.NewTransfer — issue #133 lifts that), so in practice
-// only ErrTransferSameAccount is reachable here — but every sentinel is
-// handled so this stays correct if that ever changes.
+// distinct from data it fetched itself, and buildTransferPostings has
+// already rejected a zero amount before either leg is built (so
+// fx.ErrRateZeroBase from the cross-currency implied-rate derivation issue
+// #133 added can't actually happen either) — in practice only
+// ErrTransferSameAccount is reachable here, but every sentinel is handled
+// so this stays correct if that ever changes.
 func wrapTransferError(err error) error {
 	if err == nil {
 		return nil
@@ -68,12 +70,13 @@ func wrapTransferError(err error) error {
 			Explain("A transfer's two accounts must be different.").
 			Field("to_account_ref")
 	case errors.Is(err, ledger.ErrTransferNotBalanced), errors.Is(err, ledger.ErrTransferPostingsMustOppose),
-		errors.Is(err, ledger.ErrTransferPostingHasCategory), errors.Is(err, ledger.ErrTransferPostingCount):
+		errors.Is(err, ledger.ErrTransferPostingHasCategory), errors.Is(err, ledger.ErrTransferPostingCount),
+		errors.Is(err, fx.ErrRateZeroBase):
 		// These can't actually happen given how this package builds a
 		// transfer's two postings (opposite signs, no category, exactly
-		// two) — Internal, not InvalidInput, because reaching this branch
-		// would mean this package's own invariant broke, not that the
-		// user did anything wrong.
+		// two, always a non-zero amount) — Internal, not InvalidInput,
+		// because reaching this branch would mean this package's own
+		// invariant broke, not that the user did anything wrong.
 		return errs.New(errs.Internal).Explain("That transfer couldn't be recorded.").Wrap(err)
 	default:
 		return wrapLedgerError(err)
