@@ -92,11 +92,29 @@ export type BalanceEntry = components['schemas']['Balance']
 
 export type Balances = components['schemas']['Balances']
 
+// BalancesQuery mirrors GET /api/v1/balances' optional query params
+// (internal/surface/http/router.go): setting currency converts every
+// account's balance into it under policy (ADR-0004) — issue #139's
+// Balances screen always passes policy: 'current' (a point-in-time
+// snapshot has no other sensible date), so pinnedDate is only here for
+// completeness with the wire contract, not because this screen uses it.
+export type BalancesQuery = {
+  currency?: string
+  policy?: components['schemas']['ConvertedBalance']['policy']
+  pinnedDate?: string
+}
+
 // getBalances fetches every account's balance as of today (the API
 // resolves "today" server-side when as_of is omitted — normalise-once,
 // ADR-0005 — this call never passes one).
-export function getBalances(): Promise<Balances> {
-  return apiFetch<Balances>('/api/v1/balances')
+export function getBalances(query: BalancesQuery = {}): Promise<Balances> {
+  return apiFetch<Balances>(
+    `/api/v1/balances${buildQuery({
+      currency: query.currency,
+      policy: query.policy,
+      pinned_date: query.pinnedDate,
+    })}`,
+  )
 }
 
 // --- Transactions (issue #61) ---------------------------------------------
