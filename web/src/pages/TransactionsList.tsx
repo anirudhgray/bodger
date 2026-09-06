@@ -22,6 +22,7 @@ import {
 } from '@/hooks/use-transaction-dialog'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Collapsible } from '@/components/ui/collapsible'
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import {
   Empty,
@@ -33,6 +34,12 @@ import {
 } from '@/components/ui/empty'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Label } from '@/components/ui/label'
+import { RateFetchPopover } from '@/components/RateFetchPopover'
+import {
+  RateAmountTrigger,
+  RateProvenanceDetail,
+  UnconvertedNote,
+} from '@/components/RateProvenance'
 import {
   Select,
   SelectContent,
@@ -45,17 +52,45 @@ import { toast } from 'sonner'
 import {
   ApiError,
   deleteTransaction,
+  fetchFxRates,
+  getFxRate,
+  getReportingCurrency,
   listAccounts,
   listCategories,
   listTransactions,
   type Account,
   type Category,
+  type FxRate,
   type Transaction,
   type TransactionKind,
   type TransactionListFilter,
 } from '@/lib/api'
 import { buildCategoryTree } from '@/lib/category-tree'
 import { capitalize } from '@/lib/utils'
+
+// RowConversion is one non-transfer transaction's reporting-currency
+// equivalent (issue #145) — a per-row, per-date ConvertAmount lookup, not
+// one shared rate for the whole page the way Balances' single "current"
+// policy can get away with (docs/design-system.md's "Refresh popover"
+// section: a transaction list spans many distinct historical dates, so
+// there can be one rate per (pair, date) combination in view). Keyed by
+// transaction id in the `conversions` map below.
+type RowConversion =
+  | { status: 'loading' }
+  | { status: 'ready'; rate: FxRate }
+  // Covers both "no rate available" (ApiError code not_found) and any
+  // other lookup failure — either way the row is shown explicitly, never
+  // silently dropped or left blank (ADR-0004's mixed-policy-aggregate-
+  // forbidden rule, the same one Balances' own `unconverted` list serves).
+  | { status: 'unconverted'; reason: string }
+
+// needsConversion is true only for a foreign-currency, non-transfer
+// transaction — a transfer's own cross-currency provenance is #141's
+// stored implied rate, not this lookup, and a transaction already in the
+// reporting currency has nothing to convert.
+function needsConversion(t: Transaction, reportingCurrency: string): boolean {
+  return t.type !== 'transfer' && t.currency !== reportingCurrency
+}
 
 // kindLabel mirrors internal/surface/cli/transactions.go's
 // transactionTypeFor: the same verb a transaction was recorded with
@@ -121,6 +156,28 @@ export function TransactionsList() {
   const [formResetKey, setFormResetKey] = useState(0)
   const { openCreate, openEdit } = useTransactionDialog()
 
+  // Issue #145: each foreign-currency (non-transfer) row's own reporting-
+  // currency equivalent. `reportingCurrency` is null until it's loaded
+  // (or the user hasn't set one, per ux-principles.md §4 — nothing below
+  // renders without it, matching Balances' own single-currency gating).
+  // `conversions` is keyed by transaction id — a page can carry rows with
+  // many distinct booked dates, so this is one lookup per row, not one
+  // shared rate for the whole page.
+  const [reportingCurrency, setReportingCurrency] = useState<string | null>(
+    null,
+  )
+  const [conversions, setConversions] = useState<Map<string, RowConversion>>(
+    new Map(),
+  )
+  const [expandedTxId, setExpandedTxId] = useState<string | null>(null)
+  const [backfillOpen, setBackfillOpen] = useState(false)
+  const [backfillCurrencies, setBackfillCurrencies] = useState<Set<string>>(
+    new Set(),
+  )
+  const [backfillFrom, setBackfillFrom] = useState('')
+  const [backfillTo, setBackfillTo] = useState('')
+  const [backfilling, setBackfilling] = useState(false)
+
   const accountsByID = new Map(accounts.map((a) => [a.id, a.name]))
   const categoriesByID = new Map(categories.map((c) => [c.id, c.name]))
 
@@ -177,6 +234,15 @@ export function TransactionsList() {
       // defaultValue is re-applied against them.
       if (initialFilter) setFormResetKey((k) => k + 1)
     })
+    // Best-effort only, matching Balances' own fetch: labels which
+    // currency every row's own equivalent is computed against. A failure
+    // here just means no per-row conversion UI renders (needsConversion
+    // above requires it), not that the transaction list itself fails.
+    getReportingCurrency()
+      .then((result) => {
+        if (result.is_set) setReportingCurrency(result.currency)
+      })
+      .catch(() => {})
     load(initialFilter ?? {}, false)
     // Runs once on mount only (load's own useCallback has an empty
     // dependency array, so it's stable) — applyFilters/clearFilters below
@@ -187,6 +253,64 @@ export function TransactionsList() {
     // location.state on the initial render and intentionally left out of
     // the dependency array for the same reason.
   }, [load])
+
+  // loadRowConversions is a pure read (GET /api/v1/fx/rates via
+  // getFxRate) — it never triggers a provider fetch itself, only the
+  // backfill popover's confirm button does that. Each transaction's own
+  // `date` (the date it's booked to) is what's sent as the
+  // transaction_date policy's date — never "today" — so a row booked
+  // months ago is evaluated for staleness/availability against its own
+  // date, not whatever day happens to be current when the page loads.
+  // See TransactionsList.test.tsx's regression test for exactly this
+  // substitution.
+  const loadRowConversions = useCallback(
+    (targets: Transaction[], currency: string) => {
+      if (targets.length === 0) return
+      setConversions((prev) => {
+        const next = new Map(prev)
+        for (const t of targets) next.set(t.id, { status: 'loading' })
+        return next
+      })
+      for (const t of targets) {
+        getFxRate({
+          from: t.currency,
+          to: currency,
+          amount: t.amount,
+          policy: 'transaction_date',
+          transactionDate: t.date,
+        })
+          .then((rate) => {
+            setConversions((prev) =>
+              new Map(prev).set(t.id, { status: 'ready', rate }),
+            )
+          })
+          .catch((err: unknown) => {
+            const reason =
+              err instanceof ApiError
+                ? err.message
+                : 'Couldn’t check the exchange rate.'
+            setConversions((prev) =>
+              new Map(prev).set(t.id, { status: 'unconverted', reason }),
+            )
+          })
+      }
+    },
+    [],
+  )
+
+  // Runs whenever the loaded page or the reporting currency changes,
+  // resolving a conversion for any row that doesn't have one yet.
+  // `conversions` is a dependency (not just read inside) so that clearing
+  // an entry — on edit (below) or after a backfill — re-triggers a lookup
+  // for exactly that row, the same "re-read the visible page" behaviour
+  // issue #139's own refresh does for Balances.
+  useEffect(() => {
+    if (reportingCurrency === null) return
+    const targets = transactions.filter(
+      (t) => needsConversion(t, reportingCurrency) && !conversions.has(t.id),
+    )
+    loadRowConversions(targets, reportingCurrency)
+  }, [transactions, reportingCurrency, conversions, loadRowConversions])
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -246,6 +370,12 @@ export function TransactionsList() {
     try {
       await deletion
       setTransactions((prev) => prev.filter((t) => t.id !== id))
+      setConversions((prev) => {
+        if (!prev.has(id)) return prev
+        const next = new Map(prev)
+        next.delete(id)
+        return next
+      })
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -274,6 +404,17 @@ export function TransactionsList() {
               t.id === event.transaction.id ? event.transaction : t,
             ),
           )
+          // The edited transaction's amount/currency/date may have
+          // changed, so any cached conversion for it is potentially
+          // stale — drop it so the effect above resolves it fresh, rather
+          // than keeping a conversion computed against the pre-edit
+          // values.
+          setConversions((prev) => {
+            if (!prev.has(event.transaction.id)) return prev
+            const next = new Map(prev)
+            next.delete(event.transaction.id)
+            return next
+          })
         } else {
           load(filter, false)
         }
@@ -284,19 +425,125 @@ export function TransactionsList() {
 
   const hasActiveFilters = Object.values(filter).some(Boolean)
 
+  // Every foreign currency actually in play across the currently loaded
+  // page, excluding the reporting currency itself — the backfill
+  // popover's own candidate list, matching Balances' candidatePairs.
+  const inUseCurrencies = useMemo(() => {
+    if (reportingCurrency === null) return []
+    return Array.from(
+      new Set(
+        transactions
+          .filter((t) => needsConversion(t, reportingCurrency))
+          .map((t) => t.currency),
+      ),
+    ).sort()
+  }, [transactions, reportingCurrency])
+
+  function openBackfill(open: boolean) {
+    setBackfillOpen(open)
+    if (!open) return
+    // Pre-check whichever currencies actually need it (stale or
+    // unconverted) and default the range to the span of booked dates
+    // among those rows — both just save the common case a click, same as
+    // Balances' own openRefresh; every candidate stays selectable and the
+    // range stays editable regardless.
+    const needsRefresh = new Set<string>()
+    let earliest: string | undefined
+    let latest: string | undefined
+    for (const t of transactions) {
+      if (
+        reportingCurrency === null ||
+        !needsConversion(t, reportingCurrency)
+      ) {
+        continue
+      }
+      const conv = conversions.get(t.id)
+      const stale = conv?.status === 'ready' && conv.rate.stale
+      if (conv?.status === 'unconverted' || stale) {
+        needsRefresh.add(t.currency)
+        if (!earliest || t.date < earliest) earliest = t.date
+        if (!latest || t.date > latest) latest = t.date
+      }
+    }
+    setBackfillCurrencies(needsRefresh.size > 0 ? needsRefresh : new Set())
+    setBackfillFrom(earliest ?? '')
+    setBackfillTo(latest ?? '')
+  }
+
+  async function handleBackfillConfirm() {
+    setBackfilling(true)
+    try {
+      await fetchFxRates(Array.from(backfillCurrencies), {
+        from: backfillFrom,
+        to: backfillTo,
+      })
+      toast.success('Rates backfilled.')
+      setBackfillOpen(false)
+      // Re-read the visible page (issue #145, matching #139's
+      // re-read-after-refresh): drop the cached conversion for every row
+      // in one of the backfilled currencies so the effect above resolves
+      // it again, picking up whatever the backfill just stored.
+      setConversions((prev) => {
+        const next = new Map(prev)
+        for (const t of transactions) {
+          if (backfillCurrencies.has(t.currency)) next.delete(t.id)
+        }
+        return next
+      })
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : 'Couldn’t backfill rates. Try again.',
+      )
+    } finally {
+      setBackfilling(false)
+    }
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 sm:p-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Transactions</h1>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setShowFilters((v) => !v)}
-        >
-          {showFilters ? 'Hide filters' : 'Filters'}
-          {hasActiveFilters ? ' •' : ''}
-        </Button>
+        <div className="flex items-center gap-2">
+          {inUseCurrencies.length > 0 && (
+            <RateFetchPopover
+              open={backfillOpen}
+              onOpenChange={openBackfill}
+              triggerLabel="Backfill rates"
+              title="Backfill rates"
+              description="Fetch rates for the currencies and date range you pick."
+              candidates={inUseCurrencies}
+              selected={backfillCurrencies}
+              onToggle={(currency, checked) => {
+                setBackfillCurrencies((prev) => {
+                  const next = new Set(prev)
+                  if (checked) next.add(currency)
+                  else next.delete(currency)
+                  return next
+                })
+              }}
+              onConfirm={handleBackfillConfirm}
+              confirming={backfilling}
+              confirmLabel="Backfill"
+              dateRange={{
+                from: backfillFrom,
+                to: backfillTo,
+                onFromChange: setBackfillFrom,
+                onToChange: setBackfillTo,
+              }}
+            />
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowFilters((v) => !v)}
+          >
+            {showFilters ? 'Hide filters' : 'Filters'}
+            {hasActiveFilters ? ' •' : ''}
+          </Button>
+        </div>
       </div>
 
       {showFilters && (
@@ -426,74 +673,131 @@ export function TransactionsList() {
       ) : (
         <Card className="[--card-spacing:0]">
           <ul className="divide-border flex flex-col divide-y">
-            {transactions.map((t) => (
-              <li
-                key={t.id}
-                className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:py-2.5"
-              >
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-muted-foreground">{t.date}</span>
-                    <span className="font-medium">{t.description}</span>
-                  </div>
-                  <div className="text-muted-foreground text-xs">
-                    {kindLabel(t.type)}
-                    {t.type === 'transfer' ? (
-                      <>
-                        {' · '}
-                        {nameFor(t.from_account_id, accountsByID)} →{' '}
-                        {nameFor(t.to_account_id, accountsByID)}
-                      </>
-                    ) : (
-                      <>
-                        {' · '}
-                        {nameFor(t.account_id, accountsByID)}
-                        {t.category_id && (
-                          <>
-                            {' · '}
-                            <button
-                              type="button"
-                              onClick={() => filterByCategory(t.category_id!)}
-                              className="hover:text-foreground underline-offset-2 hover:underline"
-                            >
-                              {nameFor(t.category_id, categoriesByID)}
-                            </button>
-                          </>
-                        )}
-                      </>
+            {transactions.map((t) => {
+              // Issue #145: this transaction's own reporting-currency
+              // equivalent, if it needs one. `undefined` means either it
+              // doesn't need one (transfer, or already in the reporting
+              // currency) or the lookup just hasn't resolved yet — both
+              // render nothing below, matching Balances' own "no flicker
+              // while loading" behaviour.
+              const conv =
+                reportingCurrency !== null &&
+                needsConversion(t, reportingCurrency)
+                  ? conversions.get(t.id)
+                  : undefined
+              const expanded = expandedTxId === t.id
+
+              return (
+                <li key={t.id}>
+                  <Collapsible
+                    open={expanded}
+                    onOpenChange={(open) => setExpandedTxId(open ? t.id : null)}
+                  >
+                    <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:py-2.5">
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-muted-foreground">
+                            {t.date}
+                          </span>
+                          <span className="font-medium">{t.description}</span>
+                        </div>
+                        <div className="text-muted-foreground text-xs">
+                          {kindLabel(t.type)}
+                          {t.type === 'transfer' ? (
+                            <>
+                              {' · '}
+                              {nameFor(t.from_account_id, accountsByID)} →{' '}
+                              {nameFor(t.to_account_id, accountsByID)}
+                            </>
+                          ) : (
+                            <>
+                              {' · '}
+                              {nameFor(t.account_id, accountsByID)}
+                              {t.category_id && (
+                                <>
+                                  {' · '}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      filterByCategory(t.category_id!)
+                                    }
+                                    className="hover:text-foreground underline-offset-2 hover:underline"
+                                  >
+                                    {nameFor(t.category_id, categoriesByID)}
+                                  </button>
+                                </>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 sm:shrink-0 sm:justify-end sm:gap-4">
+                        <div className="text-sm font-medium tabular-nums">
+                          {t.type === 'inflow'
+                            ? '+'
+                            : t.type === 'outflow'
+                              ? '−'
+                              : ''}
+                          {t.amount} {t.currency}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEdit(t)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDelete(t.id)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                    {/* The conversion hint gets its own full-width row
+                        rather than squeezing into the amount column above
+                        — that column sits in a `shrink-0` flex item next
+                        to the Edit/Delete buttons, which have no room to
+                        spare for a potentially long "Not converted —
+                        <reason>" message (issue #145 shows the reason
+                        text as-is, not truncated). */}
+                    {conv?.status === 'ready' && (
+                      <div className="flex justify-end px-4 pb-2 sm:pb-2.5">
+                        {/* rate.converted already carries its own currency
+                            code ("9.26 USD") — internal/surface/http/fx.go's
+                            fxRateViewFrom, same as FxConversionHint.tsx's own
+                            note — appending rate.to here would render it
+                            twice. */}
+                        <RateAmountTrigger stale={conv.rate.stale}>
+                          ≈ {conv.rate.converted}
+                        </RateAmountTrigger>
+                      </div>
                     )}
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-3 sm:shrink-0 sm:justify-end sm:gap-4">
-                  <div className="text-sm font-medium tabular-nums">
-                    {t.type === 'inflow'
-                      ? '+'
-                      : t.type === 'outflow'
-                        ? '−'
-                        : ''}
-                    {t.amount} {t.currency}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEdit(t)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDelete(t.id)}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </div>
-              </li>
-            ))}
+                    {conv?.status === 'unconverted' && (
+                      <div className="flex justify-end px-4 pb-2 text-right sm:pb-2.5">
+                        <UnconvertedNote reason={conv.reason} />
+                      </div>
+                    )}
+                    {conv?.status === 'ready' && (
+                      <RateProvenanceDetail>
+                        1 {t.currency} = {conv.rate.rate} {conv.rate.to}
+                        {' · as of '}
+                        {conv.rate.rate_date}
+                        {' · '}
+                        {conv.rate.rate_source}
+                        {conv.rate.stale && ' · stale'}
+                      </RateProvenanceDetail>
+                    )}
+                  </Collapsible>
+                </li>
+              )
+            })}
           </ul>
         </Card>
       )}

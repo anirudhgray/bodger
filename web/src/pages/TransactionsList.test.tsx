@@ -26,12 +26,18 @@ vi.mock('@/lib/api', async () => {
     updateTransaction: vi.fn(),
     deleteTransaction: vi.fn(),
     recordOutflow: vi.fn(),
+    getReportingCurrency: vi.fn(),
+    getFxRate: vi.fn(),
+    fetchFxRates: vi.fn(),
   }
 })
 
 import {
   ApiError,
   deleteTransaction,
+  fetchFxRates,
+  getFxRate,
+  getReportingCurrency,
   listAccounts,
   listCategories,
   listTransactions,
@@ -49,6 +55,9 @@ const mockedListCategories = vi.mocked(listCategories)
 const mockedUpdateTransaction = vi.mocked(updateTransaction)
 const mockedDeleteTransaction = vi.mocked(deleteTransaction)
 const mockedRecordOutflow = vi.mocked(recordOutflow)
+const mockedGetReportingCurrency = vi.mocked(getReportingCurrency)
+const mockedGetFxRate = vi.mocked(getFxRate)
+const mockedFetchFxRates = vi.mocked(fetchFxRates)
 
 // The empty state's "Record a transaction" CTA needs a router context;
 // editing/creating a transaction (both open TransactionDialog) needs
@@ -152,6 +161,17 @@ describe('TransactionsList', () => {
     mockedUpdateTransaction.mockReset()
     mockedDeleteTransaction.mockReset()
     mockedRecordOutflow.mockReset()
+    mockedGetReportingCurrency.mockReset()
+    mockedGetFxRate.mockReset()
+    mockedFetchFxRates.mockReset()
+    // Matching Balances.test.tsx's own default: no reporting currency set,
+    // so the per-row conversion machinery (issue #145) stays fully inert
+    // unless a test opts in — a single-currency ledger must never meet
+    // any of it (docs/ux-principles.md §4).
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: '',
+      is_set: false,
+    })
     stubLookups()
   })
 
@@ -607,5 +627,239 @@ describe('TransactionsList', () => {
         }),
       ),
     )
+  })
+
+  // Issue #145: per-row reporting-currency equivalent, the backfill
+  // popover, and the booked_date-vs-now substitution regression. Every
+  // test in this block sets a reporting currency (mocked getReportingCurrency)
+  // so the per-row machinery is actually active — the beforeEach default
+  // above leaves it unset/inert, matching a single-currency ledger.
+  describe('foreign-currency conversion (issue #145)', () => {
+    const souvenir: Transaction = {
+      id: 't2',
+      type: 'outflow',
+      date: '2026-01-10',
+      description: 'Souvenir',
+      account_id: 'a1',
+      category_id: 'c1',
+      amount: '4200.00',
+      currency: 'INR',
+    }
+
+    it("shows a foreign-currency transaction's reporting-currency equivalent, expandable to its provenance", async () => {
+      const user = userEvent.setup()
+      mockedGetReportingCurrency.mockResolvedValue({
+        currency: 'USD',
+        is_set: true,
+      })
+      mockedListTransactions.mockResolvedValue({ data: [souvenir] })
+      mockedGetFxRate.mockResolvedValue({
+        from: 'INR',
+        to: 'USD',
+        rate: '0.012',
+        rate_date: '2026-01-10',
+        rate_source: 'frankfurter',
+        stale: false,
+        policy: 'transaction_date',
+        amount: '4200.00',
+        // Already carries its own currency code, same wire shape
+        // internal/surface/http/fx.go's fxRateViewFrom uses — not a bare
+        // number the UI appends a currency onto itself.
+        converted: '50.40 USD',
+      })
+
+      renderPage()
+      await screen.findByText('Souvenir')
+
+      const approx = await screen.findByText('≈ 50.40 USD')
+      await user.click(approx)
+      expect(
+        screen.getByText(/1 INR = 0.012 USD.*frankfurter/),
+      ).toBeInTheDocument()
+    })
+
+    // The actual bug shape issue #145 calls out: the lookup must use the
+    // transaction's own booked date, never "today" — modeled on how
+    // ADR-0012 requires a real test for its own response-date rule
+    // rather than trusting a comment. `souvenir` is booked 2026-01-10;
+    // "today" is faked to a completely different date below, so this only
+    // passes if the code sends the transaction's own date and not the
+    // clock's.
+    it("evaluates a row's conversion against its own booked date, not today's date", async () => {
+      // Only Date is faked (not timers) so testing-library's own
+      // real-timer-based polling (waitFor) keeps working — this just
+      // pins "today" to a date far from the transaction's own booked
+      // date, so nothing here could pass by coincidence.
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-09-06T12:00:00Z'))
+      try {
+        mockedGetReportingCurrency.mockResolvedValue({
+          currency: 'USD',
+          is_set: true,
+        })
+        mockedListTransactions.mockResolvedValue({ data: [souvenir] })
+        mockedGetFxRate.mockResolvedValue({
+          from: 'INR',
+          to: 'USD',
+          rate: '0.012',
+          rate_date: '2026-01-10',
+          rate_source: 'frankfurter',
+          stale: false,
+          policy: 'transaction_date',
+          amount: '4200.00',
+          converted: '50.40 USD',
+        })
+
+        renderPage()
+        await waitFor(() =>
+          expect(mockedGetFxRate).toHaveBeenCalledWith({
+            from: 'INR',
+            to: 'USD',
+            amount: '4200.00',
+            policy: 'transaction_date',
+            transactionDate: '2026-01-10',
+          }),
+        )
+        // Belt and braces: the call must not have used "today" in either
+        // role a regression could substitute it into.
+        expect(mockedGetFxRate).not.toHaveBeenCalledWith(
+          expect.objectContaining({ transactionDate: '2026-09-06' }),
+        )
+        expect(mockedGetFxRate).not.toHaveBeenCalledWith(
+          expect.objectContaining({ policy: 'current' }),
+        )
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('shows an unconverted row explicitly instead of dropping or blanking it', async () => {
+      mockedGetReportingCurrency.mockResolvedValue({
+        currency: 'USD',
+        is_set: true,
+      })
+      mockedListTransactions.mockResolvedValue({ data: [souvenir] })
+      mockedGetFxRate.mockRejectedValue(
+        new ApiError(
+          'not_found',
+          'No INR/USD rate available for 2026-01-10 within 7 day(s).',
+        ),
+      )
+
+      renderPage()
+      await screen.findByText('Souvenir')
+
+      expect(
+        await screen.findByText(
+          'Not converted — No INR/USD rate available for 2026-01-10 within 7 day(s).',
+        ),
+      ).toBeInTheDocument()
+    })
+
+    it('backfills rates over a currency multi-select and date range, then resolves rows in place', async () => {
+      const user = userEvent.setup()
+      const eurTx: Transaction = {
+        id: 't3',
+        type: 'outflow',
+        date: '2026-03-05',
+        description: 'Hotel',
+        account_id: 'a1',
+        category_id: 'c1',
+        amount: '80.00',
+        currency: 'EUR',
+      }
+      mockedGetReportingCurrency.mockResolvedValue({
+        currency: 'USD',
+        is_set: true,
+      })
+      mockedListTransactions.mockResolvedValue({ data: [souvenir, eurTx] })
+      // Initial page load: souvenir (INR) resolves stale, eurTx (EUR) has
+      // no stored rate at all — both should end up pre-checked in the
+      // backfill popover, and both dates should bound its default range.
+      mockedGetFxRate
+        .mockResolvedValueOnce({
+          from: 'INR',
+          to: 'USD',
+          rate: '0.011',
+          rate_date: '2026-01-03',
+          rate_source: 'frankfurter',
+          stale: true,
+          policy: 'transaction_date',
+          amount: '4200.00',
+          converted: '46.20 USD',
+        })
+        .mockRejectedValueOnce(
+          new ApiError(
+            'not_found',
+            'No EUR/USD rate available for 2026-03-05 within 7 day(s).',
+          ),
+        )
+        // Post-backfill re-read: both rows now resolve cleanly.
+        .mockResolvedValue({
+          from: 'EUR',
+          to: 'USD',
+          rate: '1.08',
+          rate_date: '2026-03-05',
+          rate_source: 'frankfurter',
+          stale: false,
+          policy: 'transaction_date',
+          amount: '80.00',
+          converted: '86.40 USD',
+        })
+      mockedFetchFxRates.mockResolvedValue({
+        reporting_currency: 'USD',
+        fetched: [
+          {
+            pair: 'INR/USD',
+            rate: '0.0115',
+            date: '2026-01-10',
+            source: 'frankfurter',
+          },
+          {
+            pair: 'EUR/USD',
+            rate: '1.08',
+            date: '2026-03-05',
+            source: 'frankfurter',
+          },
+        ],
+      })
+
+      renderPage()
+      await screen.findByText('Souvenir')
+      await screen.findByText('Hotel')
+      // Both rows start out flagged (stale amount for INR, explicit
+      // "Not converted" for EUR).
+      expect(await screen.findByText('stale')).toBeInTheDocument()
+      expect(
+        await screen.findByText(/Not converted — No EUR\/USD/),
+      ).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: /Backfill rates/ }))
+      // Currency multi-select — the key difference from #139's own
+      // popover, which never needs one since it always targets "today".
+      expect(await screen.findByRole('checkbox', { name: 'INR' })).toBeChecked()
+      expect(screen.getByRole('checkbox', { name: 'EUR' })).toBeChecked()
+      // And a date range — #139's popover never has one at all. The
+      // trigger buttons' *accessible name* is their associated <label>
+      // ("From"/"To", same as the filter form's own date pickers above),
+      // not the picked date — that's rendered as the button's visible
+      // text instead (date-fns' 'PP' format, e.g. "Jan 10, 2026").
+      expect(screen.getByText(/10, 2026/)).toBeInTheDocument()
+      expect(screen.getByText(/5, 2026/)).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Backfill' }))
+
+      expect(mockedFetchFxRates).toHaveBeenCalledWith(['INR', 'EUR'], {
+        from: '2026-01-10',
+        to: '2026-03-05',
+      })
+      // Re-read the visible page (matching #139's own re-read-after-
+      // refresh): the previously stale/unconverted rows resolve in place
+      // rather than needing a manual reload.
+      await waitFor(() => {
+        expect(screen.queryByText('stale')).not.toBeInTheDocument()
+        expect(screen.queryByText(/Not converted/)).not.toBeInTheDocument()
+      })
+    })
   })
 })
