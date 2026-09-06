@@ -138,6 +138,25 @@ Every agent prompt (fork or fresh) should include:
 - Don't push or open a PR unless told to - the orchestrator handles
   integration once it's seen the result (this is what catches
   cross-agent conflicts before they hit GitHub).
+- **If the slice touches a reachable UI surface (web, CLI output
+  formatting), use claude-in-chrome (or the running binary, for CLI) to
+  click through the actual feature and capture one or two screenshots
+  before reporting done** - this is CLAUDE.md's existing "capture minimal
+  artefacts for PR messages" rule, made explicit here because it's been
+  missed in practice (a batch of three parallel web-UI agents shipped
+  none). Save the image(s) to the worktree's scratch space and state
+  their file paths plainly in the final report - don't just say
+  "manually verified," show it. The orchestrator can't take a screenshot
+  after the fact from a worktree that's already been torn down.
+
+Screenshots have no clean headless path into a GitHub PR body (`gh pr
+create` can't attach local files - only the web UI's drag-and-drop
+upload can) - so the orchestrator's job at integration time is to
+`Read` each screenshot the agent reported and show it inline in the chat
+for the user's own review, which is the one channel this actually
+works over. Note in the PR's Artefacts section that screenshots were
+shared in the session rather than silently deleting that section for a
+UI-touching PR.
 
 ## 5. Integrate - don't just trust the report
 
@@ -255,6 +274,20 @@ just going to get lost. Concretely:
   either. Open an issue.
 - **A natural follow-up revealed by finishing something** - open an issue
   for it rather than letting the current PR grow to cover it.
+- **A dependency's own "Out of scope" section points at a follow-up that
+  was never actually created.** This has happened at least once for real:
+  #133 (`RecordTransfer`) explicitly deferred "CLI/API request shape
+  changes to actually send two different currencies on a transfer" to "a
+  separate surface issue" - but when #136/#137 (the CLI/API surface
+  issues) were scoped afterward, that thread wasn't picked up, and their
+  scopes just said "drop the cross-currency rejection." The gap sat
+  silent for three more issues until a web-UI slice (#138) tripped over
+  it. When step 1 reads a candidate issue's body, also skim the "Out of
+  scope" sections of the issues it depends on for language like "separate
+  issue," "future change," or "not this issue" - then check
+  `gh issue list --state all` for whether that separate issue actually
+  exists. If it doesn't, that's exactly this pattern: open it now, before
+  picking up the issue that assumed it was already tracked.
 - **A deferred/future idea surfaces** that isn't in scope for the current
   milestone. Open it with the appropriate deferred/future label, not just
   a mention in conversation or a docs/ paragraph.
