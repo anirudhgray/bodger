@@ -126,6 +126,23 @@ func TestLoad_Precedence(t *testing.T) {
 			env:  map[string]string{EnvHTTPBindAddr: "[::1]:8080"},
 			want: Config{DefaultCurrency: Defaults.DefaultCurrency, UserTimezone: Defaults.UserTimezone, DBPath: Defaults.DBPath, HTTPBindAddr: "[::1]:8080", LogLevel: Defaults.LogLevel},
 		},
+		{
+			name: "fx provider base url override wins over instance default",
+			env:  map[string]string{EnvFxProviderBaseURL: "https://fx.example.internal"},
+			want: Config{
+				DefaultCurrency:   Defaults.DefaultCurrency,
+				UserTimezone:      Defaults.UserTimezone,
+				DBPath:            Defaults.DBPath,
+				HTTPBindAddr:      Defaults.HTTPBindAddr,
+				LogLevel:          Defaults.LogLevel,
+				FxProviderBaseURL: "https://fx.example.internal",
+			},
+		},
+		{
+			name: "an empty fx provider base url override does not clobber the instance default",
+			env:  map[string]string{EnvFxProviderBaseURL: ""},
+			want: Defaults,
+		},
 	}
 
 	for _, tt := range tests {
@@ -192,12 +209,20 @@ func TestLoad_ReadsRealEnvironment(t *testing.T) {
 	t.Setenv(EnvDBPath, "/tmp/bodger-test.db")
 	t.Setenv(EnvHTTPBindAddr, "127.0.0.1:9092")
 	t.Setenv(EnvLogLevel, "debug")
+	t.Setenv(EnvFxProviderBaseURL, "https://fx.example.internal")
 
 	got, err := Load()
 	if err != nil {
 		t.Fatalf("Load() unexpected error: %v", err)
 	}
-	want := Config{DefaultCurrency: "JPY", UserTimezone: "Asia/Tokyo", DBPath: "/tmp/bodger-test.db", HTTPBindAddr: "127.0.0.1:9092", LogLevel: "debug"}
+	want := Config{
+		DefaultCurrency:   "JPY",
+		UserTimezone:      "Asia/Tokyo",
+		DBPath:            "/tmp/bodger-test.db",
+		HTTPBindAddr:      "127.0.0.1:9092",
+		LogLevel:          "debug",
+		FxProviderBaseURL: "https://fx.example.internal",
+	}
 	if got != want {
 		t.Errorf("Load() = %+v, want %+v", got, want)
 	}

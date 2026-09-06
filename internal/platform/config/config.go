@@ -56,6 +56,13 @@ type Config struct {
 	// or "debug" default wouldn't change; revisit if either surface grows
 	// its own Info/Debug logging that should differ by default.
 	LogLevel string
+	// FxProviderBaseURL is the base URL of the FX rate provider FetchFxRates
+	// (issue #135) fetches from -- ADR-0012's `fx.provider_base_url`.
+	// Empty (the default) means the provider adapter's own default
+	// (internal/adapters/fxprovider.DefaultBaseURL, the public Frankfurter
+	// instance); a self-hoster running their own instance sets this
+	// instead of a code change.
+	FxProviderBaseURL string
 }
 
 // Defaults are the values bodger ships with when the operator sets no
@@ -82,6 +89,8 @@ const (
 	EnvHTTPBindAddr = "BODGER_HTTP_BIND_ADDR"
 	// EnvLogLevel, when set, overrides Defaults.LogLevel.
 	EnvLogLevel = "BODGER_LOG_LEVEL"
+	// EnvFxProviderBaseURL, when set, overrides Defaults.FxProviderBaseURL.
+	EnvFxProviderBaseURL = "BODGER_FX_PROVIDER_BASE_URL"
 )
 
 // currencyPattern is a structural check only — three uppercase ASCII
@@ -134,6 +143,9 @@ func load(lookup lookupFunc) (Config, error) {
 	}
 	if v, ok := lookup(EnvLogLevel); ok && v != "" {
 		cfg.LogLevel = v
+	}
+	if v, ok := lookup(EnvFxProviderBaseURL); ok && v != "" {
+		cfg.FxProviderBaseURL = v
 	}
 
 	if !currencyPattern.MatchString(cfg.DefaultCurrency) {

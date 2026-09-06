@@ -60,6 +60,12 @@ func New(baseURL string, client *http.Client) *Frankfurter {
 
 var _ ports.FxRateProvider = (*Frankfurter)(nil)
 
+// Name implements ports.FxRateProvider. "frankfurter" is stored verbatim
+// as fx_rates.source by whatever fetched the row (issue #135's
+// FetchFxRates) -- it names ADR-0012's chosen provider, not this adapter's
+// Go package.
+func (f *Frankfurter) Name() string { return "frankfurter" }
+
 // rateRow is one row of a Frankfurter response. Rate is a json.Number, not
 // a float64: ADR-0012 requires decoding the wire's JSON number as text and
 // building the decimal from that text, never round-tripping through

@@ -18,6 +18,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/anirudhgray/bodger/internal/adapters/fxprovider"
 	"github.com/anirudhgray/bodger/internal/adapters/sqlite"
 	"github.com/anirudhgray/bodger/internal/app"
 	"github.com/anirudhgray/bodger/internal/platform/clock"
@@ -158,6 +159,7 @@ func bootstrap(ctx context.Context) (*app.Service, func() error, error) {
 		sqlite.NewSessionRepository(db),
 		sqlite.NewAPITokenRepository(db),
 		sqlite.NewFxRateRepository(db),
+		fxprovider.New(cfg.FxProviderBaseURL, nil),
 	)
 	if err != nil {
 		_ = db.Close()

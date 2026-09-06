@@ -32,6 +32,7 @@ import (
 	"github.com/getkin/kin-openapi/routers"
 	legacyrouter "github.com/getkin/kin-openapi/routers/legacy"
 
+	"github.com/anirudhgray/bodger/internal/adapters/fxprovider"
 	"github.com/anirudhgray/bodger/internal/adapters/sqlite"
 	"github.com/anirudhgray/bodger/internal/app"
 	"github.com/anirudhgray/bodger/internal/platform/clock"
@@ -136,6 +137,7 @@ func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
 		sqlite.NewTransactionRepository(db), sqlite.NewTagRepository(db),
 		sqlite.NewUserRepository(db), sqlite.NewSessionRepository(db), sqlite.NewAPITokenRepository(db),
 		sqlite.NewFxRateRepository(db),
+		fxprovider.New("", nil),
 	)
 	if err != nil {
 		t.Fatalf("app.NewService: %v", err)

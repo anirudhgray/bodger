@@ -298,9 +298,22 @@ ADR-0004 calls for (`transaction_date`/`current`/`pinned`, each resolving
 its own lookup date rather than defaulting to "today"), and extends
 `AccountBalances` to convert through it — a missing rate for one account's
 currency is reported in the result's `Unconverted` list rather than
-failing the whole query or silently dropping that account. Fetching rates
-from a provider (`FetchFxRates`) and the ad-hoc `ListFxRates` conversion
-endpoint remain open ([#135](https://github.com/anirudhgray/bodger/issues/135)).
+failing the whole query or silently dropping that account.
+[#135](https://github.com/anirudhgray/bodger/issues/135) adds the last two
+app-layer FX use cases: `FetchFxRates`, the one explicit, network-touching,
+store-writing action for FX (defaults to every currency pair
+`FxRateRepository.InUsePairs` reports for the actor, quoted against their
+resolved reporting currency, at the current date; accepts an optional
+base-currency filter and an optional `from`/`to` backfill range that
+delegates to the provider's `FetchRange` once per pair rather than looping
+over dates; every pair is fetched into memory before anything is written,
+then stored in one `StoreBatch` call, so a provider failure partway
+through leaves `fx_rates` untouched rather than partially populated), and
+`ListFxRates`, a pure stored-data-only read — never touching
+`FxProvider` — that is a thin wrapper over `ConvertAmount`, optionally
+converting an amount alongside the resolved rate's own provenance; this is
+what will power every "≈ N as of `<date>`" display, including for a
+transaction amount that hasn't been persisted anywhere yet.
 [#133](https://github.com/anirudhgray/bodger/issues/133) wires that
 domain-level cross-currency support into `RecordTransfer`/`EditTransaction`
 themselves: `buildTransferPostings` no longer rejects a from/to currency
@@ -312,7 +325,10 @@ transaction repository reads and writes `transactions.fx_rate_used`/
 ADR-0004, and read back as the stored value rather than re-derived from the
 postings on every `Get`/`List`. Sending the to-leg's amount independently
 (rather than reusing the from-leg's raw number across both currencies) is
-still a separate, unstarted surface change.
+still a separate, unstarted surface change. Every surface exposing this
+app-layer work
+([#136](https://github.com/anirudhgray/bodger/issues/136)–[#141](https://github.com/anirudhgray/bodger/issues/141),
+[#145](https://github.com/anirudhgray/bodger/issues/145)) remains open.
 
 | Milestone | Status |
 | --- | --- |

@@ -33,7 +33,9 @@ func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
 	clk := clock.NewFrozen(frozenAt)
 	cfg := config.Defaults
 	cfg.UserTimezone = tz
+	accounts := newMemAccounts()
 	categories := newMemCategories()
+	transactions := newMemTransactions(categories)
 	// newMemUsersSeeded only seeds ports.SeededUserID, the identity issue
 	// #55's auth use cases hardcode. Every account/category/transaction
 	// use-case test in this package uses testActorID instead - a distinct,
@@ -43,8 +45,8 @@ func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
 	users := newMemUsersSeeded()
 	users.byID[testActorID] = ports.User{ID: testActorID}
 	svc, err := app.NewService(
-		clk, cfg, idgen.New(), newMemAccounts(), categories, newMemTransactions(categories), newMemTags(),
-		users, newMemSessions(), newMemAPITokens(), newMemFxRates(),
+		clk, cfg, idgen.New(), accounts, categories, transactions, newMemTags(),
+		users, newMemSessions(), newMemAPITokens(), newMemFxRates(accounts, transactions), newMemFxProvider(),
 	)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
