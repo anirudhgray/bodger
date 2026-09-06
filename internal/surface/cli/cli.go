@@ -69,6 +69,7 @@ func Register(root *cobra.Command, factory ServiceFactory) {
 	root.AddCommand(newCategoriesCmd(factory))
 	root.AddCommand(newAuthCmd(factory))
 	root.AddCommand(newFxCmd(factory))
+	root.AddCommand(newConfigCmd(factory))
 }
 
 // jsonRequested reports whether --json was passed anywhere in the command
