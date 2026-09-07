@@ -241,7 +241,22 @@ describe('TransactionDialog (create)', () => {
     // association takes precedence over content in accessible-name
     // computation.
     await user.click(screen.getByRole('button', { name: 'Date' }))
-    await user.click(await screen.findByRole('button', { name: /15th, 2026/ }))
+    await screen.findByRole('button', { name: /15th, 2026/ })
+    // Retries the day-cell click until the popover actually closes
+    // (DatePicker's handleSelect calls setOpen(false) on a successful
+    // pick) — a plain single click here flaked intermittently in CI
+    // (issue #164): the day button exists in the DOM as soon as
+    // Radix's Popover mounts it, but react-day-picker's own autoFocus
+    // effect re-renders the grid shortly after, and a click that lands
+    // in that window can hit a node that's about to be replaced. This
+    // re-queries the button fresh on every retry rather than reusing a
+    // possibly-stale reference.
+    await waitFor(async () => {
+      await user.click(screen.getByRole('button', { name: /15th, 2026/ }))
+      expect(
+        screen.queryByRole('button', { name: /15th, 2026/ }),
+      ).not.toBeInTheDocument()
+    })
 
     fireEvent.change(screen.getByLabelText('Amount'), {
       target: { value: '800' },
