@@ -73,6 +73,8 @@ The application is fully usable with no network. Rates already stored serve ever
 
 Both posting amounts are authoritative (the user knows both), the implied rate is derived and stored on the transaction with `source = 'implied'`, and the legs do not sum to zero. See [ADR-0003](0003-transaction-posting-model.md). The gap between the implied rate and the market rate is a real cost the user paid, and the model shows it rather than smoothing it away.
 
+Because both legs are authoritative, every surface's read model must expose both distinctly rather than picking one and calling it "the" amount (issue #163). A transfer's `amount`/`currency` (or the CLI's equivalent field names) report the *from*-leg, and a sibling `to_amount`/`to_currency` report the *to*-leg — the same names, and the same from/to meaning, that recording or editing a transfer already uses (`RecordTransferCommand.Amount`/`ToAmount`, `EditTransactionCommand.Amount`/`ToAmount`). This isn't a new architectural decision beyond "both legs are authoritative" above; it's what that decision requires once a transfer's read model didn't yet honor it. No new ADR is needed for it — see `internal/surface/http/dto.go`'s `transactionView` doc comment for the field-level detail.
+
 ## Alternatives considered
 
 **Store every amount pre-converted to the reporting currency.** Fast reports, no conversion at query time. Rejected outright: it makes a derived value authoritative ([ADR-0002](0002-authoritative-ledger-and-corrections.md)), and changing the reporting currency would require rewriting the ledger.

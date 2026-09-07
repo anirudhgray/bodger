@@ -458,8 +458,13 @@ func decodeEnvelope(t *testing.T, output string) map[string]any {
 // render them identically (CLI's moveView, HTTP's transactionView), so a
 // divergence here would mean the two surfaces disagree on the actual
 // derived rate, not just on how they format it.
+//
+// "to_amount" and "to_currency" (issue #163) are a transfer's to-leg,
+// alongside "amount"/"currency" for its from-leg — both surfaces derive
+// and render them identically, so a divergence here would mean the two
+// surfaces disagree on which leg is which, not just on formatting.
 var comparableKeys = []string{
-	"date", "amount", "currency",
+	"date", "amount", "currency", "to_amount", "to_currency",
 	"account_id", "category_id", "from_account_id", "to_account_id",
 	"notes", "tags",
 	"rate", "rate_source",

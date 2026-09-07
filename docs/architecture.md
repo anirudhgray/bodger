@@ -453,6 +453,28 @@ screen only ever targets today), and `unconverted` accounts render inline
 with their reason rather than being dropped from view, per ADR-0004's
 mixed-policy-aggregate-forbidden rule.
 
+[#163](https://github.com/anirudhgray/bodger/issues/163) fixed a
+GET/PATCH field-naming mismatch found while wiring #138: `transactionView`
+(both `internal/surface/http/dto.go`'s and `internal/surface/cli`'s own
+copy, plus the CLI's `moveView`) reported a transfer's `amount`/`currency`
+as the *to*-leg's own values, but `editTransactionRequest`/
+`EditTransactionCommand`'s `Amount` field (the same as
+`createTransferRequest.Amount`) is documented and implemented as the
+*from*-leg's amount — so reading a transfer back and resubmitting its own
+`amount` unchanged via PATCH silently reinterpreted the to-leg as a new
+from-leg. Invisible for a same-currency transfer (both legs are
+numerically equal); silently corrupting for a cross-currency one. Fixed by
+renaming, not just adding a field: `amount`/`currency` now report the
+from-leg on every surface (matching the write side's own meaning of those
+names), and a new `to_amount`/`to_currency` reports the to-leg — so
+resubmitting a GET response's `amount`/`to_amount` unchanged is actually a
+no-op. `docs/decisions/0004-multi-currency-and-fx.md`'s "cross-currency
+transfers record both legs" section gained a short note on this (no new
+ADR: it's the existing "both legs are authoritative" decision applied to a
+read model that hadn't yet honored it), and the conformance suite gained a
+GET(or `transactions list`)-then-PATCH round-trip case for both surfaces,
+alongside the existing create-only cross-currency coverage.
+
 Every other surface exposing this app-layer work
 ([#141](https://github.com/anirudhgray/bodger/issues/141),
 [#145](https://github.com/anirudhgray/bodger/issues/145)) remains open.

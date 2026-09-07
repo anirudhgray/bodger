@@ -14,6 +14,14 @@ import (
 // and "to" directly rather than a generic line-items array — see
 // entries.go's entryView doc comment for why (docs/ux-principles.md §2
 // bans "posting" from every user-facing string).
+//
+// amount/currency report the *from*-leg and to_amount/to_currency the
+// *to*-leg (issue #163) — the same split, and the same field names, as
+// internal/surface/cli's own transactionView (used by `transactions
+// list`/`edit`/`delete`) and internal/surface/http/dto.go's
+// transactionView, so a move's amount means the same thing wherever it's
+// read back, and matches what `move`'s own --to-amount flag and
+// `transactions edit --amount`/`--to-amount` expect on the way back in.
 type moveView struct {
 	ID            string   `json:"id"`
 	Type          string   `json:"type"`
@@ -27,6 +35,8 @@ type moveView struct {
 	ToAccountID   string   `json:"to_account_id"`
 	Amount        string   `json:"amount"`
 	Currency      string   `json:"currency"`
+	ToAmount      string   `json:"to_amount,omitempty"`
+	ToCurrency    string   `json:"to_currency,omitempty"`
 	// Rate and RateSource render the transfer's implied exchange rate
 	// (issue #133's cross-currency RecordTransfer, issue #136's CLI
 	// surface for it) — "1 <from currency> = <value> <to currency>" and
@@ -62,11 +72,13 @@ func moveViewFrom(fromLabel, toLabel string, r app.TransactionResult) moveView {
 	for _, p := range r.Transaction.Postings() {
 		if p.Amount().IsNegative() {
 			v.FromAccountID = p.AccountID()
+			v.Amount = p.Amount().Abs().AmountString()
+			v.Currency = p.Currency()
 			continue
 		}
 		v.ToAccountID = p.AccountID()
-		v.Amount = p.Amount().AmountString()
-		v.Currency = p.Currency()
+		v.ToAmount = p.Amount().AmountString()
+		v.ToCurrency = p.Currency()
 	}
 	if rate, source, ok := r.Transaction.FxRate(); ok && !rate.IsIdentity() {
 		v.Rate = fmt.Sprintf("1 %s = %s %s", rate.Base(), rate.Value().String(), rate.Quote())
@@ -77,7 +89,12 @@ func moveViewFrom(fromLabel, toLabel string, r app.TransactionResult) moveView {
 
 func printMove(w io.Writer, v moveView) {
 	_, _ = fmt.Fprintf(w, "Moved %s %s from %s to %s (%s)\n", v.Amount, v.Currency, v.From, v.To, v.Date)
+	// A same-currency move's to-leg is numerically identical to its
+	// from-leg, so this only adds a line worth reading for a genuine
+	// cross-currency move — the same condition its Rate carries (a
+	// same-currency transfer never has one).
 	if v.Rate != "" {
+		_, _ = fmt.Fprintf(w, "received: %s %s\n", v.ToAmount, v.ToCurrency)
 		_, _ = fmt.Fprintf(w, "rate: %s (source: %s)\n", v.Rate, v.RateSource)
 	}
 	_, _ = fmt.Fprintf(w, "id: %s\n", v.ID)

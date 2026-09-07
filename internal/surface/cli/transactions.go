@@ -90,6 +90,17 @@ func transactionKindFor(txnType string) (string, error) {
 // accounts and no category, so account_id/category_id and
 // from_account_id/to_account_id are populated according to the
 // transaction's own type and the pair that doesn't apply is omitted.
+//
+// amount/currency and to_amount/to_currency (issue #163): for a move,
+// amount/currency report the *from*-leg — the same field name, and the
+// same meaning, "transactions edit --amount" already expects back
+// unchanged, so re-running `transactions edit` with the values this
+// struct just reported is actually a no-op instead of silently
+// reinterpreting the *to*-leg as a new from-leg. to_amount/to_currency
+// are the *to*-leg's own amount, the read-side mirror of `transactions
+// edit --to-amount`. For a spend or receive, amount/currency are that
+// entry's own amount, and to_amount/to_currency are simply empty. Mirrors
+// internal/surface/http/dto.go's transactionView field for field.
 type transactionView struct {
 	ID            string   `json:"id"`
 	Type          string   `json:"type"`
@@ -103,6 +114,8 @@ type transactionView struct {
 	ToAccountID   string   `json:"to_account_id,omitempty"`
 	Amount        string   `json:"amount"`
 	Currency      string   `json:"currency"`
+	ToAmount      string   `json:"to_amount,omitempty"`
+	ToCurrency    string   `json:"to_currency,omitempty"`
 }
 
 func transactionViewFrom(r app.TransactionResult) transactionView {
@@ -126,10 +139,12 @@ func transactionViewFrom(r app.TransactionResult) transactionView {
 		switch {
 		case v.Type == entryTypeMove && p.Amount().IsNegative():
 			v.FromAccountID = p.AccountID()
+			v.Amount = p.Amount().Abs().AmountString()
+			v.Currency = p.Currency()
 		case v.Type == entryTypeMove:
 			v.ToAccountID = p.AccountID()
-			v.Amount = p.Amount().AmountString()
-			v.Currency = p.Currency()
+			v.ToAmount = p.Amount().AmountString()
+			v.ToCurrency = p.Currency()
 		default:
 			v.AccountID = p.AccountID()
 			if cid, ok := p.CategoryID(); ok {
@@ -144,6 +159,12 @@ func transactionViewFrom(r app.TransactionResult) transactionView {
 
 func printTransaction(w io.Writer, v transactionView) {
 	_, _ = fmt.Fprintf(w, "%s %s %s on %s — %s\n", entryVerb(v.Type), v.Amount, v.Currency, v.Date, v.Description)
+	// A same-currency move's to-leg is numerically identical to its
+	// from-leg, so this only adds a line worth reading for a genuine
+	// cross-currency move.
+	if v.Type == entryTypeMove && v.ToAmount != "" && (v.ToAmount != v.Amount || v.ToCurrency != v.Currency) {
+		_, _ = fmt.Fprintf(w, "received: %s %s\n", v.ToAmount, v.ToCurrency)
+	}
 	_, _ = fmt.Fprintf(w, "id: %s\n", v.ID)
 }
 
