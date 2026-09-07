@@ -508,13 +508,47 @@ to the amount — Radix's trigger/content only need to share a `Root` via
 context, not be DOM-adjacent, so callers still import `Collapsible`
 directly from `components/ui/collapsible` and drop these two pieces
 wherever their own layout needs them. Each caller also writes its own
-detail sentence rather than the shared component prescribing one — #141's
-transfer rows have no `rate_date`/staleness to report at all (a
+detail sentence rather than the shared component prescribing one —
+transfer rows (below) have no `rate_date`/staleness to report at all (a
 transfer's implied rate is fixed at write time, never stale), so a shared
 sentence shape would have to special-case that anyway. Any future screen
-reusing this pattern (transfer rows in #141, M5's stats screens) should
-reach for these three exports rather than re-deriving the same
+reusing this pattern (M5's stats screens, per issue #145's own note)
+should reach for these three exports rather than re-deriving the same
 Collapsible/`text-destructive` markup a third time.
+
+**Transfer rows (issue #141).** A cross-currency transfer's own implied
+rate — "1 USD = 80.00 INR", ADR-0004's "what this transfer actually
+cost" — reuses the same `RateAmountTrigger`/`RateProvenanceDetail` pair,
+just with a narrower detail sentence (`rate · rate_source`, no
+`rate_date`/stale flag, since the rate is fixed at write time and is
+never reconciled against a provider rate for the day). `TransactionsList`
+also renders the to-leg's own amount next to the from-leg's
+("100.00 USD → 8000.00 INR") once there's a rate to explain the
+relationship between them — before this issue, only the from-leg amount
+was shown at all. A same-currency transfer gets neither: same single
+amount as before, no trigger.
+
+When the reporting currency matches *neither* leg's own currency, each
+leg also gets its own ordinary reporting-currency equivalent — e.g. an
+INR→USD transfer viewed with EUR as the reporting currency shows both
+"≈ 92.00 EUR" (for the INR leg) and "≈ 83.20 EUR" (for the USD leg). This
+is a deliberately separate fact from the implied rate above ("roughly
+what this leg is worth in a currency neither leg used" vs. "what the
+transfer actually cost") and is never shown when the reporting currency
+already matches one of the legs — that leg's own amount already *is*
+the reporting-currency figure in that case, and a second, separately-
+fetched "equivalent" would just restate the same number under a
+different name. To keep the two facts from reading as the same kind of
+thing, this hint reuses #138's `useFxConversionHint`/`FxConversionHint`
+(TransactionDialog's own read-only, non-collapsible "≈ N as of D" line
+with an inline narrow refresh) rather than the implied rate's
+Collapsible/trigger chrome — one row per leg, prefixed with that leg's
+own account name, always visible rather than tucked behind a click. It
+also follows #138's shape for refreshing, not #145's: a narrow
+single-currency, single-date (`fetchFxRates([currency], t.date,
+reportingCurrency)`) fetch, never a date-range backfill popover, since a
+transaction-list row only ever has its own one `booked_date` to refresh
+against.
 
 **Refresh popover.** Both the stale flag and the unconverted label share
 one "Refresh rates" affordance, now `components/RateFetchPopover.tsx`

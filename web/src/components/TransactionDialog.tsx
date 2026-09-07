@@ -456,6 +456,18 @@ function TransactionDialogSheet({
     amount,
     date,
   })
+  // Labels the Amount field with its own currency whenever that isn't
+  // obvious from context — the account it's entered against differs from
+  // the reporting currency — covering spend/receive's one account and a
+  // transfer's from-leg alike, since both share this same field. Mirrors
+  // the destination-amount field's own "Amount received ({toCurrency})"
+  // label below, and stays hidden for a single-currency user per
+  // docs/ux-principles.md §4 ("must never meet the currency system at
+  // all") the same way conversionHint above already does.
+  const primaryCurrencyDiffersFromReporting =
+    primaryCurrency !== '' &&
+    reportingCurrency !== '' &&
+    primaryCurrency !== reportingCurrency
 
   // The destination-leg amount field (issue #138's first bullet, unblocked
   // by #159's to_amount support): only shown for a transfer whose two
@@ -673,7 +685,11 @@ function TransactionDialogSheet({
               )}
 
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="td-amount">Amount</Label>
+                <Label htmlFor="td-amount">
+                  Amount
+                  {primaryCurrencyDiffersFromReporting &&
+                    ` (${primaryCurrency})`}
+                </Label>
                 <Input
                   id="td-amount"
                   inputMode="decimal"

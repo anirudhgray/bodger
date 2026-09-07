@@ -157,7 +157,7 @@ describe('TransactionDialog (create)', () => {
     renderAndOpen(onSaved)
     await screen.findByText('HDFC Savings')
 
-    fireEvent.change(screen.getByLabelText('Amount'), {
+    fireEvent.change(screen.getByLabelText(/^Amount( \(\w+\))?$/), {
       target: { value: '800' },
     })
     await pickCategory(user, 'Groceries')
@@ -189,7 +189,7 @@ describe('TransactionDialog (create)', () => {
     renderAndOpen()
     await screen.findByText('HDFC Savings')
 
-    fireEvent.change(screen.getByLabelText('Amount'), {
+    fireEvent.change(screen.getByLabelText(/^Amount( \(\w+\))?$/), {
       target: { value: '800' },
     })
     await pickCategory(user, 'Groceries')
@@ -206,7 +206,7 @@ describe('TransactionDialog (create)', () => {
     fireEvent.click(screen.getByText('Open'))
     await screen.findByText('HDFC Savings')
 
-    expect(screen.getByLabelText('Amount')).toHaveValue('')
+    expect(screen.getByLabelText(/^Amount( \(\w+\))?$/)).toHaveValue('')
     expect(
       screen.getByRole('combobox', { name: 'Category' }),
     ).toHaveTextContent('Choose a category')
@@ -257,7 +257,7 @@ describe('TransactionDialog (create)', () => {
     await user.click(screen.getByRole('button', { name: 'Date' }))
     await user.click(await screen.findByRole('button', { name: /15th, 2026/ }))
 
-    fireEvent.change(screen.getByLabelText('Amount'), {
+    fireEvent.change(screen.getByLabelText(/^Amount( \(\w+\))?$/), {
       target: { value: '800' },
     })
     await pickCategory(user, 'Groceries')
@@ -281,15 +281,15 @@ describe('TransactionDialog (create)', () => {
     renderAndOpen()
     await screen.findByText('HDFC Savings')
 
-    fireEvent.change(screen.getByLabelText('Amount'), {
+    fireEvent.change(screen.getByLabelText(/^Amount( \(\w+\))?$/), {
       target: { value: 'soemthing' },
     })
-    expect(screen.getByLabelText('Amount')).toHaveValue('')
+    expect(screen.getByLabelText(/^Amount( \(\w+\))?$/)).toHaveValue('')
 
-    fireEvent.change(screen.getByLabelText('Amount'), {
+    fireEvent.change(screen.getByLabelText(/^Amount( \(\w+\))?$/), {
       target: { value: '$800' },
     })
-    expect(screen.getByLabelText('Amount')).toHaveValue('800')
+    expect(screen.getByLabelText(/^Amount( \(\w+\))?$/)).toHaveValue('800')
   })
 
   it('switches to a Move form with from/to accounts and no category field', async () => {
@@ -332,7 +332,7 @@ describe('TransactionDialog (create)', () => {
     renderAndOpen()
     await screen.findByText('HDFC Savings')
 
-    fireEvent.change(screen.getByLabelText('Amount'), {
+    fireEvent.change(screen.getByLabelText(/^Amount( \(\w+\))?$/), {
       target: { value: '800' },
     })
     await pickCategory(user, 'Groceries')
@@ -347,7 +347,7 @@ describe('TransactionDialog (create)', () => {
       ),
     )
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Amount')).toHaveValue('800')
+    expect(screen.getByLabelText(/^Amount( \(\w+\))?$/)).toHaveValue('800')
     expect(
       screen.getByRole('combobox', { name: 'Category' }),
     ).toHaveTextContent('Groceries')
@@ -361,7 +361,7 @@ describe('TransactionDialog (create)', () => {
     await screen.findByText('HDFC Savings')
 
     fireEvent.click(screen.getByRole('switch', { name: 'Enter multiple' }))
-    fireEvent.change(screen.getByLabelText('Amount'), {
+    fireEvent.change(screen.getByLabelText(/^Amount( \(\w+\))?$/), {
       target: { value: '800' },
     })
     await pickCategory(user, 'Groceries')
@@ -370,7 +370,7 @@ describe('TransactionDialog (create)', () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(await screen.findByRole('status')).toHaveTextContent('Recorded.')
-    expect(screen.getByLabelText('Amount')).toHaveValue('')
+    expect(screen.getByLabelText(/^Amount( \(\w+\))?$/)).toHaveValue('')
     expect(
       screen.getByRole('combobox', { name: 'Category' }),
     ).toHaveTextContent('Choose a category')
@@ -395,7 +395,7 @@ describe('TransactionDialog (create)', () => {
     renderAndOpen()
     await screen.findByText('HDFC Savings')
 
-    fireEvent.change(screen.getByLabelText('Amount'), {
+    fireEvent.change(screen.getByLabelText(/^Amount( \(\w+\))?$/), {
       target: { value: '15' },
     })
     await user.click(screen.getByRole('combobox', { name: 'Category' }))
@@ -414,7 +414,7 @@ describe('TransactionDialog (create)', () => {
     ).toHaveTextContent('Subscriptions')
     // What was already typed before opening the picker is still there —
     // quick-create doesn't reset or abandon the rest of the transaction.
-    expect(screen.getByLabelText('Amount')).toHaveValue('15')
+    expect(screen.getByLabelText(/^Amount( \(\w+\))?$/)).toHaveValue('15')
 
     fireEvent.click(screen.getByRole('button', { name: 'Record spend' }))
     await waitFor(() =>
@@ -497,7 +497,7 @@ describe('TransactionDialog (foreign-currency conversion hint)', () => {
     })
     screen.getByText('HDFC Savings')
 
-    fireEvent.change(screen.getByLabelText('Amount'), {
+    fireEvent.change(screen.getByLabelText(/^Amount( \(\w+\))?$/), {
       target: { value: '800' },
     })
     await act(async () => {
@@ -506,6 +506,26 @@ describe('TransactionDialog (foreign-currency conversion hint)', () => {
 
     expect(mockedGetFxRate).not.toHaveBeenCalled()
     expect(screen.queryByText(/≈/)).not.toBeInTheDocument()
+    // Regression test, from direct user feedback: the Amount field's own
+    // currency wasn't mentioned anywhere near it for a foreign-currency
+    // account, unlike the destination-amount field's "Amount received
+    // (EUR)" label — but per docs/ux-principles.md §4, a single-currency
+    // user (this case) must still never see it.
+    expect(screen.getByText('Amount')).toBeInTheDocument()
+  })
+
+  it('labels the Amount field with its own currency once it differs from the reporting currency (issue: currency mention gap)', async () => {
+    mockedGetReportingCurrency.mockResolvedValue({
+      currency: 'USD',
+      is_set: true,
+    })
+    renderAndOpen()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    screen.getByText('HDFC Savings')
+
+    expect(screen.getByText('Amount (INR)')).toBeInTheDocument()
   })
 
   it('shows a conversion hint once the account currency differs from the reporting currency', async () => {
@@ -520,7 +540,7 @@ describe('TransactionDialog (foreign-currency conversion hint)', () => {
     })
     screen.getByText('HDFC Savings')
 
-    fireEvent.change(screen.getByLabelText('Amount'), {
+    fireEvent.change(screen.getByLabelText(/^Amount( \(\w+\))?$/), {
       target: { value: '800' },
     })
     await act(async () => {
@@ -556,7 +576,7 @@ describe('TransactionDialog (foreign-currency conversion hint)', () => {
     })
     screen.getByText('HDFC Savings')
 
-    fireEvent.change(screen.getByLabelText('Amount'), {
+    fireEvent.change(screen.getByLabelText(/^Amount( \(\w+\))?$/), {
       target: { value: '800' },
     })
     await act(async () => {
@@ -589,7 +609,7 @@ describe('TransactionDialog (foreign-currency conversion hint)', () => {
     })
     screen.getByText('HDFC Savings')
 
-    fireEvent.change(screen.getByLabelText('Amount'), {
+    fireEvent.change(screen.getByLabelText(/^Amount( \(\w+\))?$/), {
       target: { value: '800' },
     })
     await act(async () => {
@@ -717,7 +737,7 @@ describe('TransactionDialog (cross-currency transfer destination amount)', () =>
     mockedGetFxRate.mockResolvedValue(rate)
     await openMoveWithToAccount(user, 'US Checking')
 
-    fireEvent.change(screen.getByLabelText('Amount'), {
+    fireEvent.change(screen.getByLabelText(/^Amount( \(\w+\))?$/), {
       target: { value: '800' },
     })
     await waitFor(() =>
@@ -731,7 +751,7 @@ describe('TransactionDialog (cross-currency transfer destination amount)', () =>
     fireEvent.change(screen.getByLabelText('Amount received (USD)'), {
       target: { value: '11.00' },
     })
-    fireEvent.change(screen.getByLabelText('Amount'), {
+    fireEvent.change(screen.getByLabelText(/^Amount( \(\w+\))?$/), {
       target: { value: '900' },
     })
     await waitFor(() => expect(mockedGetFxRate).toHaveBeenCalledTimes(2))
@@ -747,7 +767,7 @@ describe('TransactionDialog (cross-currency transfer destination amount)', () =>
     mockedGetFxRate.mockResolvedValue(rate)
     await openMoveWithToAccount(user, 'US Checking')
 
-    fireEvent.change(screen.getByLabelText('Amount'), {
+    fireEvent.change(screen.getByLabelText(/^Amount( \(\w+\))?$/), {
       target: { value: '800' },
     })
     await waitFor(() =>

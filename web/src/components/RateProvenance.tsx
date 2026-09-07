@@ -3,8 +3,8 @@
 // "Balances: rate-provenance detail row" section for why this is a
 // Collapsible, not a tooltip). Extracted here so issue #145's
 // TransactionsList doesn't re-solve the same interaction, and so #141's
-// transfer-row provenance (blocked on this issue landing first) has a
-// ready-made pattern to reuse instead of rediscovering it.
+// transfer-row provenance reuses this same pattern instead of
+// rediscovering it.
 //
 // Deliberately just the trigger button and the detail container, not a
 // bundled Root+Trigger+Content unit: a caller's Collapsible needs to wrap

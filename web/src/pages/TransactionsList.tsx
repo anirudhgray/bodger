@@ -20,6 +20,7 @@ import {
   useTransactionDialog,
   useTransactionSaved,
 } from '@/hooks/use-transaction-dialog'
+import { useFxConversionHint } from '@/hooks/use-fx-conversion-hint'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Collapsible } from '@/components/ui/collapsible'
@@ -33,6 +34,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { DatePicker } from '@/components/ui/date-picker'
+import { FxConversionHint } from '@/components/FxConversionHint'
 import { Label } from '@/components/ui/label'
 import { RateFetchPopover } from '@/components/RateFetchPopover'
 import {
@@ -90,6 +92,53 @@ type RowConversion =
 // reporting currency has nothing to convert.
 function needsConversion(t: Transaction, reportingCurrency: string): boolean {
   return t.type !== 'transfer' && t.currency !== reportingCurrency
+}
+
+// TransferLegReportingHint (issue #141) is one cross-currency transfer
+// leg's own reporting-currency equivalent — "roughly what it's worth in a
+// currency neither leg used," an ordinary transaction_date-policy
+// ConvertAmount read on that leg's own amount, on the transaction's own
+// booked `date`. Deliberately built from #138's useFxConversionHint/
+// FxConversionHint (a plain "≈ N as of D" line with an inline narrow
+// refresh, self-disabling when from===to) rather than #145's
+// Map-of-conversions-plus-backfill-popover shape: a single row only ever
+// needs its own one booked date, never a date range, so there's nothing
+// for a backfill popover to add here. This is a separate fact from the
+// transfer's own implied rate (rendered via RateAmountTrigger/
+// RateProvenanceDetail below) and reused as-is rather than styled to
+// match it, so the two don't read as the same kind of fact: one is fixed
+// at write time (what the transfer actually cost), the other is an
+// ordinary provider-sourced conversion that can be missing, stale, or
+// refreshed.
+function TransferLegReportingHint({
+  label,
+  legCurrency,
+  legAmount,
+  reportingCurrency,
+  date,
+}: {
+  label: string
+  legCurrency: string
+  legAmount: string
+  reportingCurrency: string
+  date: string
+}) {
+  const hint = useFxConversionHint({
+    from: legCurrency,
+    to: reportingCurrency,
+    amount: legAmount,
+    date,
+  })
+  // Idle means the debounce hasn't fired yet (or the hook disabled
+  // itself) — nothing to label until there's actually a state to show,
+  // matching FxConversionHint's own "render nothing while idle" rule.
+  if (hint.state.status === 'idle') return null
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-1.5">
+      <span className="text-muted-foreground shrink-0 text-xs">{label}:</span>
+      <FxConversionHint hint={hint} />
+    </div>
+  )
 }
 
 // kindLabel mirrors internal/surface/cli/transactions.go's
@@ -414,6 +463,13 @@ export function TransactionsList() {
           })
         } else {
           load(filter, false)
+          // A create can have quick-created a brand-new category inline
+          // (TransactionDialog's Combobox) — categoriesByID was built from
+          // the mount-only fetch above and won't have it yet, so nameFor
+          // would fall back to rendering the raw id until a full page
+          // reload happened to re-fetch categories for an unrelated
+          // reason. Refresh it here too, not just transactions.
+          listCategories().then(setCategories)
         }
       },
       [load, filter],
@@ -684,6 +740,27 @@ export function TransactionsList() {
                   : undefined
               const expanded = expandedTxId === t.id
 
+              // Issue #141: a transfer only carries an implied rate/
+              // source when it's actually cross-currency — dto.go's
+              // transactionViewFrom only sets `rate` for that case, so
+              // its presence is what distinguishes a cross-currency
+              // transfer from a same-currency one (which gets no change
+              // per the issue's own scope).
+              const crossCurrencyTransfer =
+                t.type === 'transfer' && Boolean(t.rate)
+              // The reporting-currency hint only applies when neither
+              // leg is already in the reporting currency — if one leg
+              // matches it, that leg's own amount already *is* the
+              // reporting-currency figure (it's what the implied rate
+              // above already relates the other leg to), so a second,
+              // separately-fetched "equivalent" for it would just
+              // restate the same fact under a different name.
+              const showsReportingHint =
+                crossCurrencyTransfer &&
+                reportingCurrency !== null &&
+                reportingCurrency !== t.currency &&
+                reportingCurrency !== t.to_currency
+
               return (
                 <li key={t.id}>
                   <Collapsible
@@ -736,6 +813,20 @@ export function TransactionsList() {
                               ? '−'
                               : ''}
                           {t.amount} {t.currency}
+                          {/* A same-currency transfer's to-leg is
+                              numerically identical to its from-leg (no
+                              change per the issue's own scope), so this
+                              only adds anything worth reading for a
+                              genuine cross-currency move — mirrors
+                              internal/surface/cli/move.go's printMove,
+                              which gates its own "received: ..." line on
+                              the same condition. */}
+                          {crossCurrencyTransfer && (
+                            <>
+                              {' → '}
+                              {t.to_amount} {t.to_currency}
+                            </>
+                          )}
                         </div>
                         <div className="flex gap-2">
                           <Button
@@ -789,6 +880,45 @@ export function TransactionsList() {
                         {' · '}
                         {conv.rate.rate_source}
                         {conv.rate.stale && ' · stale'}
+                      </RateProvenanceDetail>
+                    )}
+                    {/* Issue #141: a cross-currency transfer's implied
+                        rate — "what this transfer actually cost"
+                        (ADR-0004) — always takes precedence and is never
+                        shown alongside or reconciled against a provider
+                        rate for the day, so this reuses the same
+                        trigger/detail shape as the conversion hint above
+                        without any of its staleness/source-of-truth
+                        machinery (t.rate is fixed at write time; there is
+                        no rate_date or "stale" concept for it). */}
+                    {crossCurrencyTransfer && (
+                      <div className="flex justify-end px-4 pb-2 sm:pb-2.5">
+                        <RateAmountTrigger>{t.rate}</RateAmountTrigger>
+                      </div>
+                    )}
+                    {showsReportingHint && reportingCurrency !== null && (
+                      <div className="flex flex-col gap-1 px-4 pb-2 text-xs sm:pb-2.5">
+                        <TransferLegReportingHint
+                          label={nameFor(t.from_account_id, accountsByID)}
+                          legCurrency={t.currency}
+                          legAmount={t.amount}
+                          reportingCurrency={reportingCurrency}
+                          date={t.date}
+                        />
+                        <TransferLegReportingHint
+                          label={nameFor(t.to_account_id, accountsByID)}
+                          legCurrency={t.to_currency ?? ''}
+                          legAmount={t.to_amount ?? ''}
+                          reportingCurrency={reportingCurrency}
+                          date={t.date}
+                        />
+                      </div>
+                    )}
+                    {crossCurrencyTransfer && (
+                      <RateProvenanceDetail>
+                        {t.rate}
+                        {' · '}
+                        {t.rate_source}
                       </RateProvenanceDetail>
                     )}
                   </Collapsible>
