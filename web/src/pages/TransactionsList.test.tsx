@@ -16,6 +16,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TransactionDialogProvider } from '@/components/TransactionDialog'
 import { useTransactionDialog } from '@/hooks/use-transaction-dialog'
 
+// createCategory is called by the Category combobox's quick-create row
+// (issue #106) — mocked separately since it lives in lib/settings, not
+// lib/api, matching TransactionDialog.test.tsx's own setup.
+vi.mock('@/lib/settings', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/settings')>()
+  return {
+    ...actual,
+    createCategory: vi.fn(),
+  }
+})
+
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
   return {
@@ -47,6 +58,7 @@ import {
   type Transaction,
   type TransactionListFilter,
 } from '@/lib/api'
+import { createCategory } from '@/lib/settings'
 import { TransactionsList } from './TransactionsList'
 
 const mockedListTransactions = vi.mocked(listTransactions)
@@ -58,6 +70,7 @@ const mockedRecordOutflow = vi.mocked(recordOutflow)
 const mockedGetReportingCurrency = vi.mocked(getReportingCurrency)
 const mockedGetFxRate = vi.mocked(getFxRate)
 const mockedFetchFxRates = vi.mocked(fetchFxRates)
+const mockedCreateCategory = vi.mocked(createCategory)
 
 // The empty state's "Record a transaction" CTA needs a router context;
 // editing/creating a transaction (both open TransactionDialog) needs
@@ -164,6 +177,7 @@ describe('TransactionsList', () => {
     mockedGetReportingCurrency.mockReset()
     mockedGetFxRate.mockReset()
     mockedFetchFxRates.mockReset()
+    mockedCreateCategory.mockReset()
     // Matching Balances.test.tsx's own default: no reporting currency set,
     // so the per-row conversion machinery (issue #145) stays fully inert
     // unless a test opts in — a single-currency ledger must never meet
@@ -235,6 +249,92 @@ describe('TransactionsList', () => {
     // transaction silently doesn't appear until a manual reload.
     expect(await screen.findByText('Groceries')).toBeInTheDocument()
     expect(mockedListTransactions).toHaveBeenCalledTimes(2)
+  })
+
+  // Regression test, from direct user feedback: creating a transaction
+  // with a brand-new category quick-created inline (TransactionDialog's
+  // Combobox) showed the raw category id in the row instead of its name,
+  // until a full page reload. categoriesByID is built from the mount-only
+  // listCategories() fetch, and useTransactionSaved's create handler
+  // previously only re-fetched transactions, never categories — so the
+  // just-created category's name was never in the map nameFor falls back
+  // from.
+  it('shows a quick-created category by name, not its raw id, without a page reload', async () => {
+    const user = userEvent.setup()
+    mockedListTransactions
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({
+        data: [{ ...groceries, category_id: 'cat-new' }],
+      })
+    const categoriesBeforeCreate = [
+      {
+        id: 'c1',
+        name: 'Food',
+        type: 'expense' as const,
+        sort_order: 0,
+        archived: false,
+      },
+    ]
+    mockedListCategories
+      // TransactionsList's own mount-effect fetch.
+      .mockResolvedValueOnce(categoriesBeforeCreate)
+      // TransactionDialog's own independent fetch when it opens (line
+      // 333) — still before the quick-create, so still Food-only.
+      .mockResolvedValueOnce(categoriesBeforeCreate)
+      // TransactionsList's post-create refresh (this fix).
+      .mockResolvedValueOnce([
+        ...categoriesBeforeCreate,
+        {
+          id: 'cat-new',
+          name: 'Subscriptions',
+          type: 'expense',
+          sort_order: 1,
+          archived: false,
+        },
+      ])
+    mockedCreateCategory.mockResolvedValue({
+      id: 'cat-new',
+      name: 'Subscriptions',
+      type: 'expense',
+      sort_order: 1,
+      archived: false,
+    })
+    mockedRecordOutflow.mockResolvedValue({
+      ...groceries,
+      category_id: 'cat-new',
+    })
+    renderPageWithExternalTrigger()
+
+    await screen.findByText('No transactions yet')
+
+    fireEvent.click(screen.getByText('External add'))
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Add transaction',
+    })
+    fireEvent.change(within(dialog).getByLabelText('Amount'), {
+      target: { value: '15' },
+    })
+    await user.click(within(dialog).getByRole('combobox', { name: 'Category' }))
+    await user.type(
+      screen.getByRole('combobox', { name: /search/i }),
+      'Subscriptions',
+    )
+    await user.click(await screen.findByText('Create "Subscriptions"'))
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Record spend' }),
+    )
+
+    await waitFor(() =>
+      expect(mockedRecordOutflow).toHaveBeenCalledWith(
+        expect.objectContaining({ category: 'cat-new' }),
+      ),
+    )
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    )
+    expect(await screen.findByText('Subscriptions')).toBeInTheDocument()
+    expect(screen.queryByText('cat-new')).not.toBeInTheDocument()
+    expect(mockedListCategories).toHaveBeenCalledTimes(3)
   })
 
   it('renders a transaction row with its account and category', async () => {

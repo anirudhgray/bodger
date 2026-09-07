@@ -417,6 +417,13 @@ export function TransactionsList() {
           })
         } else {
           load(filter, false)
+          // A create can have quick-created a brand-new category inline
+          // (TransactionDialog's Combobox) — categoriesByID was built from
+          // the mount-only fetch above and won't have it yet, so nameFor
+          // would fall back to rendering the raw id until a full page
+          // reload happened to re-fetch categories for an unrelated
+          // reason. Refresh it here too, not just transactions.
+          listCategories().then(setCategories)
         }
       },
       [load, filter],
