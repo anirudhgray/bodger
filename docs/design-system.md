@@ -284,35 +284,47 @@ the tab strip does.
 
 ## Toasts vs. inline messages
 
-Two different places a success/error message can live, and both are
-correct for their own case:
+Two different places a success/error message can live, and which one
+applies is decided by *what kind of thing failed*, not by whether the
+triggering UI happens to still be on screen:
 
-- **Inline, persistent** — form validation tied to a specific field or
-  action whose UI is still on screen: a rejected submit still showing
-  its own form, an invalid amount, a load error blocking a whole page.
-  `docs/ux-principles.md` §6 already governs this content; a toast would
-  disappear and leave the user without the field- or action-level
-  context of *what* failed. TransactionDialog's `submitError`,
-  Settings' per-section `error`, and TransactionsList's `error` all stay
-  inline for exactly this reason.
-- **Toast** — an action's own triggering UI (a dialog, a row) has
-  already closed or is about to, and the result has nowhere left to
-  land: TransactionDialog's create/edit success (the dialog closes
-  immediately), transaction delete, API token revoke, account/category
-  archive success (the row's own controls are what triggered the
-  action, and stay on screen, but there was previously no feedback that
-  anything happened at all — and for delete/revoke/archive specifically,
-  no inline "in progress" affordance either, which is what
-  `toast.promise` below is for).
+- **Inline, persistent — load failures.** Fetching data to populate a
+  page or a section on mount (`listAccounts()`, `listCategories()`,
+  `listTransactions()`, `getBalances()`, `getReportingCurrency()`'s
+  initial fetch, and the equivalent in every settings subpage) shows its
+  failure inline, next to the content that failed to load: `role="alert"`,
+  persistent text, still there until the next successful load replaces
+  it. `docs/ux-principles.md` §6 already governs this content — a toast
+  would disappear and leave the user staring at a blank or stale section
+  with no explanation still on screen. TransactionDialog's `loadError`,
+  every Settings subpage's own list-load error, TransactionsList's
+  `error` (its `listTransactions()`/`listAccounts()`/`listCategories()`
+  path specifically), and Balances'/Currency's own initial-fetch `error`
+  are all this case.
+- **Toast — action failures.** The result of a user-triggered
+  submit/mutation — recording or editing a transaction, deleting one,
+  creating/renaming/archiving/reparenting an account or category,
+  setting the reporting currency, creating or revoking an API token,
+  changing the password, logging in — reports failure via
+  `toast.error(message)`, the same place its success already goes.
+  There's no inline error rendered alongside it; the toast is the sole
+  failure feedback for these. This applies whether or not the
+  triggering UI is still on screen: TransactionDialog's `submitError`
+  (the dialog stays open on failure) and TransactionsList's
+  `handleDelete` (the row stays put on failure) are both actions, so
+  both are toasts now, same as create/edit success and
+  delete/revoke/archive success already were.
 
-Don't wire a toast into a form validation error — those stay inline —
-and don't retrofit every existing inline error into a toast; most are
-correctly inline already. This cuts both ways for a single action, not
-just success vs. failure in general: delete/revoke/archive show a toast
-on *success* (the row's about to disappear, or already has) but stay
-inline on *failure* (the row stays put, so the existing per-section
-`error` state is still the one place that message belongs — showing it
-in both places at once would just be the same sentence twice).
+Don't show both for the same failure — the toast replaces the inline
+message for an action, it doesn't sit alongside it. A page or component
+can still mix the two: TransactionsList's own `error` state is a load
+failure (stays inline) while its `handleDelete` is an action (toast) —
+same screen, two different `error`-shaped things for two different
+reasons, not one state reused for both. This also cuts both ways for a
+single action's own success vs. failure, the same as before:
+delete/revoke/archive show a toast either way now, so `toast.promise`'s
+`error` option (below) is no longer omitted for these — see the next
+section.
 
 ## Toast styling and the loading→success/error pattern
 
@@ -350,28 +362,32 @@ than reimplementing its behavior:
   - **Gotcha:** sonner's `toast.promise` returns a toast id, not the
     promise you passed in (unlike a naive wrapper might) — so it can't
     be `await`ed for its own resolution/rejection. Every call site that
-    still needs the actual result (to update state on success, or
-    `catch` to set an inline error) keeps its own reference to the
+    still needs the actual result (to update state on success, or to
+    know when the mutation has settled) keeps its own reference to the
     promise and awaits that separately, passing the same reference to
     `toast.promise` purely for the toast's side effect:
     ```ts
     const action = doTheThing()
-    toast.promise(action, { loading: '…', success: 'Done.' })
+    toast.promise(action, {
+      loading: '…',
+      success: 'Done.',
+      error: (err) => errorMessage(err),
+    })
     try {
       await action
       // update state on success
-    } catch (err) {
-      setError(...) // the real error handling
+    } catch {
+      // failure is already reported via the `error` option above
     }
     ```
-    `TransactionsList.tsx`'s `handleDelete` and `Settings.tsx`'s
+    `TransactionsList.tsx`'s `handleDelete` and the Settings
+    subpages' (`Accounts.tsx`, `ApiTokens.tsx`, `Categories.tsx`)
     `handleRevoke`/`handleArchive` all follow this shape.
-  - Omit `error` to have the loading toast quietly resolve away on
-    rejection instead of showing one — the right choice whenever the
-    action's own inline error state (per the "Toasts vs. inline
-    messages" section above) is already going to carry that message,
-    so the two don't say the same thing twice. All three call sites
-    above do this.
+  - Give `error` a real value (a string, or a function of the
+    rejection) rather than omitting it — every action failure reports
+    through the toast now (per the "Toasts vs. inline messages" section
+    above), so there's no inline state left for an omitted `error` to
+    avoid duplicating.
 
 ## Combobox and category hierarchy
 
