@@ -15,6 +15,17 @@
 // started listening on a fixed loopback port, isolated from any
 // contributor's real bodger.db by BODGER_DB_PATH pointing at a temp file.
 //
+// The temp directory (and the DB/binary paths inside it) is created here,
+// not in env.ts — a fresh fs.mkdtempSync per run rather than a shared fixed
+// path (issue #116: two concurrent suite runs, e.g. two parallel
+// orchestrate agents in separate git worktrees, otherwise race each
+// other's rmSync+reseed against the same DB file). It lives here rather
+// than in env.ts specifically because env.ts is also imported by every
+// spec file, and Playwright re-executes that import once per worker
+// process it spawns — a module-level mkdtempSync there would leak one
+// extra unused temp dir per worker. This file only ever runs once, in
+// Playwright's main process, so the side effect is safe here.
+//
 // Playwright calls the function this returns as teardown once every test
 // in the run has finished (https://playwright.dev/docs/test-global-setup-teardown),
 // so the server this starts is stopped in the same process that started
@@ -22,18 +33,19 @@
 // hand-off.
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
   E2E_ACCOUNT_NAME,
   E2E_BASE_URL,
-  E2E_BIN_PATH,
   E2E_CATEGORY_NAME,
-  E2E_DB_PATH,
   E2E_OPENING_BALANCE,
   E2E_PASSWORD,
   E2E_PORT,
+  e2eBinPath,
+  e2eDbPath,
 } from './env'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -44,30 +56,29 @@ const HEALTHY_TIMEOUT_MS = 20_000
 const SHUTDOWN_TIMEOUT_MS = 5_000
 
 export default async function globalSetup() {
-  const e2eDir = path.dirname(E2E_DB_PATH)
-  fs.rmSync(e2eDir, { recursive: true, force: true })
-  fs.mkdirSync(e2eDir, { recursive: true })
+  const e2eDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bodger-e2e-'))
+  const dbPath = e2eDbPath(e2eDir)
+  const binPath = e2eBinPath(e2eDir)
 
   console.log('[e2e] building web assets (npm run build)…')
   execFileSync('npm', ['run', 'build'], { cwd: WEB_DIR, stdio: 'inherit' })
 
   console.log('[e2e] building the bodger binary…')
-  execFileSync(
-    'go',
-    ['build', '-trimpath', '-o', E2E_BIN_PATH, './cmd/bodger'],
-    { cwd: REPO_ROOT, stdio: 'inherit' },
-  )
+  execFileSync('go', ['build', '-trimpath', '-o', binPath, './cmd/bodger'], {
+    cwd: REPO_ROOT,
+    stdio: 'inherit',
+  })
 
-  const seedEnv = { ...process.env, BODGER_DB_PATH: E2E_DB_PATH }
+  const seedEnv = { ...process.env, BODGER_DB_PATH: dbPath }
 
   console.log('[e2e] seeding password, account, and category…')
-  execFileSync(E2E_BIN_PATH, ['auth', 'set-password'], {
+  execFileSync(binPath, ['auth', 'set-password'], {
     input: `${E2E_PASSWORD}\n`,
     env: seedEnv,
     stdio: ['pipe', 'inherit', 'inherit'],
   })
   execFileSync(
-    E2E_BIN_PATH,
+    binPath,
     [
       'accounts',
       'add',
@@ -82,16 +93,16 @@ export default async function globalSetup() {
     { env: seedEnv, stdio: ['ignore', 'inherit', 'inherit'] },
   )
   execFileSync(
-    E2E_BIN_PATH,
+    binPath,
     ['categories', 'add', E2E_CATEGORY_NAME, '--type', 'expense'],
     { env: seedEnv, stdio: ['ignore', 'inherit', 'inherit'] },
   )
 
   console.log(`[e2e] starting bodger serve on ${E2E_BASE_URL}…`)
-  const server = spawn(E2E_BIN_PATH, ['serve'], {
+  const server = spawn(binPath, ['serve'], {
     env: {
       ...process.env,
-      BODGER_DB_PATH: E2E_DB_PATH,
+      BODGER_DB_PATH: dbPath,
       BODGER_HTTP_BIND_ADDR: `127.0.0.1:${E2E_PORT}`,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -116,6 +127,7 @@ export default async function globalSetup() {
 
   return async function globalTeardown() {
     await stopServer(server)
+    fs.rmSync(e2eDir, { recursive: true, force: true })
   }
 }
 
