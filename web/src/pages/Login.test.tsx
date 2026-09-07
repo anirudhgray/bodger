@@ -74,7 +74,7 @@ describe('Login', () => {
     expect(mockedLogin).toHaveBeenCalledWith('hunter2')
   })
 
-  it('shows a toast (not inline) and leaves the form usable on failure', async () => {
+  it('shows both a toast and a persistent inline alert, and leaves the form usable, on failure', async () => {
     mockedLogin.mockRejectedValue(
       new ApiError('unauthenticated', 'Incorrect password.'),
     )
@@ -87,11 +87,16 @@ describe('Login', () => {
 
     // Logging in is a user-triggered action (docs/design-system.md's
     // "Toasts vs. inline messages"), so its failure is reported via a
-    // toast, not inline.
+    // toast like any other action — but this is one of the two
+    // deliberate exceptions that also keeps a persistent inline alert,
+    // since a missed toast on a bare auth screen leaves no other trace
+    // of what happened.
     await waitFor(() =>
       expect(mockedToastError).toHaveBeenCalledWith('Incorrect password.'),
     )
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Incorrect password.',
+    )
     expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled()
   })
 })

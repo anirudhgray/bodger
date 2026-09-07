@@ -76,15 +76,20 @@ describe('PasswordSettings', () => {
 
     // Changing the password is a user-triggered action (docs/design-
     // system.md's "Toasts vs. inline messages"), so even this
-    // client-side mismatch check reports via a toast, not inline.
+    // client-side mismatch check reports via a toast like any other
+    // action — but paired with a persistent inline alert too, one of the
+    // two deliberate exceptions (with Login) that keep both, since this
+    // is an auth-credential screen.
     await waitFor(() =>
       expect(mockedToastError).toHaveBeenCalledWith('Passwords didn’t match.'),
     )
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Passwords didn’t match.',
+    )
     expect(mockedChangePassword).not.toHaveBeenCalled()
   })
 
-  it('shows a toast (not inline) on a failed password change', async () => {
+  it('shows both a toast and a persistent inline alert on a failed password change', async () => {
     mockedChangePassword.mockRejectedValue(
       new ApiError(
         'invalid_input',
@@ -106,6 +111,8 @@ describe('PasswordSettings', () => {
         'A password must be at least 8 characters.',
       ),
     )
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'A password must be at least 8 characters.',
+    )
   })
 })

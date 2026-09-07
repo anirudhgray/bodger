@@ -5,7 +5,7 @@ the component primitives built on them. Established for
 [M3 · Rivendell](architecture.md#8-milestones) (issue #100), replacing the
 all-neutral shadcn install defaults `web/`'s scaffold (#69) shipped with.
 
-This document covers *look*. For *behavior and words* — vocabulary,
+This document covers _look_. For _behavior and words_ — vocabulary,
 fast-entry rules, progressive disclosure, error phrasing — see
 [`ux-principles.md`](ux-principles.md), which every surface (not just the
 web UI) is held to.
@@ -39,33 +39,33 @@ Tailwind color utility (`bg-primary`, `text-muted-foreground`, …) via the
 `@theme inline` block. Values below are light mode; `.dark` overrides every
 one.
 
-| Token | Light | Usage |
-| --- | --- | --- |
-| `background` / `foreground` | `oklch(0.99 0.002 240)` / `oklch(0.17 0.006 240)` | Page canvas and default text |
-| `card` / `card-foreground` | `oklch(1 0.001 240)` | Cards, the transaction-entry panel |
-| `popover` / `popover-foreground` | same as `card` | Menus, popovers, the date picker |
-| `primary` / `primary-foreground` | `oklch(0.32 0.05 155)` | The one CTA per screen ("Record spend") |
-| `secondary` / `secondary-foreground` | `oklch(0.95 0.004 240)` | Low-emphasis buttons, the active-nav-item background |
-| `muted` / `muted-foreground` | `oklch(0.96 0.004 240)` / `oklch(0.5 0.008 240)` | Placeholder text, disabled state, subtle backgrounds |
-| `accent` / `accent-foreground` | `oklch(0.96 0.004 240)` | Generic hover background (menu items, etc.) — **not** the brand accent; an unfortunate shadcn naming collision, kept for compatibility with generated primitives |
-| `success` / `success-foreground` | `oklch(0.42 0.1 155)` | Positive confirmation text only ("Recorded.") |
-| `destructive` | `oklch(0.577 0.245 27.325)` | Errors, destructive actions — unchanged from the original scaffold |
-| `border` / `input` | `oklch(0.9 0.006 240)` | Hairlines, input borders |
-| `ring` | `oklch(0.32 0.05 155)` | Focus ring — equals `primary` |
-| `sidebar`, `sidebar-foreground`, `sidebar-accent`, `sidebar-accent-foreground`, `sidebar-border`, `sidebar-ring` | see `index.css` | The sidebar's own slightly-distinct surface, per shadcn's `sidebar.tsx` |
+| Token                                                                                                            | Light                                             | Usage                                                                                                                                                            |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `background` / `foreground`                                                                                      | `oklch(0.99 0.002 240)` / `oklch(0.17 0.006 240)` | Page canvas and default text                                                                                                                                     |
+| `card` / `card-foreground`                                                                                       | `oklch(1 0.001 240)`                              | Cards, the transaction-entry panel                                                                                                                               |
+| `popover` / `popover-foreground`                                                                                 | same as `card`                                    | Menus, popovers, the date picker                                                                                                                                 |
+| `primary` / `primary-foreground`                                                                                 | `oklch(0.32 0.05 155)`                            | The one CTA per screen ("Record spend")                                                                                                                          |
+| `secondary` / `secondary-foreground`                                                                             | `oklch(0.95 0.004 240)`                           | Low-emphasis buttons, the active-nav-item background                                                                                                             |
+| `muted` / `muted-foreground`                                                                                     | `oklch(0.96 0.004 240)` / `oklch(0.5 0.008 240)`  | Placeholder text, disabled state, subtle backgrounds                                                                                                             |
+| `accent` / `accent-foreground`                                                                                   | `oklch(0.96 0.004 240)`                           | Generic hover background (menu items, etc.) — **not** the brand accent; an unfortunate shadcn naming collision, kept for compatibility with generated primitives |
+| `success` / `success-foreground`                                                                                 | `oklch(0.42 0.1 155)`                             | Positive confirmation text only ("Recorded.")                                                                                                                    |
+| `destructive`                                                                                                    | `oklch(0.577 0.245 27.325)`                       | Errors, destructive actions — unchanged from the original scaffold                                                                                               |
+| `border` / `input`                                                                                               | `oklch(0.9 0.006 240)`                            | Hairlines, input borders                                                                                                                                         |
+| `ring`                                                                                                           | `oklch(0.32 0.05 155)`                            | Focus ring — equals `primary`                                                                                                                                    |
+| `sidebar`, `sidebar-foreground`, `sidebar-accent`, `sidebar-accent-foreground`, `sidebar-border`, `sidebar-ring` | see `index.css`                                   | The sidebar's own slightly-distinct surface, per shadcn's `sidebar.tsx`                                                                                          |
 
 ## Type scale
 
 Geist Variable (`@fontsource-variable/geist`), weights 400/500/600.
 
-| Token | Size / line-height | Weight | Used for |
-| --- | --- | --- | --- |
-| `text-xs` | 12 / 16 | 400 | Helper text |
-| `text-sm` | 14 / 20 | 400 | Body, labels |
-| `text-sm` medium | 14 / 20 | 500 | List rows, nav items |
-| `text-base` | 16 / 24 | 400 | Form controls |
-| `text-xl` | 20 / 28 | 600, tracking -0.01em | Section headings |
-| `text-2xl` | 24 / 32 | 600, tracking -0.01em | Page headings, amounts |
+| Token            | Size / line-height | Weight                | Used for               |
+| ---------------- | ------------------ | --------------------- | ---------------------- |
+| `text-xs`        | 12 / 16            | 400                   | Helper text            |
+| `text-sm`        | 14 / 20            | 400                   | Body, labels           |
+| `text-sm` medium | 14 / 20            | 500                   | List rows, nav items   |
+| `text-base`      | 16 / 24            | 400                   | Form controls          |
+| `text-xl`        | 20 / 28            | 600, tracking -0.01em | Section headings       |
+| `text-2xl`       | 24 / 32            | 600, tracking -0.01em | Page headings, amounts |
 
 ## Spacing
 
@@ -81,12 +81,12 @@ Unchanged from the original scaffold (`--radius: 0.625rem`, i.e. 10px):
 
 ## Elevation
 
-| Level | CSS | Usage |
-| --- | --- | --- |
-| Flat | none | Nav, table rows, in-page dividers |
-| `shadow-xs` | `0 1px 2px 0 rgb(0 0 0 / 0.05)` | Inputs, buttons |
-| `shadow-sm` (card) | `0 1px 3px 0 rgb(0 0 0 / .06), 0 1px 2px -1px rgb(0 0 0 / .06)` | Cards, grouped lists, the entry form panel |
-| `shadow-sm` (overlay) | `0 1px 3px 0 rgb(0 0 0 / .1), 0 1px 2px -1px rgb(0 0 0 / .1)` | Menus, popovers |
+| Level                 | CSS                                                             | Usage                                      |
+| --------------------- | --------------------------------------------------------------- | ------------------------------------------ |
+| Flat                  | none                                                            | Nav, table rows, in-page dividers          |
+| `shadow-xs`           | `0 1px 2px 0 rgb(0 0 0 / 0.05)`                                 | Inputs, buttons                            |
+| `shadow-sm` (card)    | `0 1px 3px 0 rgb(0 0 0 / .06), 0 1px 2px -1px rgb(0 0 0 / .06)` | Cards, grouped lists, the entry form panel |
+| `shadow-sm` (overlay) | `0 1px 3px 0 rgb(0 0 0 / .1), 0 1px 2px -1px rgb(0 0 0 / .1)`   | Menus, popovers                            |
 
 ## Dark mode
 
@@ -134,10 +134,10 @@ disappeared before keeping it, and prefer fixing a real bug via a
 value-exact.** It compiles `data-active:` to plain `[data-active]`, so it
 matches an element whether the value is `"true"` or `"false"` — and React
 renders a boolean `data-*` prop as the literal string `"false"` rather
-than omitting the attribute, so it's *always* present. `sidebar.tsx`'s
+than omitting the attribute, so it's _always_ present. `sidebar.tsx`'s
 `data-active:*` (the current-nav-item style) hits this directly: every
 item ends up "active" without an exact-value override. The same shorthand
-form also appears in the *upstream* registry's current `sheet.tsx` as
+form also appears in the _upstream_ registry's current `sheet.tsx` as
 `data-open:`/`data-closed:`, which never matches anything at all (Radix
 sets `data-state="open"|"closed"`, not a literal `data-open` attribute) —
 confirmed by pulling it via `--overwrite`, which silently dropped the
@@ -200,7 +200,7 @@ field and TransactionsList's from/to filters). The native
 it with a Combobox (below) for exactly the three category pickers that
 needed hierarchy display and search; a follow-up pass then rebuilt
 `components/ui/select.tsx` itself on Radix (`SelectTrigger`/
-`SelectContent`/`SelectItem`, not a Combobox) and moved every *other*
+`SelectContent`/`SelectItem`, not a Combobox) and moved every _other_
 `<select>` in the app onto it — see "Select: Radix, not native" below
 for why the plain native trigger wasn't good enough on its own.
 `dialog`/`alert-dialog` and `dropdown-menu` are still not wired into
@@ -212,7 +212,7 @@ keyboard-shortcut UI in the app to hang it on.
 
 **Select: Radix, not native.** `components/ui/select.tsx` was
 originally a plain native `<select>` styled to match `Input` — fine for
-its closed trigger, but its *open* dropdown was unstyled native
+its closed trigger, but its _open_ dropdown was unstyled native
 OS/browser chrome, the one form control left that didn't respect the
 app's own light/dark theme. It's now a themed Radix `Select`
 (`SelectTrigger`/`SelectContent`/`SelectItem`/`SelectValue`, following
@@ -285,7 +285,7 @@ the tab strip does.
 ## Toasts vs. inline messages
 
 Two different places a success/error message can live, and which one
-applies is decided by *what kind of thing failed*, not by whether the
+applies is decided by _what kind of thing failed_, not by whether the
 triggering UI happens to still be on screen:
 
 - **Inline, persistent — load failures.** Fetching data to populate a
@@ -304,20 +304,34 @@ triggering UI happens to still be on screen:
 - **Toast — action failures.** The result of a user-triggered
   submit/mutation — recording or editing a transaction, deleting one,
   creating/renaming/archiving/reparenting an account or category,
-  setting the reporting currency, creating or revoking an API token,
-  changing the password, logging in — reports failure via
-  `toast.error(message)`, the same place its success already goes.
-  There's no inline error rendered alongside it; the toast is the sole
-  failure feedback for these. This applies whether or not the
-  triggering UI is still on screen: TransactionDialog's `submitError`
-  (the dialog stays open on failure) and TransactionsList's
+  setting the reporting currency, creating or revoking an API token —
+  reports failure via `toast.error(message)`, the same place its
+  success already goes. There's no inline error rendered alongside it;
+  the toast is the sole failure feedback for these. This applies
+  whether or not the triggering UI is still on screen: TransactionDialog's
+  `submitError` (the dialog stays open on failure) and TransactionsList's
   `handleDelete` (the row stays put on failure) are both actions, so
   both are toasts now, same as create/edit success and
   delete/revoke/archive success already were.
+- **Toast + inline, persistent — credential actions.** Logging in and
+  changing the password are actions too, so both still toast on
+  failure — but paired with a persistent inline alert as well
+  (`Login.tsx`, `settings/Password.tsx`), unlike every other action
+  above. A toast a user is slow to notice, or steps away from, leaves no
+  trace once it auto-dismisses; for an ordinary CRUD action that's fine
+  because the surrounding UI (a row still present, a dialog still open)
+  already carries the context of what was being attempted, but a bare
+  login/password screen has no such standing state to fall back on —
+  losing the message here means losing the only explanation for why
+  nothing happened.
 
-Don't show both for the same failure — the toast replaces the inline
-message for an action, it doesn't sit alongside it. A page or component
-can still mix the two: TransactionsList's own `error` state is a load
+Don't show both for an ordinary action failure — the toast replaces the
+inline message there, it doesn't sit alongside it. Login and password
+change are the deliberate exception (above), not a precedent to extend
+case-by-case; a new action needing this treatment should have as
+concrete a justification as "there's no other visible state that
+explains the failure." A page or component can still mix load-inline
+and action-toast: TransactionsList's own `error` state is a load
 failure (stays inline) while its `handleDelete` is an action (toast) —
 same screen, two different `error`-shaped things for two different
 reasons, not one state reused for both. This also cuts both ways for a
@@ -334,7 +348,7 @@ apply only this project's specific theme tokens and quirks on top —
 don't invent a different visual language component-by-component. A
 first cut of this primitive violated that rule twice over: it was
 hand-built directly against `@radix-ui/react-toast` (deprecated
-upstream in favor of sonner) *and* tinted the entire card
+upstream in favor of sonner) _and_ tinted the entire card
 (`bg-success/10`, full green text) for `success`/`destructive` instead
 of following shadcn/sonner's own neutral-card-plus-icon look. Both are
 fixed by using **sonner** (`components/ui/sonner.tsx`) as-is rather
@@ -367,14 +381,14 @@ than reimplementing its behavior:
     promise and awaits that separately, passing the same reference to
     `toast.promise` purely for the toast's side effect:
     ```ts
-    const action = doTheThing()
+    const action = doTheThing();
     toast.promise(action, {
-      loading: '…',
-      success: 'Done.',
+      loading: "…",
+      success: "Done.",
       error: (err) => errorMessage(err),
-    })
+    });
     try {
-      await action
+      await action;
       // update state on success
     } catch {
       // failure is already reported via the `error` option above
@@ -433,7 +447,7 @@ primitive:
 
 **Where it's wired in, and why not everywhere:**
 
-- **TransactionDialog's Category field** — hierarchy display *and*
+- **TransactionDialog's Category field** — hierarchy display _and_
   quick-create (below).
 - **TransactionsList's category filter** and **Settings' own "Parent"
   field** (`pages/settings/Categories.tsx`) — hierarchy display only.
@@ -446,7 +460,7 @@ primitive:
   dropdown** use the plain (non-Combobox) `Select` instead — short,
   flat, two-or-few option lists with no hierarchy and no search need,
   so the lighter primitive is enough; see "Select: Radix, not native"
-  above for why they moved off the *native* `<select>` even so.
+  above for why they moved off the _native_ `<select>` even so.
 
 **Quick-create**, from the Category combobox only: typing text that
 matches no existing category's name (case-insensitively) shows an inline
@@ -502,7 +516,7 @@ than living only in `Balances.tsx`, once a second screen
 foreign-currency transaction row's own reporting-currency equivalent.
 Deliberately just the trigger button and the detail container, not a
 bundled `Collapsible` root: each caller's own `<li>` needs the
-`Collapsible` to wrap its *entire* row (so the expanded detail lands
+`Collapsible` to wrap its _entire_ row (so the expanded detail lands
 full-width below it), while the trigger sits nested inside that row next
 to the amount — Radix's trigger/content only need to share a `Root` via
 context, not be DOM-adjacent, so callers still import `Collapsible`
@@ -528,14 +542,14 @@ relationship between them — before this issue, only the from-leg amount
 was shown at all. A same-currency transfer gets neither: same single
 amount as before, no trigger.
 
-When the reporting currency matches *neither* leg's own currency, each
+When the reporting currency matches _neither_ leg's own currency, each
 leg also gets its own ordinary reporting-currency equivalent — e.g. an
 INR→USD transfer viewed with EUR as the reporting currency shows both
 "≈ 92.00 EUR" (for the INR leg) and "≈ 83.20 EUR" (for the USD leg). This
 is a deliberately separate fact from the implied rate above ("roughly
 what this leg is worth in a currency neither leg used" vs. "what the
 transfer actually cost") and is never shown when the reporting currency
-already matches one of the legs — that leg's own amount already *is*
+already matches one of the legs — that leg's own amount already _is_
 the reporting-currency figure in that case, and a second, separately-
 fetched "equivalent" would just restate the same number under a
 different name. To keep the two facts from reading as the same kind of
@@ -568,7 +582,7 @@ Balances passes no `dateRange` and always fetches at today's date (the
 TransactionsList (issue #145) is the screen that actually needs the
 `from`/`to` range this component supports: a `transaction_date`-policy
 list spans many distinct historical dates, so its "Backfill rates"
-popover adds a currency multi-select *and* a date range, defaulting both
+popover adds a currency multi-select _and_ a date range, defaulting both
 to the span of currently-stale/unconverted rows' own booked dates. After
 a successful backfill, TransactionsList drops the cached conversion for
 every row in one of the backfilled currencies so the per-row lookup runs
@@ -582,7 +596,7 @@ component rather than re-deriving the checkbox-list-plus-range shape.
 
 The same underlying value can read differently depending on where it
 appears, and both are correct for their own context — but each context's
-render must come from the *same* underlying label, not a second
+render must come from the _same_ underlying label, not a second
 hand-written copy:
 
 - **A discrete list of choices** — a `<select>` option, a filter, a
@@ -601,7 +615,7 @@ than writing a new literal string that can silently drift from the
 others. A value that needs real word substitution, not just
 capitalization (`credit_card` → "Credit card"), still gets its own
 mapping function (`accountKindLabel`, `categoryKindLabel` in
-`Settings.tsx`), but that function is the *only* place that value's
+`Settings.tsx`), but that function is the _only_ place that value's
 display text is written.
 
 ## Adding a color
@@ -609,5 +623,5 @@ display text is written.
 Never invent a color outside this system. A new accent hue: same
 chroma and lightness as the existing one, only the hue changes. A new
 neutral: same near-zero chroma, same hue (240) as the rest of the gray
-scale. If neither fits, that's a sign the need is a new *semantic*
+scale. If neither fits, that's a sign the need is a new _semantic_
 token (like `success` was), not a one-off hex value.
