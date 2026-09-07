@@ -17,7 +17,11 @@ export function CurrencySettings() {
   const [currency, setCurrency] = useState('')
   const [isSet, setIsSet] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  // The initial getReportingCurrency() fetch is a load failure, so it
+  // stays inline (docs/design-system.md's "Toasts vs. inline messages")
+  // — distinct from the save action's own failure below, which reports
+  // via a toast instead.
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -29,7 +33,7 @@ export function CurrencySettings() {
         setIsSet(result.is_set)
       })
       .catch((err) => {
-        if (!cancelled) setError(errorMessage(err))
+        if (!cancelled) setLoadError(errorMessage(err))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -41,15 +45,11 @@ export function CurrencySettings() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setError(null)
     const value = currency.trim().toUpperCase()
     setSubmitting(true)
-    // toast on success only, per docs/design-system.md's "Toasts vs.
-    // inline messages": saving this field otherwise has no visible
-    // effect on screen (the input already shows what was typed), so —
-    // like Accounts.tsx's archive — a toast is the only feedback that
-    // anything happened. Failure still surfaces inline (below), so
-    // `error` is omitted here to avoid saying the same thing twice.
+    // Setting the reporting currency is a user-triggered action, so both
+    // outcomes report via toast now (docs/design-system.md's "Toasts vs.
+    // inline messages") — `error` is a real option here, not omitted.
     const saving = (async () => {
       await setReportingCurrency(value)
       setCurrency(value)
@@ -58,11 +58,13 @@ export function CurrencySettings() {
     toast.promise(saving, {
       loading: 'Saving…',
       success: 'Reporting currency saved.',
+      error: (err) => errorMessage(err),
     })
     try {
       await saving
-    } catch (err) {
-      setError(errorMessage(err))
+    } catch {
+      // Failure is already reported via the toast.promise `error` option
+      // above.
     } finally {
       setSubmitting(false)
     }
@@ -93,7 +95,6 @@ export function CurrencySettings() {
               placeholder="e.g. USD"
               maxLength={3}
               className="uppercase"
-              aria-invalid={error !== null}
               required
             />
             {!isSet && (
@@ -102,9 +103,9 @@ export function CurrencySettings() {
               </p>
             )}
           </div>
-          {error && (
+          {loadError && (
             <p role="alert" className="text-destructive text-sm">
-              {error}
+              {loadError}
             </p>
           )}
           <Button
