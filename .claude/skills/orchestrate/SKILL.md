@@ -180,26 +180,50 @@ ahead.
   should be unset or already point at a same-named remote branch, never
   `refs/heads/main`. See step 4's branching note for why this can happen
   and how to fix it (`git branch --unset-upstream`) before pushing.
-- Merge (or rebase on) current `origin/main` into the branch before
-  calling a PR ready - do this even if the branch seemed fine when the
-  agent finished, and do it again if the branch sits open for a while
-  before merging. A branch built in parallel with another can be broken
-  by whatever merged first without any git conflict at all. Re-run
-  build/vet/fmt/test after the merge, not just before it.
-- **When the branch's base (or a sibling PR you're stacking on) gets
-  squash-merged, rebase onto it rather than merging.** A plain `git merge
-  origin/main` drags the old branch's full pre-squash commit history in
-  alongside the new squash commit - redundant, confusing history, even
-  though the content ends up correct. Instead:
-  `git rebase --onto origin/main origin/<old-base> <branch>` replays only
-  the branch's own commits on top of the real squashed `main`. This is
-  provably the intended shape, not just tidier: once the old base branch
-  is deleted, GitHub itself auto-retargets the PR's `base` to `main`. When
-  several sibling PRs share a now-merged base and get squash-merged one at
-  a time, each remaining PR needs this rebase again after every one of its
-  siblings lands - step 3's hotspot table means this is a near-certainty,
-  not an edge case, for any batch of parallel PRs that touch the same
-  hotspots.
+- Bring current `origin/main` into the branch before calling a PR ready
+  (merge or rebase - see the two cases just below for which one) - do
+  this even if the branch seemed fine when the agent finished, and do it
+  again if the branch sits open for a while before merging. A branch
+  built in parallel with another can be broken by whatever merged first
+  without any git conflict at all. Re-run build/vet/fmt/test after, not
+  just before.
+- **Two branches that both forked directly from the same `main` are
+  independent, even if they touch the same files.** When one of them
+  (say #167) squash-merges first, the other (#168) just needs a plain
+  `git merge origin/main` to pick up the new commit and resolve whatever
+  textual conflicts fall out (per step 3's hotspot table, this is common
+  - docs status sections, a shared test file). A merge here is not lossy
+  or untidy: #168 was never built *on top of* #167, so there is no
+  pre-squash history to drag in - merging is both correct and sufficient,
+  and it doesn't rewrite #168's already-pushed commits, so no
+  force-push is needed. Don't reach for rebase by default just because a
+  sibling branch landed first; that's the case below, not this one.
+- **A branch that was actually built on top of another branch (stacked -
+  i.e. `git checkout -b f2 f1`, not `git checkout -b f2 main`) does need a
+  rebase once `f1` squash-merges.** A plain `git merge origin/main` into
+  `f2` here drags `f1`'s full pre-squash commit history in alongside the
+  new squash commit - redundant, confusing history, even though the
+  content ends up correct. Instead:
+  `git rebase --onto origin/main origin/f1 f2` replays only `f2`'s own
+  commits on top of the real squashed `main`. This is provably the
+  intended shape, not just tidier: once `f1`'s branch is deleted, GitHub
+  itself auto-retargets `f2`'s PR `base` to `main`. When several branches
+  are stacked several deep and get squash-merged one at a time, each
+  remaining branch needs this rebase again after every one of its
+  upstream siblings lands. Because a rebase rewrites `f2`'s already-pushed
+  commits, updating its remote branch afterward needs a force-push
+  (`--force-with-lease`) - expect this to prompt for confirmation (it's a
+  hard-to-reverse operation), which is normal here, not a sign something
+  went wrong.
+- **Before choosing between the two above, check how the branch was
+  actually created**, not just whether a conflict showed up - `git
+  merge-base <branch> main` equal to the branch's own root commit (or
+  `git log --oneline main..<branch>` showing only that branch's own
+  commits with nothing extra) means it forked straight from `main`
+  (independent, plain merge). If the orchestrator's own branching notes
+  (step 4) show it was cut from another feature branch, or `git log
+  --oneline <other-branch>..<branch>` is empty while `<branch>` contains
+  all of `<other-branch>`'s commits, it's stacked (needs the rebase).
 - **A dependency change on the branch you rebased onto needs a real
   install, not just a clean rebase.** If `origin/main` (or whatever you
   rebased onto) added a package (`package.json`/`package-lock.json`,
