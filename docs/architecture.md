@@ -281,7 +281,19 @@ new Combobox primitive, with an inline "+ Create category" row in the
 transaction dialog's own picker — see `docs/design-system.md`'s
 "Combobox and category hierarchy" section) are done.
 
-**M4 · The Grey Havens is in progress.**
+**M4 · The Grey Havens is complete** — see the [M4 milestone](https://github.com/anirudhgray/bodger/milestone/4)
+for its issues. [#141](https://github.com/anirudhgray/bodger/issues/141)
+(cross-currency transfer provenance on `TransactionsList.tsx`, below) was
+the last milestone item. Dogfooding the finished feature set surfaced
+three follow-up bugs in already-shipped M4 work, filed rather than
+holding the milestone open on them (the same pattern M2's own status note
+above follows for #64/#93): [#170](https://github.com/anirudhgray/bodger/issues/170)
+(the web UI can't tell what an unset reporting currency actually resolves
+to), [#171](https://github.com/anirudhgray/bodger/issues/171) (no currency
+field on the Accounts settings' new-account form, despite the API already
+supporting one), and [#172](https://github.com/anirudhgray/bodger/issues/172)
+(Balances' "Refresh rates" fetching against the wrong currency). All three
+are tracked under the M4 milestone as backlog.
 [ADR-0012](decisions/0012-fx-rate-provider.md) picked Frankfurter as the FX
 rate provider; the `fx_rates` schema, transfer rate columns, and the
 `users.reporting_currency` column landed as schema-only groundwork; and the
@@ -498,8 +510,25 @@ stale/unconverted rows resolve in place without a manual reload, matching
 "Balances: rate-provenance detail row" section for the shared-component
 details.
 
-Every other surface exposing this app-layer work
-([#141](https://github.com/anirudhgray/bodger/issues/141)) remains open.
+[#141](https://github.com/anirudhgray/bodger/issues/141) closes out M4's
+last surface: `TransactionsList.tsx` now renders a cross-currency
+transfer's own implied rate/source (`t.rate`/`t.rate_source`, already
+exposed by #137's `transactionView`), reusing #139/#145's
+`RateAmountTrigger`/`RateProvenanceDetail` pair with a narrower detail
+sentence (no `rate_date`/stale flag — the rate is fixed at write time and
+per ADR-0004 is never reconciled against a provider rate for the day).
+The row also renders the to-leg's own amount next to the from-leg's for a
+genuine cross-currency transfer (previously only the from-leg was shown
+at all); a same-currency transfer is unchanged. When the reporting
+currency matches neither leg's own currency, each leg additionally gets
+its own ordinary reporting-currency equivalent — a separate fact from the
+implied rate, so it deliberately reuses #138's
+`useFxConversionHint`/`FxConversionHint` (a plain, non-collapsible "≈ N
+as of `<date>`" line with a narrow single-currency/single-date refresh)
+rather than the implied rate's own trigger/detail chrome, keeping the two
+from reading as the same kind of number. See `docs/design-system.md`'s
+"Balances: rate-provenance detail row" section, "Transfer rows (issue
+#141)" for the full rendering rules.
 
 | Milestone | Status |
 | --- | --- |
@@ -507,7 +536,7 @@ Every other surface exposing this app-layer work
 | M1 · Arda — Ledger core, CLI, REST API | ✅ Complete (v0.1.0) |
 | M2 · The Shire — Web UI and authentication | ✅ Complete |
 | M3 · Rivendell — UI polish and design system | ✅ Complete |
-| M4 · The Grey Havens — Multi-currency and FX | 🟨 In progress |
+| M4 · The Grey Havens — Multi-currency and FX | ✅ Complete |
 | M5 — Analytics and charts | ⬜ Not started |
 | M6 — Import and export | ⬜ Not started |
 | M7 — Budgets | ⬜ Not started |
