@@ -164,7 +164,13 @@ export function BalancesPage() {
   async function handleRefresh() {
     setRefreshing(true)
     try {
-      await fetchFxRates(Array.from(refreshPairs))
+      // quote must be targetCurrency (the "Show in" selection), not the
+      // omitted default (the actor's reporting currency) — otherwise a
+      // refresh while viewing a non-reporting currency fetches pairs
+      // quoted against the wrong currency, which can even self-skip
+      // silently when the resolved reporting currency happens to equal
+      // one of the requested pairs (issue #172).
+      await fetchFxRates(Array.from(refreshPairs), undefined, targetCurrency)
       toast.success('Rates refreshed.')
       setRefreshOpen(false)
       loadConverted(targetCurrency)
