@@ -4,7 +4,7 @@
 // see setup.ts's hasPointerCapture/scrollIntoView polyfills, added
 // alongside this component for exactly this reason. Real interaction is
 // exercised via @testing-library/user-event throughout, not fireEvent.
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -31,9 +31,16 @@ describe('DatePicker', () => {
     // react-day-picker's day button sets aria-label to the full spoken
     // date ("Friday, March 20th, 2026"), which is its accessible name —
     // the visible "20" text alone isn't queryable by role.
-    await user.click(
-      await screen.findByRole('button', { name: /March 20th, 2026/ }),
-    )
+    await screen.findByRole('button', { name: /March 20th, 2026/ })
+    // Retries the click until the popover closes — see
+    // TransactionDialog.test.tsx's "picks a date via the Radix date
+    // picker" test (issue #164) for why a single click here can flake.
+    await waitFor(async () => {
+      await user.click(screen.getByRole('button', { name: /March 20th, 2026/ }))
+      expect(
+        screen.queryByRole('button', { name: /March 20th, 2026/ }),
+      ).not.toBeInTheDocument()
+    })
 
     expect(onChange).toHaveBeenCalledWith('2026-03-20')
     // Controlled: the trigger's own display text doesn't change until the
@@ -78,9 +85,14 @@ describe('DatePicker', () => {
     expect(hidden).toHaveValue('2026-03-15')
 
     await user.click(screen.getByRole('button', { name: /From/ }))
-    await user.click(
-      await screen.findByRole('button', { name: /March 20th, 2026/ }),
-    )
+    await screen.findByRole('button', { name: /March 20th, 2026/ })
+    // See the controlled test above (issue #164) for why this retries.
+    await waitFor(async () => {
+      await user.click(screen.getByRole('button', { name: /March 20th, 2026/ }))
+      expect(
+        screen.queryByRole('button', { name: /March 20th, 2026/ }),
+      ).not.toBeInTheDocument()
+    })
 
     expect(hidden).toHaveValue('2026-03-20')
     expect(screen.getByRole('button', { name: /From/ })).toHaveTextContent(
