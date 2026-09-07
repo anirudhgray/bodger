@@ -284,7 +284,16 @@ transaction dialog's own picker — see `docs/design-system.md`'s
 **M4 · The Grey Havens is complete** — see the [M4 milestone](https://github.com/anirudhgray/bodger/milestone/4)
 for its issues. [#141](https://github.com/anirudhgray/bodger/issues/141)
 (cross-currency transfer provenance on `TransactionsList.tsx`, below) was
-the last milestone item.
+the last milestone item. Dogfooding the finished feature set surfaced
+three follow-up bugs in already-shipped M4 work, filed rather than
+holding the milestone open on them (the same pattern M2's own status note
+above follows for #64/#93): [#170](https://github.com/anirudhgray/bodger/issues/170)
+(the web UI can't tell what an unset reporting currency actually resolves
+to), [#171](https://github.com/anirudhgray/bodger/issues/171) (no currency
+field on the Accounts settings' new-account form, despite the API already
+supporting one), and [#172](https://github.com/anirudhgray/bodger/issues/172)
+(Balances' "Refresh rates" fetching against the wrong currency). All three
+are tracked under the M4 milestone as backlog.
 [ADR-0012](decisions/0012-fx-rate-provider.md) picked Frankfurter as the FX
 rate provider; the `fx_rates` schema, transfer rate columns, and the
 `users.reporting_currency` column landed as schema-only groundwork; and the
