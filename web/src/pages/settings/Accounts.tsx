@@ -62,6 +62,13 @@ export function AccountsSettings() {
   const [accounts, setAccounts] = useState<Account[] | null>(null)
   const [name, setName] = useState('')
   const [type, setType] = useState(ACCOUNT_TYPES[0])
+  // Free-text 3-letter uppercase code, same pattern as
+  // CurrencySettings.tsx's reporting-currency field — there's no fixed
+  // currency-list component anywhere in this codebase to reuse instead.
+  // Left blank by default: omitted from createAccount() below, which
+  // keeps today's behavior of falling through ADR-0004's ladder (reporting
+  // currency, then instance default) rather than forcing a choice.
+  const [currency, setCurrency] = useState('')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [renamingID, setRenamingID] = useState<string | null>(null)
@@ -84,8 +91,13 @@ export function AccountsSettings() {
     setError(null)
     setCreating(true)
     try {
-      await createAccount({ name, type })
+      await createAccount({
+        name,
+        type,
+        currency: currency.trim() === '' ? undefined : currency.trim(),
+      })
       setName('')
+      setCurrency('')
       await refresh()
     } catch (err) {
       setError(errorMessage(err))
@@ -161,6 +173,17 @@ export function AccountsSettings() {
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="flex w-20 flex-col gap-1.5">
+          <Label htmlFor="account-currency">Currency</Label>
+          <Input
+            id="account-currency"
+            value={currency}
+            onChange={(event) => setCurrency(event.target.value.toUpperCase())}
+            placeholder="e.g. USD"
+            maxLength={3}
+            className="uppercase"
+          />
         </div>
         <Button type="submit" disabled={creating || name === ''}>
           {creating ? 'Adding…' : 'Add'}
