@@ -78,7 +78,11 @@ export function CategoriesSettings() {
   const [name, setName] = useState('')
   const [type, setType] = useState(CATEGORY_TYPES[0])
   const [creating, setCreating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // The listCategories() load failure only — create/rename/archive/
+  // reparent are all user-triggered actions, and report their own
+  // failure via toast instead (docs/design-system.md's "Toasts vs.
+  // inline messages").
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [renamingID, setRenamingID] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
 
@@ -86,7 +90,7 @@ export function CategoriesSettings() {
     try {
       setCategories(await listCategories())
     } catch (err) {
-      setError(errorMessage(err))
+      setLoadError(errorMessage(err))
     }
   }
 
@@ -96,35 +100,31 @@ export function CategoriesSettings() {
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setError(null)
     setCreating(true)
     try {
       await createCategory({ name, type })
       setName('')
       await refresh()
     } catch (err) {
-      setError(errorMessage(err))
+      toast.error(errorMessage(err))
     } finally {
       setCreating(false)
     }
   }
 
   async function handleRename(id: string) {
-    setError(null)
     try {
       await renameCategory(id, renameValue)
       setRenamingID(null)
       await refresh()
     } catch (err) {
-      setError(errorMessage(err))
+      toast.error(errorMessage(err))
     }
   }
 
   async function handleArchive(id: string) {
-    setError(null)
-    // See TransactionsList.tsx's handleDelete for why this has a loading
-    // toast but no `error` option, and why the action is awaited
-    // separately from the toast.promise call.
+    // See TransactionsList.tsx's handleDelete for why the action is
+    // awaited separately from the toast.promise call.
     const archiving = (async () => {
       await archiveCategory(id)
       await refresh()
@@ -132,21 +132,22 @@ export function CategoriesSettings() {
     toast.promise(archiving, {
       loading: 'Archiving…',
       success: 'Category archived.',
+      error: (err) => errorMessage(err),
     })
     try {
       await archiving
-    } catch (err) {
-      setError(errorMessage(err))
+    } catch {
+      // Failure is already reported via the toast.promise `error` option
+      // above.
     }
   }
 
   async function handleReparent(id: string, parent: string) {
-    setError(null)
     try {
       await reparentCategory(id, parent)
       await refresh()
     } catch (err) {
-      setError(errorMessage(err))
+      toast.error(errorMessage(err))
     }
   }
 
@@ -192,9 +193,9 @@ export function CategoriesSettings() {
         </Button>
       </form>
 
-      {error && (
+      {loadError && (
         <p role="alert" className="text-destructive text-sm">
-          {error}
+          {loadError}
         </p>
       )}
 
