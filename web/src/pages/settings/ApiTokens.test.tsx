@@ -80,7 +80,10 @@ describe('ApiTokensSettings', () => {
 
   it('shows a toast (not inline) when creating a token fails', async () => {
     mockedCreateApiToken.mockRejectedValue(
-      new ApiError('invalid_input', 'A token named "my-script" already exists.'),
+      new ApiError(
+        'invalid_input',
+        'A token named "my-script" already exists.',
+      ),
     )
     render(<ApiTokensSettings />)
 
@@ -146,8 +149,9 @@ describe('ApiTokensSettings', () => {
     // system.md's "Toasts vs. inline messages"), so its failure is
     // reported via toast.promise's `error` option, not inline.
     const [, options] = mockedToastPromise.mock.calls[0]
+    const toastError = options?.error as (err: unknown) => string
     expect(
-      (options?.error as (err: unknown) => string)(
+      toastError(
         new ApiError('internal', 'Couldn’t reach the server. Try again.'),
       ),
     ).toBe('Couldn’t reach the server. Try again.')

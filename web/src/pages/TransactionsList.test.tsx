@@ -472,10 +472,14 @@ describe('TransactionsList', () => {
     // failure is reported via toast.promise's `error` option, not
     // inline — the row stays put and no role="alert" appears.
     const [, options] = mockedToastPromise.mock.calls[0]
-    expect(options?.error).toBeInstanceOf(Function)
+    const toastError = options?.error as (err: unknown) => string
+    expect(toastError).toBeInstanceOf(Function)
     expect(
-      (options?.error as (err: unknown) => string)(
-        new ApiError('internal', 'Couldn’t delete that transaction. Try again.'),
+      toastError(
+        new ApiError(
+          'internal',
+          'Couldn’t delete that transaction. Try again.',
+        ),
       ),
     ).toBe('Couldn’t delete that transaction. Try again.')
 

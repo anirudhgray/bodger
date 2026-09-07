@@ -250,7 +250,10 @@ describe('CategoriesSettings', () => {
 
   it('shows a toast (not inline) when creating a category fails', async () => {
     mockedCreateCategory.mockRejectedValue(
-      new ApiError('invalid_input', 'A category named "Dining" already exists.'),
+      new ApiError(
+        'invalid_input',
+        'A category named "Dining" already exists.',
+      ),
     )
     render(<CategoriesSettings />)
     await screen.findByRole('button', { name: 'Add' })
@@ -296,15 +299,14 @@ describe('CategoriesSettings', () => {
     // system.md's "Toasts vs. inline messages"), so its failure is
     // reported via toast.promise's `error` option, not inline.
     const [, options] = mockedToastPromise.mock.calls[0]
+    const toastError = options?.error as (err: unknown) => string
     expect(
-      (options?.error as (err: unknown) => string)(
+      toastError(
         new ApiError('internal', 'Couldn’t reach the server. Try again.'),
       ),
     ).toBe('Couldn’t reach the server. Try again.')
 
-    await waitFor(() =>
-      expect(screen.getByText('Dining')).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByText('Dining')).toBeInTheDocument())
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 

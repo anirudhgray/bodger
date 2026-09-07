@@ -96,8 +96,9 @@ describe('CurrencySettings', () => {
     // inline.
     await waitFor(() => expect(mockedToastPromise).toHaveBeenCalled())
     const [, options] = mockedToastPromise.mock.calls[0]
+    const toastError = options?.error as (err: unknown) => string
     expect(
-      (options?.error as (err: unknown) => string)(
+      toastError(
         new ApiError('invalid_input', '"XYZ" is not a known currency.'),
       ),
     ).toBe('"XYZ" is not a known currency.')

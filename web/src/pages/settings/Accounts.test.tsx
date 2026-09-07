@@ -188,8 +188,9 @@ describe('AccountsSettings', () => {
     // inline — the account stays in the list and no role="alert"
     // appears.
     const [, options] = mockedToastPromise.mock.calls[0]
+    const toastError = options?.error as (err: unknown) => string
     expect(
-      (options?.error as (err: unknown) => string)(
+      toastError(
         new ApiError('internal', 'Couldn’t reach the server. Try again.'),
       ),
     ).toBe('Couldn’t reach the server. Try again.')
