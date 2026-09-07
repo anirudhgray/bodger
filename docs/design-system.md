@@ -478,17 +478,55 @@ converted — `<reason>`" label next to the original amount, not a
 collapsible — there's no provenance to show for a conversion that never
 happened, so a detail row would be empty.
 
+**Shared components (issue #145).** The trigger/detail/unconverted pieces
+above are extracted into `components/RateProvenance.tsx`
+(`RateAmountTrigger`, `RateProvenanceDetail`, `UnconvertedNote`) rather
+than living only in `Balances.tsx`, once a second screen
+(`pages/TransactionsList.tsx`) needed the identical interaction for a
+foreign-currency transaction row's own reporting-currency equivalent.
+Deliberately just the trigger button and the detail container, not a
+bundled `Collapsible` root: each caller's own `<li>` needs the
+`Collapsible` to wrap its *entire* row (so the expanded detail lands
+full-width below it), while the trigger sits nested inside that row next
+to the amount — Radix's trigger/content only need to share a `Root` via
+context, not be DOM-adjacent, so callers still import `Collapsible`
+directly from `components/ui/collapsible` and drop these two pieces
+wherever their own layout needs them. Each caller also writes its own
+detail sentence rather than the shared component prescribing one — #141's
+transfer rows have no `rate_date`/staleness to report at all (a
+transfer's implied rate is fixed at write time, never stale), so a shared
+sentence shape would have to special-case that anyway. Any future screen
+reusing this pattern (transfer rows in #141, M5's stats screens) should
+reach for these three exports rather than re-deriving the same
+Collapsible/`text-destructive` markup a third time.
+
 **Refresh popover.** Both the stale flag and the unconverted label share
-one "Refresh rates" affordance (`components/ui/popover.tsx` +
-`components/ui/checkbox.tsx`): a button next to the currency selector
-opens a popover listing every in-use currency other than the selected
-target as a checkbox, pre-checked for whichever are actually stale or
-unconverted, and calling `POST /api/v1/fx/rates/fetch` only for the
-ones left checked on confirm. Balances always fetches at today's date
-(the `current` policy this screen uses has no other sensible date), so
-the popover never exposes `from`/`to` — that range-fetch mode is
-`fetchFxRates`' own concern for a `transaction_date`-policy screen (the
-issue's own contrast with #145), not this one.
+one "Refresh rates" affordance, now `components/RateFetchPopover.tsx`
+(`components/ui/popover.tsx` + `components/ui/checkbox.tsx`, and
+`components/ui/date-picker.tsx` when a date range is passed): a button
+opens a popover listing every in-use currency as a checkbox, pre-checked
+for whichever are actually stale or unconverted, and calling
+`POST /api/v1/fx/rates/fetch` (via `fetchFxRates`) only for the ones left
+checked on confirm. It's fully controlled — open state, the selected set,
+and (when present) the date range all live in the caller — since what
+counts as "needs refresh" differs per screen (Balances checks its
+currently-converted view; TransactionsList checks its currently-loaded
+page) and that logic doesn't belong in the shared chrome.
+
+Balances passes no `dateRange` and always fetches at today's date (the
+`current` policy this screen uses has no other sensible date).
+TransactionsList (issue #145) is the screen that actually needs the
+`from`/`to` range this component supports: a `transaction_date`-policy
+list spans many distinct historical dates, so its "Backfill rates"
+popover adds a currency multi-select *and* a date range, defaulting both
+to the span of currently-stale/unconverted rows' own booked dates. After
+a successful backfill, TransactionsList drops the cached conversion for
+every row in one of the backfilled currencies so the per-row lookup runs
+again and previously-unconverted/stale rows resolve in place — the same
+re-read-after-refresh behaviour Balances' own `loadConverted(...)` call
+does after its refresh. Any future date-range screen (M5's stats/
+analytics screens, per the issue's own note) should reach for this same
+component rather than re-deriving the checkbox-list-plus-range shape.
 
 ## Casing enum values for display
 
