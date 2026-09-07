@@ -4,6 +4,7 @@
 // (internal/surface/http/auth.go's loginRequest doc comment).
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,18 +15,19 @@ import { login } from '@/lib/session'
 export function Login() {
   const navigate = useNavigate()
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  // Logging in is a user-triggered action (docs/design-system.md's
+  // "Toasts vs. inline messages"), so its failure reports via a toast
+  // rather than inline, same as every other action in the app.
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setError(null)
     setSubmitting(true)
     try {
       await login(password)
       navigate('/', { replace: true })
     } catch (err) {
-      setError(
+      toast.error(
         err instanceof ApiError
           ? err.message
           : 'Couldn’t reach the server. Try again.',
@@ -55,16 +57,10 @@ export function Login() {
               autoComplete="current-password"
               autoFocus
               required
-              aria-invalid={error !== null}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
           </div>
-          {error && (
-            <p role="alert" className="text-destructive text-sm">
-              {error}
-            </p>
-          )}
           <Button type="submit" disabled={submitting || password === ''}>
             {submitting ? 'Logging in…' : 'Log in'}
           </Button>
