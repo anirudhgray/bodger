@@ -2,7 +2,7 @@
 // out of the old Settings.test.tsx). web/src/lib/settings is mocked here
 // so these exercise only the page's own logic against a controlled fake
 // API, the same pattern Login.test.tsx uses for web/src/lib/session.
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -10,11 +10,25 @@ vi.mock('@/lib/settings', () => ({
   changePassword: vi.fn(),
 }))
 
+// Changing the password is a user-triggered action, so its failure now
+// reports via a toast rather than inline (docs/design-system.md's
+// "Toasts vs. inline messages") — mocked here so tests can assert on
+// what was shown without a real <Toaster/> mounted.
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    promise: vi.fn(),
+  },
+}))
+
 import { ApiError } from '@/lib/api'
 import { changePassword } from '@/lib/settings'
 import { PasswordSettings } from './Password'
+import { toast } from 'sonner'
 
 const mockedChangePassword = vi.mocked(changePassword)
+const mockedToastError = vi.mocked(toast.error)
 
 function renderPage() {
   render(
@@ -30,6 +44,7 @@ function renderPage() {
 describe('PasswordSettings', () => {
   beforeEach(() => {
     mockedChangePassword.mockReset()
+    mockedToastError.mockReset()
   })
 
   it('changes the password and redirects to login, since the session is revoked', async () => {
@@ -59,11 +74,17 @@ describe('PasswordSettings', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('didn’t match')
+    // Changing the password is a user-triggered action (docs/design-
+    // system.md's "Toasts vs. inline messages"), so even this
+    // client-side mismatch check reports via a toast, not inline.
+    await waitFor(() =>
+      expect(mockedToastError).toHaveBeenCalledWith('Passwords didn’t match.'),
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(mockedChangePassword).not.toHaveBeenCalled()
   })
 
-  it('shows the server error on a failed password change', async () => {
+  it('shows a toast (not inline) on a failed password change', async () => {
     mockedChangePassword.mockRejectedValue(
       new ApiError(
         'invalid_input',
@@ -80,8 +101,11 @@ describe('PasswordSettings', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'A password must be at least 8 characters.',
+    await waitFor(() =>
+      expect(mockedToastError).toHaveBeenCalledWith(
+        'A password must be at least 8 characters.',
+      ),
     )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })

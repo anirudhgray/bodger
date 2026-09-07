@@ -3,6 +3,7 @@
 // only its own route now, rendered inside SettingsLayout's <Outlet />.
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,14 +15,16 @@ export function PasswordSettings() {
   const navigate = useNavigate()
   const [newPassword, setNewPassword] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  // Changing the password is a user-triggered action (docs/design-
+  // system.md's "Toasts vs. inline messages"), so every failure of this
+  // submit — the client-side mismatch check included — reports via a
+  // toast rather than inline; there's no load state on this page at all.
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setError(null)
     if (newPassword !== confirm) {
-      setError('Passwords didn’t match.')
+      toast.error('Passwords didn’t match.')
       return
     }
     setSubmitting(true)
@@ -33,7 +36,7 @@ export function PasswordSettings() {
       // than staying on a page that will 401 on its next request.
       navigate('/login', { replace: true })
     } catch (err) {
-      setError(errorMessage(err))
+      toast.error(errorMessage(err))
       setSubmitting(false)
     }
   }
@@ -66,16 +69,10 @@ export function PasswordSettings() {
             type="password"
             autoComplete="new-password"
             required
-            aria-invalid={error !== null}
             value={confirm}
             onChange={(event) => setConfirm(event.target.value)}
           />
         </div>
-        {error && (
-          <p role="alert" className="text-destructive text-sm">
-            {error}
-          </p>
-        )}
         <Button
           type="submit"
           disabled={submitting || newPassword === '' || confirm === ''}
