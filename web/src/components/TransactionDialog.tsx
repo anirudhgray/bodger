@@ -285,7 +285,6 @@ function TransactionDialogSheet({
   const [tags, setTags] = useState(formatTags(editing?.tags))
   const [enterMultiple, setEnterMultiple] = useState(false)
 
-  const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [justRecorded, setJustRecorded] = useState(false)
 
@@ -323,7 +322,6 @@ function TransactionDialogSheet({
     setNotes(editing?.notes ?? '')
     setTags(formatTags(editing?.tags))
     setEnterMultiple(false)
-    setSubmitError(null)
     setSubmitting(false)
     setJustRecorded(false)
     setLoadError(null)
@@ -534,7 +532,6 @@ function TransactionDialogSheet({
     event.preventDefault()
     if (!canSubmit || submitting) return
 
-    setSubmitError(null)
     setSubmitting(true)
     setJustRecorded(false)
     try {
@@ -608,7 +605,11 @@ function TransactionDialogSheet({
         onOpenChange(false)
       }
     } catch (err) {
-      setSubmitError(
+      // Recording/updating a transaction is a user-triggered action
+      // (docs/design-system.md's "Toasts vs. inline messages"), so its
+      // failure reports via a toast rather than inline — the dialog
+      // stays open either way, with whatever was typed still in place.
+      toast.error(
         err instanceof ApiError
           ? err.message
           : 'Couldn’t reach the server. Try again.',
@@ -862,12 +863,7 @@ function TransactionDialogSheet({
                 </div>
               )}
 
-              {submitError && (
-                <p role="alert" className="text-destructive text-sm">
-                  {submitError}
-                </p>
-              )}
-              {justRecorded && !submitError && (
+              {justRecorded && (
                 <p role="status" className="text-success text-sm">
                   Recorded.
                 </p>

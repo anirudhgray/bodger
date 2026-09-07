@@ -8,6 +8,17 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// Action failures now report via a toast (docs/design-system.md's
+// "Toasts vs. inline messages") rather than inline — mocked here so
+// tests can assert on what was shown without a real <Toaster/> mounted.
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    promise: vi.fn(),
+  },
+}))
+
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>()
   return {
@@ -51,7 +62,9 @@ import {
 import { createCategory } from '@/lib/settings'
 import { TransactionDialogProvider } from './TransactionDialog'
 import { useTransactionDialog } from '@/hooks/use-transaction-dialog'
+import { toast } from 'sonner'
 
+const mockedToastError = vi.mocked(toast.error)
 const mockedListAccounts = vi.mocked(listAccounts)
 const mockedListCategories = vi.mocked(listCategories)
 const mockedRecordOutflow = vi.mocked(recordOutflow)
@@ -135,6 +148,7 @@ describe('TransactionDialog (create)', () => {
       .mockResolvedValue({ currency: 'INR', is_set: true })
     mockedGetFxRate.mockReset()
     mockedFetchFxRates.mockReset()
+    mockedToastError.mockReset()
   })
 
   it('records a spend and calls onSaved, closing the dialog by default', async () => {
@@ -306,7 +320,7 @@ describe('TransactionDialog (create)', () => {
     expect(screen.getByLabelText('To account')).toBeInTheDocument()
   })
 
-  it('preserves what was typed when the API rejects the submission', async () => {
+  it('preserves what was typed and shows a toast when the API rejects the submission', async () => {
     const user = userEvent.setup()
     mockedRecordOutflow.mockRejectedValue(
       new ApiError(
@@ -324,9 +338,15 @@ describe('TransactionDialog (create)', () => {
     await pickCategory(user, 'Groceries')
     fireEvent.click(screen.getByRole('button', { name: 'Record spend' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      "Couldn't find a category called 'cat-1'.",
+    // Recording a transaction is a user-triggered action, so its failure
+    // is reported via a toast, not inline (docs/design-system.md's
+    // "Toasts vs. inline messages") — no role="alert" appears at all.
+    await waitFor(() =>
+      expect(mockedToastError).toHaveBeenCalledWith(
+        "Couldn't find a category called 'cat-1'.",
+      ),
     )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Amount')).toHaveValue('800')
     expect(
       screen.getByRole('combobox', { name: 'Category' }),
