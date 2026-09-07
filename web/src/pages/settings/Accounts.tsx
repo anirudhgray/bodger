@@ -70,7 +70,11 @@ export function AccountsSettings() {
   // currency, then instance default) rather than forcing a choice.
   const [currency, setCurrency] = useState('')
   const [creating, setCreating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // The listAccounts() load failure only — every action below (create,
+  // rename, archive) is a user-triggered action, and reports its own
+  // failure via toast instead (docs/design-system.md's "Toasts vs.
+  // inline messages").
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [renamingID, setRenamingID] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
 
@@ -78,7 +82,7 @@ export function AccountsSettings() {
     try {
       setAccounts(await listAccounts())
     } catch (err) {
-      setError(errorMessage(err))
+      setLoadError(errorMessage(err))
     }
   }
 
@@ -88,7 +92,6 @@ export function AccountsSettings() {
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setError(null)
     setCreating(true)
     try {
       await createAccount({
@@ -100,28 +103,25 @@ export function AccountsSettings() {
       setCurrency('')
       await refresh()
     } catch (err) {
-      setError(errorMessage(err))
+      toast.error(errorMessage(err))
     } finally {
       setCreating(false)
     }
   }
 
   async function handleRename(id: string) {
-    setError(null)
     try {
       await renameAccount(id, renameValue)
       setRenamingID(null)
       await refresh()
     } catch (err) {
-      setError(errorMessage(err))
+      toast.error(errorMessage(err))
     }
   }
 
   async function handleArchive(id: string) {
-    setError(null)
-    // See TransactionsList.tsx's handleDelete for why this has a loading
-    // toast but no `error` option, and why the action is awaited
-    // separately from the toast.promise call.
+    // See TransactionsList.tsx's handleDelete for why the action is
+    // awaited separately from the toast.promise call.
     const archiving = (async () => {
       await archiveAccount(id)
       await refresh()
@@ -129,11 +129,13 @@ export function AccountsSettings() {
     toast.promise(archiving, {
       loading: 'Archiving…',
       success: 'Account archived.',
+      error: (err) => errorMessage(err),
     })
     try {
       await archiving
-    } catch (err) {
-      setError(errorMessage(err))
+    } catch {
+      // Failure is already reported via the toast.promise `error` option
+      // above.
     }
   }
 
@@ -190,9 +192,9 @@ export function AccountsSettings() {
         </Button>
       </form>
 
-      {error && (
+      {loadError && (
         <p role="alert" className="text-destructive text-sm">
-          {error}
+          {loadError}
         </p>
       )}
 

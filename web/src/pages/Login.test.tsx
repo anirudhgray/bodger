@@ -4,7 +4,7 @@
 // only the form's own logic: submit disabled on an empty password,
 // success navigates away, failure shows the server's message and leaves
 // the form usable again.
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -12,11 +12,25 @@ vi.mock('@/lib/session', () => ({
   login: vi.fn(),
 }))
 
+// Logging in is a user-triggered action, so its failure now reports via
+// a toast rather than inline (docs/design-system.md's "Toasts vs.
+// inline messages") — mocked here so tests can assert on what was shown
+// without a real <Toaster/> mounted.
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    promise: vi.fn(),
+  },
+}))
+
 import { ApiError } from '@/lib/api'
 import { login } from '@/lib/session'
 import { Login } from './Login'
+import { toast } from 'sonner'
 
 const mockedLogin = vi.mocked(login)
+const mockedToastError = vi.mocked(toast.error)
 
 function renderLogin() {
   render(
@@ -32,6 +46,7 @@ function renderLogin() {
 describe('Login', () => {
   beforeEach(() => {
     mockedLogin.mockReset()
+    mockedToastError.mockReset()
   })
 
   it('disables submit until a password is entered', () => {
@@ -59,7 +74,7 @@ describe('Login', () => {
     expect(mockedLogin).toHaveBeenCalledWith('hunter2')
   })
 
-  it('shows the server error and leaves the form usable on failure', async () => {
+  it('shows both a toast and a persistent inline alert, and leaves the form usable, on failure', async () => {
     mockedLogin.mockRejectedValue(
       new ApiError('unauthenticated', 'Incorrect password.'),
     )
@@ -70,6 +85,15 @@ describe('Login', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Log in' }))
 
+    // Logging in is a user-triggered action (docs/design-system.md's
+    // "Toasts vs. inline messages"), so its failure is reported via a
+    // toast like any other action — but this is one of the two
+    // deliberate exceptions that also keeps a persistent inline alert,
+    // since a missed toast on a bare auth screen leaves no other trace
+    // of what happened.
+    await waitFor(() =>
+      expect(mockedToastError).toHaveBeenCalledWith('Incorrect password.'),
+    )
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Incorrect password.',
     )

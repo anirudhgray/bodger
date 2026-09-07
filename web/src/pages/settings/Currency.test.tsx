@@ -10,17 +10,33 @@ vi.mock('@/lib/settings', () => ({
   setReportingCurrency: vi.fn(),
 }))
 
+// Saving the reporting currency is a user-triggered action, so its
+// failure now reports via a toast rather than inline
+// (docs/design-system.md's "Toasts vs. inline messages") — mocked here
+// so tests can assert on what was shown without a real <Toaster/>
+// mounted.
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    promise: vi.fn(),
+  },
+}))
+
 import { ApiError } from '@/lib/api'
 import { getReportingCurrency, setReportingCurrency } from '@/lib/settings'
 import { CurrencySettings } from './Currency'
+import { toast } from 'sonner'
 
 const mockedGet = vi.mocked(getReportingCurrency)
 const mockedSet = vi.mocked(setReportingCurrency)
+const mockedToastPromise = vi.mocked(toast.promise)
 
 describe('CurrencySettings', () => {
   beforeEach(() => {
     mockedGet.mockReset()
     mockedSet.mockReset()
+    mockedToastPromise.mockReset()
   })
 
   it('shows the configured reporting currency once loaded', async () => {
@@ -61,7 +77,7 @@ describe('CurrencySettings', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('shows the server error inline on a failed save', async () => {
+  it('shows a toast (not inline) on a failed save', async () => {
     mockedGet.mockResolvedValue({ currency: 'USD', is_set: true })
     mockedSet.mockRejectedValue(
       new ApiError('invalid_input', '"XYZ" is not a known currency.'),
@@ -74,8 +90,18 @@ describe('CurrencySettings', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      '"XYZ" is not a known currency.',
-    )
+    // Setting the reporting currency is a user-triggered action
+    // (docs/design-system.md's "Toasts vs. inline messages"), so its
+    // failure is reported via toast.promise's `error` option, not
+    // inline.
+    await waitFor(() => expect(mockedToastPromise).toHaveBeenCalled())
+    const [, options] = mockedToastPromise.mock.calls[0]
+    const toastError = options?.error as (err: unknown) => string
+    expect(
+      toastError(
+        new ApiError('invalid_input', '"XYZ" is not a known currency.'),
+      ),
+    ).toBe('"XYZ" is not a known currency.')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })

@@ -400,21 +400,21 @@ export function TransactionsList() {
   }
 
   async function handleDelete(id: string) {
-    // The row has no other pending affordance while this is in flight, so
-    // a loading toast covers that gap; on success the row is about to
-    // disappear so the toast also carries that confirmation. On failure
-    // the row stays and the existing inline `setError` below is the
-    // single place that message lives — sonner's toast.promise has no
-    // `error` option passed here, so it just quietly resolves the toast
-    // away on rejection instead of duplicating that message (see
-    // docs/design-system.md's toast-vs-inline convention). toast.promise
+    // Deleting a transaction is a user-triggered action (docs/design-
+    // system.md's "Toasts vs. inline messages"), so both outcomes report
+    // via a toast — the row has no other pending affordance while this
+    // is in flight, and on failure it just stays put. toast.promise
     // doesn't hand back the underlying promise (it returns a toast id),
     // so the real `deletion` promise is still awaited directly below for
-    // control flow/error handling — both just observe the same promise.
+    // control flow — both just observe the same promise.
     const deletion = deleteTransaction(id)
     toast.promise(deletion, {
       loading: 'Deleting transaction…',
       success: 'Transaction deleted.',
+      error: (err) =>
+        err instanceof ApiError
+          ? err.message
+          : 'Couldn’t delete that transaction. Try again.',
     })
     try {
       await deletion
@@ -425,12 +425,9 @@ export function TransactionsList() {
         next.delete(id)
         return next
       })
-    } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : 'Couldn’t delete that transaction. Try again.',
-      )
+    } catch {
+      // Failure is already reported via the toast.promise `error` option
+      // above — the row stays in the list, nothing further to do here.
     }
   }
 

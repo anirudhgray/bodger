@@ -3,6 +3,7 @@
 // only its own route now, rendered inside SettingsLayout's <Outlet />.
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,14 +15,24 @@ export function PasswordSettings() {
   const navigate = useNavigate()
   const [newPassword, setNewPassword] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
+  // Changing the password is a user-triggered action (docs/design-
+  // system.md's "Toasts vs. inline messages"), so every failure of this
+  // submit — the client-side mismatch check included — reports via a
+  // toast like any other action, paired with a persistent inline alert
+  // here specifically: this is an auth-credential screen, the same
+  // reasoning Login.tsx's own toast+inline pairing follows, since a
+  // missed toast here would leave no visible trace of why nothing
+  // happened. There's no load state on this page at all.
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
     if (newPassword !== confirm) {
-      setError('Passwords didn’t match.')
+      const message = 'Passwords didn’t match.'
+      toast.error(message)
+      setError(message)
       return
     }
     setSubmitting(true)
@@ -33,7 +44,9 @@ export function PasswordSettings() {
       // than staying on a page that will 401 on its next request.
       navigate('/login', { replace: true })
     } catch (err) {
-      setError(errorMessage(err))
+      const message = errorMessage(err)
+      toast.error(message)
+      setError(message)
       setSubmitting(false)
     }
   }
@@ -66,9 +79,9 @@ export function PasswordSettings() {
             type="password"
             autoComplete="new-password"
             required
-            aria-invalid={error !== null}
             value={confirm}
             onChange={(event) => setConfirm(event.target.value)}
+            aria-invalid={error !== null}
           />
         </div>
         {error && (

@@ -17,6 +17,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TransactionDialogProvider } from '@/components/TransactionDialog'
 import { useTransactionDialog } from '@/hooks/use-transaction-dialog'
 
+// Action failures (edit/delete) now report via a toast rather than
+// inline (docs/design-system.md's "Toasts vs. inline messages") —
+// mocked here so tests can assert on what was shown without a real
+// <Toaster/> mounted.
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    promise: vi.fn(),
+  },
+}))
+
 // createCategory is called by the Category combobox's quick-create row
 // (issue #106) — mocked separately since it lives in lib/settings, not
 // lib/api, matching TransactionDialog.test.tsx's own setup.
@@ -61,6 +73,7 @@ import {
 } from '@/lib/api'
 import { createCategory } from '@/lib/settings'
 import { TransactionsList } from './TransactionsList'
+import { toast } from 'sonner'
 
 const mockedListTransactions = vi.mocked(listTransactions)
 const mockedListAccounts = vi.mocked(listAccounts)
@@ -71,6 +84,8 @@ const mockedRecordOutflow = vi.mocked(recordOutflow)
 const mockedGetReportingCurrency = vi.mocked(getReportingCurrency)
 const mockedGetFxRate = vi.mocked(getFxRate)
 const mockedFetchFxRates = vi.mocked(fetchFxRates)
+const mockedToastError = vi.mocked(toast.error)
+const mockedToastPromise = vi.mocked(toast.promise)
 const mockedCreateCategory = vi.mocked(createCategory)
 
 // The empty state's "Record a transaction" CTA needs a router context;
@@ -178,6 +193,8 @@ describe('TransactionsList', () => {
     mockedGetReportingCurrency.mockReset()
     mockedGetFxRate.mockReset()
     mockedFetchFxRates.mockReset()
+    mockedToastError.mockReset()
+    mockedToastPromise.mockReset()
     mockedCreateCategory.mockReset()
     // Matching Balances.test.tsx's own default: no reporting currency set,
     // so the per-row conversion machinery (issue #145) stays fully inert
@@ -540,6 +557,39 @@ describe('TransactionsList', () => {
     expect(mockedDeleteTransaction).toHaveBeenCalledWith('t1')
   })
 
+  it('leaves the row in place and reports a toast (not inline) when delete fails', async () => {
+    mockedListTransactions.mockResolvedValue({ data: [groceries] })
+    mockedDeleteTransaction.mockRejectedValue(
+      new ApiError('internal', 'Couldn’t delete that transaction. Try again.'),
+    )
+    renderPage()
+    await screen.findByText('Groceries')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => expect(mockedToastPromise).toHaveBeenCalled())
+    // Deleting a transaction is a user-triggered action
+    // (docs/design-system.md's "Toasts vs. inline messages"), so its
+    // failure is reported via toast.promise's `error` option, not
+    // inline — the row stays put and no role="alert" appears.
+    const [, options] = mockedToastPromise.mock.calls[0]
+    const toastError = options?.error as (err: unknown) => string
+    expect(toastError).toBeInstanceOf(Function)
+    expect(
+      toastError(
+        new ApiError(
+          'internal',
+          'Couldn’t delete that transaction. Try again.',
+        ),
+      ),
+    ).toBe('Couldn’t delete that transaction. Try again.')
+
+    await waitFor(() =>
+      expect(screen.getByText('Groceries')).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('edits a transaction via the dialog, sending the full replacement body', async () => {
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     mockedUpdateTransaction.mockResolvedValue({ ...groceries, amount: '50.00' })
@@ -629,7 +679,7 @@ describe('TransactionsList', () => {
     expect(amountField).toHaveValue('50.00')
   })
 
-  it('preserves the edit dialog and shows an error when saving fails', async () => {
+  it('preserves the edit dialog and shows a toast when saving fails', async () => {
     mockedListTransactions.mockResolvedValue({ data: [groceries] })
     mockedUpdateTransaction.mockRejectedValue(
       new ApiError('invalid_input', 'That amount doesn’t look right.'),
@@ -652,9 +702,15 @@ describe('TransactionsList', () => {
     })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'That amount doesn’t look right.',
+    // Editing a transaction is a user-triggered action (docs/design-
+    // system.md's "Toasts vs. inline messages"), so its failure is
+    // reported via a toast, not inline.
+    await waitFor(() =>
+      expect(mockedToastError).toHaveBeenCalledWith(
+        'That amount doesn’t look right.',
+      ),
     )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     // Partial input is preserved (ux-principles.md §5) — the dialog is
     // still open with what was typed, not discarded.
     expect(within(dialog).getByLabelText('Amount')).toHaveValue('999999.99')

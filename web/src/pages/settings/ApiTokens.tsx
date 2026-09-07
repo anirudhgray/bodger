@@ -39,13 +39,16 @@ export function ApiTokensSettings() {
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
   const [justCreated, setJustCreated] = useState<CreatedApiToken | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // The listApiTokens() load failure only — create/revoke are
+  // user-triggered actions, and report their own failure via toast
+  // instead (docs/design-system.md's "Toasts vs. inline messages").
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   async function refresh() {
     try {
       setTokens(await listApiTokens())
     } catch (err) {
-      setError(errorMessage(err))
+      setLoadError(errorMessage(err))
     }
   }
 
@@ -55,7 +58,6 @@ export function ApiTokensSettings() {
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setError(null)
     setCreating(true)
     try {
       const created = await createApiToken(name)
@@ -63,17 +65,15 @@ export function ApiTokensSettings() {
       setName('')
       await refresh()
     } catch (err) {
-      setError(errorMessage(err))
+      toast.error(errorMessage(err))
     } finally {
       setCreating(false)
     }
   }
 
   async function handleRevoke(id: string) {
-    setError(null)
-    // See TransactionsList.tsx's handleDelete for why this has a loading
-    // toast but no `error` option, and why the action is awaited
-    // separately from the toast.promise call.
+    // See TransactionsList.tsx's handleDelete for why the action is
+    // awaited separately from the toast.promise call.
     const revocation = (async () => {
       await revokeApiToken(id)
       await refresh()
@@ -81,11 +81,13 @@ export function ApiTokensSettings() {
     toast.promise(revocation, {
       loading: 'Revoking…',
       success: 'Token revoked.',
+      error: (err) => errorMessage(err),
     })
     try {
       await revocation
-    } catch (err) {
-      setError(errorMessage(err))
+    } catch {
+      // Failure is already reported via the toast.promise `error` option
+      // above.
     }
   }
 
@@ -142,9 +144,9 @@ export function ApiTokensSettings() {
         </Button>
       </form>
 
-      {error && (
+      {loadError && (
         <p role="alert" className="text-destructive text-sm">
-          {error}
+          {loadError}
         </p>
       )}
 
