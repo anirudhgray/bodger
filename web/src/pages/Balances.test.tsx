@@ -375,7 +375,7 @@ describe('BalancesPage', () => {
     await user.click(checkbox)
     await user.click(screen.getByRole('button', { name: 'Refresh' }))
 
-    expect(mockedFetchFxRates).toHaveBeenCalledWith(['USD'])
+    expect(mockedFetchFxRates).toHaveBeenCalledWith(['USD'], undefined, 'EUR')
     expect(await screen.findByText('≈ 1400.00 EUR')).toBeInTheDocument()
   })
 })
