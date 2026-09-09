@@ -733,6 +733,8 @@ export interface components {
         };
         ReportingCurrency: {
             currency: string;
+            /** @description The effective reporting currency for this actor; either the actor-set value or the instance default if none is set. */
+            effectiveCurrency: string;
             /** @description False when this actor has never set a reporting currency; the instance default is used instead. */
             is_set: boolean;
         };
