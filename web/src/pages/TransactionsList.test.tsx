@@ -203,6 +203,7 @@ describe('TransactionsList', () => {
     mockedGetReportingCurrency.mockResolvedValue({
       currency: '',
       is_set: false,
+      effectiveCurrency: 'USD',
     })
     stubLookups()
   })
@@ -808,6 +809,7 @@ describe('TransactionsList', () => {
       mockedGetReportingCurrency.mockResolvedValue({
         currency: 'USD',
         is_set: true,
+        effectiveCurrency: 'USD',
       })
       mockedListTransactions.mockResolvedValue({ data: [souvenir] })
       mockedGetFxRate.mockResolvedValue({
@@ -853,6 +855,7 @@ describe('TransactionsList', () => {
         mockedGetReportingCurrency.mockResolvedValue({
           currency: 'USD',
           is_set: true,
+          effectiveCurrency: 'USD',
         })
         mockedListTransactions.mockResolvedValue({ data: [souvenir] })
         mockedGetFxRate.mockResolvedValue({
@@ -894,6 +897,7 @@ describe('TransactionsList', () => {
       mockedGetReportingCurrency.mockResolvedValue({
         currency: 'USD',
         is_set: true,
+        effectiveCurrency: 'USD',
       })
       mockedListTransactions.mockResolvedValue({ data: [souvenir] })
       mockedGetFxRate.mockRejectedValue(
@@ -928,6 +932,7 @@ describe('TransactionsList', () => {
       mockedGetReportingCurrency.mockResolvedValue({
         currency: 'USD',
         is_set: true,
+        effectiveCurrency: 'USD',
       })
       mockedListTransactions.mockResolvedValue({ data: [souvenir, eurTx] })
       // Initial page load: souvenir (INR) resolves stale, eurTx (EUR) has
@@ -1124,6 +1129,7 @@ describe('TransactionsList', () => {
       mockedGetReportingCurrency.mockResolvedValue({
         currency: 'USD',
         is_set: true,
+        effectiveCurrency: 'USD',
       })
       vi.useFakeTimers()
       try {
@@ -1151,6 +1157,7 @@ describe('TransactionsList', () => {
       mockedGetReportingCurrency.mockResolvedValue({
         currency: 'EUR',
         is_set: true,
+        effectiveCurrency: 'EUR',
       })
       mockedGetFxRate
         .mockResolvedValueOnce({
@@ -1227,6 +1234,7 @@ describe('TransactionsList', () => {
       mockedGetReportingCurrency.mockResolvedValue({
         currency: 'EUR',
         is_set: true,
+        effectiveCurrency: 'EUR',
       })
       mockedGetFxRate
         .mockRejectedValueOnce(

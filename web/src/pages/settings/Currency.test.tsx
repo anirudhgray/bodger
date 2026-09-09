@@ -40,7 +40,11 @@ describe('CurrencySettings', () => {
   })
 
   it('shows the configured reporting currency once loaded', async () => {
-    mockedGet.mockResolvedValue({ currency: 'EUR', is_set: true })
+    mockedGet.mockResolvedValue({
+      currency: 'EUR',
+      is_set: true,
+      effectiveCurrency: 'EUR',
+    })
     render(<CurrencySettings />)
 
     expect(await screen.findByDisplayValue('EUR')).toBeInTheDocument()
@@ -50,7 +54,11 @@ describe('CurrencySettings', () => {
   })
 
   it('flags an unset reporting currency without inventing an instance default', async () => {
-    mockedGet.mockResolvedValue({ currency: '', is_set: false })
+    mockedGet.mockResolvedValue({
+      currency: '',
+      is_set: false,
+      effectiveCurrency: 'USD',
+    })
     render(<CurrencySettings />)
 
     expect(
@@ -60,7 +68,11 @@ describe('CurrencySettings', () => {
   })
 
   it('saves a new reporting currency', async () => {
-    mockedGet.mockResolvedValue({ currency: '', is_set: false })
+    mockedGet.mockResolvedValue({
+      currency: '',
+      is_set: false,
+      effectiveCurrency: 'USD',
+    })
     mockedSet.mockResolvedValue(undefined)
     render(<CurrencySettings />)
 
@@ -78,7 +90,11 @@ describe('CurrencySettings', () => {
   })
 
   it('shows a toast (not inline) on a failed save', async () => {
-    mockedGet.mockResolvedValue({ currency: 'USD', is_set: true })
+    mockedGet.mockResolvedValue({
+      currency: 'USD',
+      is_set: true,
+      effectiveCurrency: 'USD',
+    })
     mockedSet.mockRejectedValue(
       new ApiError('invalid_input', '"XYZ" is not a known currency.'),
     )

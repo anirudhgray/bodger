@@ -145,7 +145,11 @@ describe('TransactionDialog (create)', () => {
     // single-currency user."
     mockedGetReportingCurrency
       .mockReset()
-      .mockResolvedValue({ currency: 'INR', is_set: true })
+      .mockResolvedValue({
+        currency: 'INR',
+        is_set: true,
+        effectiveCurrency: 'INR',
+      })
     mockedGetFxRate.mockReset()
     mockedFetchFxRates.mockReset()
     mockedToastError.mockReset()
@@ -505,6 +509,7 @@ describe('TransactionDialog (foreign-currency conversion hint)', () => {
     mockedGetReportingCurrency.mockResolvedValue({
       currency: 'INR',
       is_set: true,
+      effectiveCurrency: 'INR',
     })
     renderAndOpen()
     await act(async () => {
@@ -533,6 +538,7 @@ describe('TransactionDialog (foreign-currency conversion hint)', () => {
     mockedGetReportingCurrency.mockResolvedValue({
       currency: 'USD',
       is_set: true,
+      effectiveCurrency: 'USD',
     })
     renderAndOpen()
     await act(async () => {
@@ -547,6 +553,7 @@ describe('TransactionDialog (foreign-currency conversion hint)', () => {
     mockedGetReportingCurrency.mockResolvedValue({
       currency: 'USD',
       is_set: true,
+      effectiveCurrency: 'USD',
     })
     mockedGetFxRate.mockResolvedValue(rate)
     renderAndOpen()
@@ -572,6 +579,7 @@ describe('TransactionDialog (foreign-currency conversion hint)', () => {
     mockedGetReportingCurrency.mockResolvedValue({
       currency: 'USD',
       is_set: true,
+      effectiveCurrency: 'USD',
     })
     mockedGetFxRate.mockResolvedValue({ ...rate, stale: true })
     mockedFetchFxRates.mockResolvedValue({
@@ -614,6 +622,7 @@ describe('TransactionDialog (foreign-currency conversion hint)', () => {
     mockedGetReportingCurrency.mockResolvedValue({
       currency: 'USD',
       is_set: true,
+      effectiveCurrency: 'USD',
     })
     mockedGetFxRate.mockRejectedValue(
       new ApiError('not_found', 'No INR/USD rate available.'),
@@ -726,6 +735,7 @@ describe('TransactionDialog (cross-currency transfer destination amount)', () =>
     mockedGetReportingCurrency.mockResolvedValue({
       currency: 'INR',
       is_set: true,
+      effectiveCurrency: 'INR',
     })
     await openMoveWithToAccount(user, 'Second INR Account')
 
@@ -737,6 +747,7 @@ describe('TransactionDialog (cross-currency transfer destination amount)', () =>
     mockedGetReportingCurrency.mockResolvedValue({
       currency: 'USD',
       is_set: true,
+      effectiveCurrency: 'USD',
     })
     await openMoveWithToAccount(user, 'US Checking')
 
@@ -748,6 +759,7 @@ describe('TransactionDialog (cross-currency transfer destination amount)', () =>
     mockedGetReportingCurrency.mockResolvedValue({
       currency: 'USD',
       is_set: true,
+      effectiveCurrency: 'USD',
     })
     mockedGetFxRate.mockResolvedValue(rate)
     await openMoveWithToAccount(user, 'US Checking')
@@ -778,6 +790,7 @@ describe('TransactionDialog (cross-currency transfer destination amount)', () =>
     mockedGetReportingCurrency.mockResolvedValue({
       currency: 'USD',
       is_set: true,
+      effectiveCurrency: 'USD',
     })
     mockedGetFxRate.mockResolvedValue(rate)
     await openMoveWithToAccount(user, 'US Checking')

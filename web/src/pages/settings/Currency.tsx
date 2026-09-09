@@ -16,6 +16,7 @@ import { errorMessage } from './shared'
 export function CurrencySettings() {
   const [currency, setCurrency] = useState('')
   const [isSet, setIsSet] = useState(false)
+  const [effectiveCurrency, setEffectiveCurrency] = useState('')
   const [loading, setLoading] = useState(true)
   // The initial getReportingCurrency() fetch is a load failure, so it
   // stays inline (docs/design-system.md's "Toasts vs. inline messages")
@@ -31,6 +32,7 @@ export function CurrencySettings() {
         if (cancelled) return
         setCurrency(result.currency)
         setIsSet(result.is_set)
+        setEffectiveCurrency(result.effectiveCurrency)
       })
       .catch((err) => {
         if (!cancelled) setLoadError(errorMessage(err))
@@ -99,7 +101,8 @@ export function CurrencySettings() {
             />
             {!isSet && (
               <p className="text-muted-foreground text-xs">
-                Not set — falls back to this instance's default currency.
+                Not set — falls back to this instance's default currency (
+                {effectiveCurrency}).
               </p>
             )}
           </div>

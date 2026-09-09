@@ -96,7 +96,8 @@ export function BalancesPage() {
     // doesn't block the balances themselves from rendering.
     getReportingCurrency()
       .then((result) => {
-        if (!cancelled && result.is_set) setReportingCurrency(result.currency)
+        if (!cancelled && result.is_set)
+          setReportingCurrency(result.effectiveCurrency)
       })
       .catch(() => {})
     return () => {

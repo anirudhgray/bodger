@@ -60,6 +60,7 @@ describe('BalancesPage', () => {
     mockedGetReportingCurrency.mockResolvedValue({
       currency: '',
       is_set: false,
+      effectiveCurrency: 'USD',
     })
     mockedFetchFxRates.mockReset()
   })
@@ -171,6 +172,7 @@ describe('BalancesPage', () => {
     mockedGetReportingCurrency.mockResolvedValue({
       currency: 'EUR',
       is_set: true,
+      effectiveCurrency: 'EUR',
     })
     mockedGetBalances.mockResolvedValueOnce({
       as_of: '2026-09-03',
