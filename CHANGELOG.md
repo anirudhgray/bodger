@@ -9,6 +9,41 @@ sync with each GitHub Release.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-11
+
+### Added
+
+* [dd7ff898](https://github.com/anirudhgray/bodger/commit/dd7ff898): feat(api): FX and multi-currency REST API surface (#155) (@anirudhgray)
+* [bc79046c](https://github.com/anirudhgray/bodger/commit/bc79046c): feat(app): FX provider adapter (Frankfurter) (#148) (@anirudhgray)
+* [61644c22](https://github.com/anirudhgray/bodger/commit/61644c22): feat(app): FetchFxRates and ListFxRates use cases (#153) (@anirudhgray)
+* [17e1d616](https://github.com/anirudhgray/bodger/commit/17e1d616): feat(app): accept an independent to-leg amount on cross-currency transfers (#162) (@anirudhgray)
+* [318465d2](https://github.com/anirudhgray/bodger/commit/318465d2): feat(app): conversion policies + ConvertAmount query (#151) (@anirudhgray)
+* [80df9ecc](https://github.com/anirudhgray/bodger/commit/80df9ecc): feat(app): cross-currency RecordTransfer (#152) (@anirudhgray)
+* [7f8a0d0c](https://github.com/anirudhgray/bodger/commit/7f8a0d0c): feat(app): per-user reporting currency (#147) (@anirudhgray)
+* [55a29a9c](https://github.com/anirudhgray/bodger/commit/55a29a9c): feat(cli): FX and multi-currency CLI surface (#154) (@anirudhgray)
+* [26396aab](https://github.com/anirudhgray/bodger/commit/26396aab): feat(domain): cross-currency transfer support + Rate type (#144) (@anirudhgray)
+* [00a5e84f](https://github.com/anirudhgray/bodger/commit/00a5e84f): feat(persistence): FxRateRepository over fx_rates (#149) (@anirudhgray)
+* [01acdee1](https://github.com/anirudhgray/bodger/commit/01acdee1): feat(persistence): add FX schema migration (fx_rates, transfer rate columns, reporting currency) (#142) (@anirudhgray)
+* [b0b04b7c](https://github.com/anirudhgray/bodger/commit/b0b04b7c): feat(web): balances currency/policy view + rate provenance display (#158) (@anirudhgray)
+* [01ca8c8a](https://github.com/anirudhgray/bodger/commit/01ca8c8a): feat(web): foreign-currency conversion hint and destination-amount field on transaction entry (#160) (@anirudhgray)
+* [b9c43bc9](https://github.com/anirudhgray/bodger/commit/b9c43bc9): feat(web): per-row currency conversion and rate backfill on the transaction list (#168) (@anirudhgray)
+* [c06796c1](https://github.com/anirudhgray/bodger/commit/c06796c1): feat(web): settings — currency field on new-account form (#175) (@anirudhgray)
+* [c5e9a556](https://github.com/anirudhgray/bodger/commit/c5e9a556): feat(web): settings — reporting currency (#157) (@anirudhgray)
+* [d1cef2ac](https://github.com/anirudhgray/bodger/commit/d1cef2ac): feat(web): transaction list — provenance on cross-currency rows (#178) (@anirudhgray)
+
+### Changed
+
+* [318b8c39](https://github.com/anirudhgray/bodger/commit/318b8c39): refactor(web): action failures report via toast, not inline (policy change) (#182) (@anirudhgray)
+
+### Fixed
+
+* [f2ff62e5](https://github.com/anirudhgray/bodger/commit/f2ff62e5): fix(api): report a transfer's from-leg amount under amount, not the to-leg (#167) (@anirudhgray)
+* [078c1533](https://github.com/anirudhgray/bodger/commit/078c1533): fix(app): fetch a direct base/quote pair instead of always quoting against reporting currency (#166) (@anirudhgray)
+* [2fab4c9c](https://github.com/anirudhgray/bodger/commit/2fab4c9c): fix(web): balances refresh rates against the selected display currency (#176) (@anirudhgray)
+* [176584cd](https://github.com/anirudhgray/bodger/commit/176584cd): fix(web): category name staleness and missing currency labels on transaction entry (#181) (@anirudhgray)
+* [7a7d3e1d](https://github.com/anirudhgray/bodger/commit/7a7d3e1d): fix(web): reporting currency, balances layout, and lib/settings cleanup (#184) (@anirudhgray)
+* [3c1b0b8c](https://github.com/anirudhgray/bodger/commit/3c1b0b8c): fix(web): use default shadcn tabs style for Settings sub-nav (#150) (@anirudhgray)
+
 ## [0.3.0] - 2026-09-05
 
 ### Added
@@ -77,7 +112,8 @@ sync with each GitHub Release.
 * 5ae7d547: fix(infra): make lint fail loudly on an incompatible golangci-lint (#23)
 * c76bd7e7: fix(infra): pre-push hook executable bit, worktree hygiene (#14)
 
-[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/anirudhgray/bodger/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/anirudhgray/bodger/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/anirudhgray/bodger/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/anirudhgray/bodger/releases/tag/v0.1.0
