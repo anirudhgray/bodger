@@ -4,8 +4,11 @@ import (
 	"context"
 	"strings"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/anirudhgray/bodger/internal/app/normalize"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
+	"github.com/anirudhgray/bodger/internal/domain/money"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
 )
@@ -51,11 +54,12 @@ func (s *Service) GetTransaction(ctx context.Context, q GetTransactionQuery) (Tr
 	return TransactionResult{Transaction: txn, Tags: tags}, nil
 }
 
-// ListTransactionsQuery is issue #6's reduced M1 filter: a date range,
+// ListTransactionsQuery is ADR-0009's full TransactionFilter, minus
+// ImportBatchRefs (no import_batch concept exists yet — M6) and cursor
+// pagination (deferred until a scrolling UI needs it): date range,
 // account, category (subtree included by default — ADR-0009, not
-// optional), and kind, offset-paginated with a fully-specified sort. The
-// full ADR-0009 filter (amount range, tags, currencies, description
-// search, import batch) is M4 scope.
+// optional), kind, currencies, amount range, description search, and
+// tags, offset-paginated with a fully-specified sort.
 type ListTransactionsQuery struct {
 	ActorID     string
 	AccountRef  string
@@ -63,6 +67,12 @@ type ListTransactionsQuery struct {
 	Kind        string
 	DateFrom    string
 	DateTo      string
+	Currencies  []string
+	AmountMin   string
+	AmountMax   string
+	Description string
+	Tags        []string
+	TagMode     string
 	Limit       int
 	Offset      int
 }
@@ -134,6 +144,40 @@ func (s *Service) ListTransactions(ctx context.Context, q ListTransactionsQuery)
 		filter.ToDate = &d
 	}
 
+	if len(q.Currencies) > 0 {
+		currencies, err := validateCurrencyCodes(q.Currencies)
+		if err != nil {
+			return ListTransactionsResult{}, err
+		}
+		filter.Currencies = currencies
+	}
+
+	amountMin, amountMax, err := validateAmountRange(q.AmountMin, q.AmountMax)
+	if err != nil {
+		return ListTransactionsResult{}, err
+	}
+	filter.AmountMin, filter.AmountMax = amountMin, amountMax
+
+	filter.Description = strings.TrimSpace(q.Description)
+
+	if len(q.Tags) > 0 {
+		tags := make([]string, 0, len(q.Tags))
+		for _, raw := range q.Tags {
+			tag, err := normalize.Tag(raw)
+			if err != nil {
+				return ListTransactionsResult{}, err
+			}
+			tags = append(tags, tag.String())
+		}
+		filter.Tags = tags
+
+		tagMode, err := parseTagMode(q.TagMode)
+		if err != nil {
+			return ListTransactionsResult{}, err
+		}
+		filter.TagMode = tagMode
+	}
+
 	filter.Limit = q.Limit
 	if filter.Limit <= 0 {
 		filter.Limit = defaultTransactionListLimit
@@ -151,4 +195,86 @@ func (s *Service) ListTransactions(ctx context.Context, q ListTransactionsQuery)
 		return ListTransactionsResult{}, err
 	}
 	return ListTransactionsResult{Transactions: txns, Limit: filter.Limit, Offset: filter.Offset}, nil
+}
+
+// validateCurrencyCodes resolves each raw code against money's reference
+// data, the same check normalize.Currency makes for a single code — this
+// validates a whole filter dimension's worth at once, since
+// ports.TransactionFilter.Currencies is OR-within-dimension (ADR-0009),
+// not a resolution ladder.
+func validateCurrencyCodes(raw []string) ([]string, error) {
+	codes := make([]string, 0, len(raw))
+	for _, code := range raw {
+		code = strings.TrimSpace(code)
+		if _, ok := money.LookupCurrency(code); !ok {
+			return nil, errs.New(errs.InvalidInput).
+				Explain("%q is not a known currency", code).
+				Field("currencies")
+		}
+		codes = append(codes, code)
+	}
+	return codes, nil
+}
+
+// validateAmountRange checks that minRaw/maxRaw (when set) are valid,
+// non-negative decimal amounts with minRaw <= maxRaw, and returns them
+// unchanged (still raw strings — the SQLite adapter does the actual
+// per-currency minor-unit conversion, since ADR-0009's AmountMin/AmountMax
+// aren't tied to one currency). Comparison is on absolute value
+// (ADR-0009), so a negative bound could never match anything and is
+// rejected here rather than silently accepted.
+func validateAmountRange(minRaw, maxRaw string) (string, string, error) {
+	var minDec, maxDec decimal.Decimal
+	var hasMin, hasMax bool
+
+	if strings.TrimSpace(minRaw) != "" {
+		d, err := decimal.NewFromString(strings.TrimSpace(minRaw))
+		if err != nil || d.IsNegative() {
+			return "", "", errs.New(errs.InvalidInput).
+				Explain("%q isn't a valid amount", minRaw).
+				Field("amount_min")
+		}
+		minDec, hasMin = d, true
+	}
+	if strings.TrimSpace(maxRaw) != "" {
+		d, err := decimal.NewFromString(strings.TrimSpace(maxRaw))
+		if err != nil || d.IsNegative() {
+			return "", "", errs.New(errs.InvalidInput).
+				Explain("%q isn't a valid amount", maxRaw).
+				Field("amount_max")
+		}
+		maxDec, hasMax = d, true
+	}
+	if hasMin && hasMax && minDec.GreaterThan(maxDec) {
+		return "", "", errs.New(errs.InvalidInput).
+			Explain("amount_min (%s) is greater than amount_max (%s)", minRaw, maxRaw).
+			Field("amount_min")
+	}
+
+	result := func(raw string, has bool) string {
+		if !has {
+			return ""
+		}
+		return strings.TrimSpace(raw)
+	}
+	return result(minRaw, hasMin), result(maxRaw, hasMax), nil
+}
+
+// parseTagMode validates raw against ADR-0009's TagMode enum, defaulting
+// an unset mode to "any" — the general "multiple values within one
+// dimension are OR" rule (ADR-0009), applied here because it only matters
+// once ListTransactions already knows Tags is non-empty.
+func parseTagMode(raw string) (string, error) {
+	mode := strings.ToLower(strings.TrimSpace(raw))
+	switch mode {
+	case "":
+		return "any", nil
+	case "any", "all":
+		return mode, nil
+	default:
+		return "", errs.New(errs.InvalidInput).
+			Explain("%q isn't a valid tag mode.", raw).
+			Field("tag_mode").
+			With("valid_modes", []string{"any", "all"})
+	}
 }
