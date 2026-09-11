@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"sort"
 
 	"github.com/anirudhgray/bodger/internal/app/normalize"
 	"github.com/anirudhgray/bodger/internal/domain"
@@ -160,6 +161,209 @@ func (s *Service) AccountBalances(ctx context.Context, q AccountBalancesQuery) (
 		balances = append(balances, ab)
 	}
 	return AccountBalancesResult{AsOf: asOf, Balances: balances, Unconverted: unconverted}, nil
+}
+
+// ---- BalanceTotals ----
+
+// BalanceTotalsQuery computes issue #195's totals overview: the overall net
+// balance, a per-account-category breakdown, and a per-currency (raw)
+// breakdown, as of AsOf. It builds entirely on AccountBalances -- same
+// accounts, same transactions, same per-account conversion and
+// shortfall-reporting -- rather than recomputing any of that
+// independently.
+type BalanceTotalsQuery struct {
+	ActorID string
+	AsOf    string
+
+	// TargetCurrency optionally overrides the reporting currency Overall
+	// and ByCategory are converted into. Left blank, it resolves through
+	// ADR-0004's ladder -- ActorID's own reporting-currency preference,
+	// falling through to the instance default -- the same two-step
+	// resolution resolveFetchReportingCurrency (fetch_fx_rates.go) already
+	// applies, mirrored here rather than duplicated as a shared helper:
+	// the two callers differ in exactly one respect (this one accepts an
+	// explicit override; that one never does), which isn't enough shared
+	// behaviour to justify the indirection of factoring out two lines.
+	TargetCurrency string
+	// Policy selects which of ADR-0004's conversion policies converts
+	// every account's balance into the reporting currency -- see
+	// ConversionPolicy. Required: Overall and ByCategory are always
+	// converted aggregates, like every M5 analytics result
+	// (AnalyticsOptions.Policy), never left unconverted the way
+	// AccountBalances' own per-account figures can be.
+	Policy ConversionPolicy
+	// PinnedDate is the date to convert at when Policy is PolicyPinned.
+	// Required in that case; ignored otherwise.
+	PinnedDate string
+}
+
+// AccountKindTotal is one ledger.AccountKind's balances, summed across
+// every account of that kind and converted into the query's reporting
+// currency.
+type AccountKindTotal struct {
+	Kind  ledger.AccountKind
+	Total money.Money
+}
+
+// CurrencyTotal is every account in one currency, summed in that currency
+// -- raw, unconverted, per issue #195's own "per currency (raw,
+// unconverted)" requirement. There is no conversion to fail here, so an
+// account never needs to appear in BalanceTotalsResult.Unconverted on this
+// breakdown's account: every account contributes to its own currency's
+// total regardless of whether Overall/ByCategory's conversion could cover
+// it.
+type CurrencyTotal struct {
+	Currency string
+	Total    money.Money
+}
+
+// BalanceTotalsResult is BalanceTotals' result.
+type BalanceTotalsResult struct {
+	AsOf domain.Date
+	// Options echoes the reporting currency and policy Overall and
+	// ByCategory were converted under -- the same provenance-by-echo M5's
+	// AnalyticsOptions-carrying results already use for a multi-row
+	// aggregate that has no single ConvertedAmount of its own to attach
+	// per-value provenance to.
+	Options AnalyticsOptions
+
+	// Overall is the net balance across every account, converted into
+	// Options.ReportingCurrency. Liability accounts (credit_card, loan)
+	// already reduce it without any special-casing here:
+	// data-model.md §4 and ledger.Balance's own contract store a
+	// liability account's balance negative exactly when money is owed, so
+	// a plain sum of every account's converted balance already nets
+	// liabilities against assets -- there is no second sign flip to apply
+	// on top of that.
+	Overall money.Money
+
+	// ByCategory has one row per ledger.AccountKind present among the
+	// actor's accounts (the same accounts AccountBalances itself
+	// includes -- archived accounts are not filtered out, matching that
+	// method's own behaviour), each summed and converted into
+	// Options.ReportingCurrency, sorted by Kind ascending. A kind whose
+	// only account(s) couldn't be converted (see Unconverted) still gets
+	// a row here -- summed over whatever of its accounts did convert,
+	// possibly zero -- rather than disappearing entirely.
+	ByCategory []AccountKindTotal
+
+	// ByCurrency has one row per distinct account currency, each summed
+	// in its own currency with no conversion at all, sorted by Currency
+	// ascending.
+	ByCurrency []CurrencyTotal
+
+	// Unconverted names every account Overall/ByCategory's conversion
+	// couldn't cover -- the same accounts an equivalent AccountBalancesQuery
+	// would report under AccountBalancesResult.Unconverted. These accounts
+	// still contribute to ByCurrency (which needs no conversion) but are
+	// excluded from Overall and from their category's total.
+	Unconverted []UnconvertedBalance
+}
+
+// resolveBalanceTotalsCurrency resolves BalanceTotalsQuery.TargetCurrency:
+// override, when the caller sets one (the same "convert into whatever the
+// caller asks" override AccountBalancesQuery.TargetCurrency already
+// allows), or ActorID's reporting currency resolved through ADR-0004's
+// full ladder -- the user's own preference, then the instance default --
+// when left blank, mirroring resolveFetchReportingCurrency's exact
+// resolution (fetch_fx_rates.go).
+func (s *Service) resolveBalanceTotalsCurrency(ctx context.Context, actorID, override string) (string, error) {
+	if override != "" {
+		return override, nil
+	}
+	preference, err := s.resolveReportingCurrency(ctx, actorID)
+	if err != nil {
+		return "", err
+	}
+	return normalize.Currency("", "", preference, s.Config.DefaultCurrency)
+}
+
+// BalanceTotals implements issue #195's totals-overview use case.
+func (s *Service) BalanceTotals(ctx context.Context, q BalanceTotalsQuery) (BalanceTotalsResult, error) {
+	if err := requireActorID(q.ActorID); err != nil {
+		return BalanceTotalsResult{}, err
+	}
+
+	currency, err := s.resolveBalanceTotalsCurrency(ctx, q.ActorID, q.TargetCurrency)
+	if err != nil {
+		return BalanceTotalsResult{}, err
+	}
+	opts, err := validateAnalyticsOptions(AnalyticsOptions{ReportingCurrency: currency, Policy: q.Policy, PinnedDate: q.PinnedDate})
+	if err != nil {
+		return BalanceTotalsResult{}, err
+	}
+
+	balances, err := s.AccountBalances(ctx, AccountBalancesQuery{
+		ActorID:        q.ActorID,
+		AsOf:           q.AsOf,
+		TargetCurrency: opts.ReportingCurrency,
+		Policy:         opts.Policy,
+		PinnedDate:     opts.PinnedDate,
+	})
+	if err != nil {
+		return BalanceTotalsResult{}, err
+	}
+
+	var overallMinor int64
+	categoryMinor := make(map[ledger.AccountKind]int64)
+	var kindsPresent []ledger.AccountKind
+	seenKind := make(map[ledger.AccountKind]bool)
+	currencyTotals := make(map[string]money.Money)
+	var currenciesPresent []string
+
+	for _, b := range balances.Balances {
+		kind := b.Account.Kind()
+		if !seenKind[kind] {
+			seenKind[kind] = true
+			kindsPresent = append(kindsPresent, kind)
+		}
+		if b.Converted != nil {
+			overallMinor += b.Converted.Amount.AmountMinor()
+			categoryMinor[kind] += b.Converted.Amount.AmountMinor()
+		}
+
+		cur := b.Balance.Currency()
+		if existing, ok := currencyTotals[cur]; ok {
+			sum, err := existing.Add(b.Balance)
+			if err != nil {
+				return BalanceTotalsResult{}, errs.New(errs.Internal).Wrap(err)
+			}
+			currencyTotals[cur] = sum
+		} else {
+			currencyTotals[cur] = b.Balance
+			currenciesPresent = append(currenciesPresent, cur)
+		}
+	}
+
+	overall, err := money.NewMoney(overallMinor, opts.ReportingCurrency)
+	if err != nil {
+		return BalanceTotalsResult{}, errs.New(errs.Internal).Wrap(err)
+	}
+
+	sort.Slice(kindsPresent, func(i, j int) bool { return kindsPresent[i] < kindsPresent[j] })
+	byCategory := make([]AccountKindTotal, 0, len(kindsPresent))
+	for _, k := range kindsPresent {
+		total, err := money.NewMoney(categoryMinor[k], opts.ReportingCurrency)
+		if err != nil {
+			return BalanceTotalsResult{}, errs.New(errs.Internal).Wrap(err)
+		}
+		byCategory = append(byCategory, AccountKindTotal{Kind: k, Total: total})
+	}
+
+	sort.Strings(currenciesPresent)
+	byCurrency := make([]CurrencyTotal, 0, len(currenciesPresent))
+	for _, c := range currenciesPresent {
+		byCurrency = append(byCurrency, CurrencyTotal{Currency: c, Total: currencyTotals[c]})
+	}
+
+	return BalanceTotalsResult{
+		AsOf:        balances.AsOf,
+		Options:     opts,
+		Overall:     overall,
+		ByCategory:  byCategory,
+		ByCurrency:  byCurrency,
+		Unconverted: balances.Unconverted,
+	}, nil
 }
 
 // errSafeMessage returns err's user-safe message when it's an *errs.Error
