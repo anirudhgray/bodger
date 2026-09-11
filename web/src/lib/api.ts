@@ -406,3 +406,75 @@ export function getReportingCurrency(): Promise<ReportingCurrency> {
 // reporting currency mirrors listAccounts/listCategories (read, used by
 // several screens) living here while their own create/archive calls stay
 // in lib/settings.ts.
+
+// --- Analytics (issue #189) ------------------------------------------
+//
+// Typed helpers over the four GET /api/v1/analytics/* endpoints
+// (internal/surface/http/analytics.go). The web screen only ever exposes
+// a date range and a reporting currency as filter chrome (issue #189's
+// own scope) — the full ADR-0009 filter dimensions these endpoints
+// accept (account/category/type/amount/description/tags) stay CLI/API-
+// only until a screen actually needs them.
+
+export type AnalyticsFilter = {
+  from?: string
+  to?: string
+}
+
+export type ConversionPolicy = 'transaction_date' | 'current' | 'pinned'
+
+export type AnalyticsOptions = {
+  currency: string
+  policy: ConversionPolicy
+  pinnedDate?: string
+}
+
+function analyticsQuery(filter: AnalyticsFilter, options: AnalyticsOptions) {
+  return buildQuery({
+    from: filter.from,
+    to: filter.to,
+    currency: options.currency,
+    policy: options.policy,
+    pinned_date: options.pinnedDate,
+  })
+}
+
+export type CategoryBreakdown = components['schemas']['CategoryBreakdown']
+export type CashFlow = components['schemas']['CashFlow']
+export type Trends = components['schemas']['Trends']
+export type SavingsRate = components['schemas']['SavingsRate']
+
+export function getCategoryBreakdown(
+  filter: AnalyticsFilter,
+  options: AnalyticsOptions,
+): Promise<CategoryBreakdown> {
+  return apiFetch<CategoryBreakdown>(
+    `/api/v1/analytics/category-breakdown${analyticsQuery(filter, options)}`,
+  )
+}
+
+export function getCashFlow(
+  filter: AnalyticsFilter,
+  options: AnalyticsOptions,
+): Promise<CashFlow> {
+  return apiFetch<CashFlow>(
+    `/api/v1/analytics/cash-flow${analyticsQuery(filter, options)}`,
+  )
+}
+
+// getTrends ignores any date range — /trends defines its own current-vs-
+// previous-calendar-month comparison window server-side (issue #187).
+export function getTrends(options: AnalyticsOptions): Promise<Trends> {
+  return apiFetch<Trends>(
+    `/api/v1/analytics/trends${analyticsQuery({}, options)}`,
+  )
+}
+
+export function getSavingsRate(
+  filter: AnalyticsFilter,
+  options: AnalyticsOptions,
+): Promise<SavingsRate> {
+  return apiFetch<SavingsRate>(
+    `/api/v1/analytics/savings-rate${analyticsQuery(filter, options)}`,
+  )
+}
