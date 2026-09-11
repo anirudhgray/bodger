@@ -534,15 +534,41 @@ from reading as the same kind of number. See `docs/design-system.md`'s
 "Balances: rate-provenance detail row" section, "Transfer rows (issue
 #141)" for the full rendering rules.
 
-**M5 · Orthanc is scoped and seeded** — see the
+**M5 · Orthanc is complete** — see the
 [M5 milestone](https://github.com/anirudhgray/bodger/milestone/5) for its
 issues: [#186](https://github.com/anirudhgray/bodger/issues/186) (extending
-`TransactionFilter` to ADR-0009's full shape), [#187](https://github.com/anirudhgray/bodger/issues/187)
-(the analytics app methods — category breakdown, cash flow, trends,
-savings rate), [#188](https://github.com/anirudhgray/bodger/issues/188)
-(REST/CLI analytics surfaces plus conformance), and
-[#189](https://github.com/anirudhgray/bodger/issues/189) (the web UI charts
-screen), in that dependency order. Nothing has landed yet.
+`TransactionFilter` to ADR-0009's full shape — amount range, currencies,
+description search, tags), [#187](https://github.com/anirudhgray/bodger/issues/187)
+(the analytics app methods — `CategoryBreakdown`, `CashFlow`, `Trends`,
+`SavingsRate`, all sharing one per-posting conversion core and the same
+reporting-currency/policy/provenance pattern M4 established),
+[#188](https://github.com/anirudhgray/bodger/issues/188) (REST/CLI surfaces —
+`GET /api/v1/analytics/...` and `bodger report ...`, both over the same app
+methods, proven identical via new ADR-0005 conformance rows), and
+[#189](https://github.com/anirudhgray/bodger/issues/189) (the web UI
+`/analytics` screen), in that dependency order.
+
+#189 closed out the milestone: category breakdown renders as a pair of
+donut charts (spending, income — a category is exclusively one type or the
+other in the domain model, so a single merged table would carry a zero
+column on nearly every row), each paired with its own sortable data table
+of the same server-computed rows; a cash-flow bar chart; Trends and
+Savings-rate cards; and the existing rate-refresh popover reused for the
+filter chrome. shadcn's `chart` primitive (Recharts 3.8.0 — a real v3
+release, no unofficial pre-release snippet needed) and `table` primitive
+were pulled in for this; see `docs/design-system.md`'s Charts section for
+the chart-library choice and a Recharts pie-animation gotcha worth knowing
+before debugging a "broken" donut. Per ADR-0009, none of this does
+client-side maths — every number rendered is exactly what the app-layer
+method returned. Three follow-ups surfaced while scoping the finished
+screen and were filed rather than folded in:
+[#194](https://github.com/anirudhgray/bodger/issues/194) (a
+period-granularity selector — week/month/year/custom — since `Trends` is
+currently fixed to a calendar-month comparison),
+[#195](https://github.com/anirudhgray/bodger/issues/195) (a Balances-screen
+totals overview), and [#196](https://github.com/anirudhgray/bodger/issues/196)
+(net worth over time, top transactions, average transaction size, and
+per-category trend deltas).
 
 | Milestone | Status |
 | --- | --- |
@@ -551,7 +577,7 @@ screen), in that dependency order. Nothing has landed yet.
 | M2 · The Shire — Web UI and authentication | ✅ Complete |
 | M3 · Rivendell — UI polish and design system | ✅ Complete |
 | M4 · The Grey Havens — Multi-currency and FX | ✅ Complete |
-| M5 · Orthanc — Analytics and charts | ⬜ Not started |
+| M5 · Orthanc — Analytics and charts | ✅ Complete |
 | M6 — Import and export | ⬜ Not started |
 | M7 — Budgets | ⬜ Not started |
 | M8 — MCP server | ⬜ Not started |

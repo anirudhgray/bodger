@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import {
+  BarChart3,
   ChevronRight,
   Moon,
   Receipt,
@@ -39,13 +40,15 @@ import { logout } from '@/lib/session'
 import { SETTINGS_SECTIONS } from '@/pages/settings/shared'
 
 // Each item's icon matches the one its own screen already uses for its
-// empty state (TransactionsList.tsx's Receipt, Balances.tsx's Wallet) —
-// reusing that vocabulary rather than picking new icons for the same
-// concept. Settings is rendered separately below, as a collapsible group
-// rather than a plain link — see AppSidebar's comment for why.
+// empty state (TransactionsList.tsx's Receipt, Balances.tsx's Wallet,
+// Analytics.tsx's BarChart3) — reusing that vocabulary rather than
+// picking new icons for the same concept. Settings is rendered separately
+// below, as a collapsible group rather than a plain link — see
+// AppSidebar's comment for why.
 const navItems = [
   { to: '/transactions', label: 'Transactions', icon: Receipt },
   { to: '/balances', label: 'Balances', icon: Wallet },
+  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
 ]
 
 // AppLayout is the routing skeleton's shell: a sidebar nav, a header, and

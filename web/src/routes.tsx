@@ -13,6 +13,7 @@ import {
 } from 'react-router-dom'
 
 import { AppLayout } from '@/App'
+import { AnalyticsPage } from '@/pages/Analytics'
 import { BalancesPage } from '@/pages/Balances'
 import { Login } from '@/pages/Login'
 import { Placeholder } from '@/pages/Placeholder'
@@ -103,6 +104,11 @@ export const routes: RouteObject[] = [
       {
         path: 'balances',
         element: <BalancesPage />,
+      },
+      {
+        // issue #189 — analytics and charts screen
+        path: 'analytics',
+        element: <AnalyticsPage />,
       },
       {
         path: 'settings',
