@@ -38,9 +38,11 @@ type balanceTotalsView struct {
 
 func balanceTotalsViewFrom(r app.BalanceTotalsResult) balanceTotalsView {
 	v := balanceTotalsView{
-		AsOf:     r.AsOf.String(),
-		Currency: r.Options.ReportingCurrency,
-		Overall:  r.Overall.AmountString(),
+		AsOf:       r.AsOf.String(),
+		Currency:   r.Options.ReportingCurrency,
+		Overall:    r.Overall.AmountString(),
+		ByCategory: []accountKindTotalView{},
+		ByCurrency: []currencyTotalView{},
 	}
 	for _, c := range r.ByCategory {
 		v.ByCategory = append(v.ByCategory, accountKindTotalView{

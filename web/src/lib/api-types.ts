@@ -280,7 +280,7 @@ export interface paths {
         };
         /**
          * Totals overview: overall net balance, per category, per currency.
-         * @description The overall net balance and the per-category breakdown are converted into "currency" under "policy" (ADR-0004) - left unset, "currency" resolves to the actor's own reporting-currency preference, falling back to the instance default. The per-currency breakdown is always raw and unconverted. Any account the conversion couldn't cover is reported under "unconverted" rather than silently dropped or excluded without explanation.
+         * @description The overall net balance and the per-category breakdown are converted into "currency" under "policy" - left unset, "currency" resolves to the actor's own reporting-currency preference, falling back to the instance default. The per-currency breakdown is always raw and unconverted. Any account the conversion couldn't cover is reported under "unconverted" rather than silently dropped or excluded without explanation.
          */
         get: operations["getBalanceTotals"];
         put?: never;

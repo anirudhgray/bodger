@@ -367,7 +367,7 @@ var routeTable = []route{
 		Handler: func(h *handlers) http.HandlerFunc { return h.getBalanceTotals },
 
 		OperationID: "getBalanceTotals", Summary: "Totals overview: overall net balance, per category, per currency.",
-		Description:   "The overall net balance and the per-category breakdown are converted into \"currency\" under \"policy\" (ADR-0004) - left unset, \"currency\" resolves to the actor's own reporting-currency preference, falling back to the instance default. The per-currency breakdown is always raw and unconverted. Any account the conversion couldn't cover is reported under \"unconverted\" rather than silently dropped or excluded without explanation.",
+		Description:   "The overall net balance and the per-category breakdown are converted into \"currency\" under \"policy\" - left unset, \"currency\" resolves to the actor's own reporting-currency preference, falling back to the instance default. The per-currency breakdown is always raw and unconverted. Any account the conversion couldn't cover is reported under \"unconverted\" rather than silently dropped or excluded without explanation.",
 		SuccessStatus: http.StatusOK, SuccessDescription: "The totals overview as of the resolved date.",
 		Response: balanceTotalsView{},
 		Errors:   []int{http.StatusUnprocessableEntity},

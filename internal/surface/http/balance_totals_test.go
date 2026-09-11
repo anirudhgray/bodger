@@ -105,6 +105,27 @@ func TestBalanceTotals_BlankCurrencyResolvesToTheInstanceDefault(t *testing.T) {
 	}
 }
 
+// TestBalanceTotals_NoAccountsReturnsEmptyArrays checks that a fresh actor
+// with no accounts gets back empty "by_category"/"by_currency" arrays
+// (`[]`), not JSON `null` — the OpenAPI schema declares both non-nullable
+// arrays, and a nil Go slice serializes as `null`, the same class of bug
+// issue #199's fix caught for the analytics endpoints' "rows"/"points".
+func TestBalanceTotals_NoAccountsReturnsEmptyArrays(t *testing.T) {
+	srv := newTestServer(t, time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC), "UTC")
+
+	status, decoded := do(t, srv, http.MethodGet, "/api/v1/balances/totals?currency=USD&policy=current", nil)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %+v", status, decoded)
+	}
+	data := dataOf(t, decoded)
+	if _, ok := data["by_category"].([]any); !ok {
+		t.Errorf("by_category = %#v (%T), want an empty array", data["by_category"], data["by_category"])
+	}
+	if _, ok := data["by_currency"].([]any); !ok {
+		t.Errorf("by_currency = %#v (%T), want an empty array", data["by_currency"], data["by_currency"])
+	}
+}
+
 // TestBalanceTotals_InvalidPolicyIs422 checks that an unrecognized policy
 // value surfaces the app layer's own InvalidInput as a 422, without this
 // handler pre-validating the policy enum itself — the same contract
