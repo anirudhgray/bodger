@@ -19,7 +19,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible } from '@/components/ui/collapsible'
 import {
   Empty,
@@ -48,14 +48,24 @@ import {
   ApiError,
   fetchFxRates,
   getBalances,
+  getBalanceTotals,
   getReportingCurrency,
   type Balances,
+  type BalanceTotals,
 } from '@/lib/api'
 
 function errorMessage(err: unknown): string {
   return err instanceof ApiError
     ? err.message
     : 'Couldn’t reach the server. Try again.'
+}
+
+// formatAccountKind turns the wire account kind ("credit_card") into a
+// display label ("Credit card") — display-only, never fed back into a
+// request.
+function formatAccountKind(kind: string): string {
+  const spaced = kind.replace(/_/g, ' ')
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
 // The sentinel Select value for "no conversion, show each account in its
@@ -70,6 +80,8 @@ export function BalancesPage() {
   const [reportingCurrency, setReportingCurrency] = useState<string | null>(
     null,
   )
+  const [totals, setTotals] = useState<BalanceTotals | null>(null)
+  const [totalsError, setTotalsError] = useState<string | null>(null)
   const [targetCurrency, setTargetCurrency] = useState(NO_CONVERSION)
   const [converted, setConverted] = useState<Balances | null>(null)
   const [converting, setConverting] = useState(false)
@@ -99,6 +111,18 @@ export function BalancesPage() {
         if (!cancelled) setReportingCurrency(result.effectiveCurrency)
       })
       .catch(() => {})
+    // The totals overview (issue #195) — its own section, independent of
+    // the per-account "Show in" selector below: it always renders in the
+    // server-resolved reporting currency, the number that answers
+    // "what's my overall position", not whatever one-off currency the
+    // account list happens to be displayed in right now.
+    getBalanceTotals('current')
+      .then((result) => {
+        if (!cancelled) setTotals(result)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setTotalsError(errorMessage(err))
+      })
     return () => {
       cancelled = true
     }
@@ -239,6 +263,87 @@ export function BalancesPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Balances</h1>
         <p className="text-muted-foreground text-sm">As of {displayed.as_of}</p>
       </div>
+
+      {totalsError && (
+        <p role="alert" className="text-destructive text-sm">
+          {totalsError}
+        </p>
+      )}
+
+      {totals && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Card>
+            <CardHeader>
+              <CardTitle>Overall</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-semibold tabular-nums">
+                {totals.overall} {totals.currency}
+              </p>
+            </CardContent>
+          </Card>
+
+          {totals.by_category.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>By category</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-1.5 text-sm">
+                {totals.by_category.map((c) => (
+                  <div
+                    key={c.kind}
+                    className="flex items-center justify-between"
+                  >
+                    <span className="text-muted-foreground">
+                      {formatAccountKind(c.kind)}
+                    </span>
+                    <span className="tabular-nums">
+                      {c.amount} {totals.currency}
+                    </span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {isMultiCurrency && totals.by_currency.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>By currency</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-1.5 text-sm">
+                {totals.by_currency.map((c) => (
+                  <div
+                    key={c.currency}
+                    className="flex items-center justify-between"
+                  >
+                    <span className="text-muted-foreground">{c.currency}</span>
+                    <span className="tabular-nums">
+                      {c.amount} {c.currency}
+                    </span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {totals.unconverted && totals.unconverted.length > 0 && (
+            <Card className="sm:col-span-2 lg:col-span-3">
+              <CardHeader>
+                <CardTitle>Not included in overall/by category</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-1">
+                {totals.unconverted.map((u) => (
+                  <div key={u.account} className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{u.account}</span>
+                    <UnconvertedNote reason={u.reason} />
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {isMultiCurrency && (
         <div className="flex flex-wrap items-center gap-3">

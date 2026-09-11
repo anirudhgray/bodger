@@ -271,6 +271,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/balances/totals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Totals overview: overall net balance, per category, per currency.
+         * @description The overall net balance and the per-category breakdown are converted into "currency" under "policy" (ADR-0004) - left unset, "currency" resolves to the actor's own reporting-currency preference, falling back to the instance default. The per-currency breakdown is always raw and unconverted. Any account the conversion couldn't cover is reported under "unconverted" rather than silently dropped or excluded without explanation.
+         */
+        get: operations["getBalanceTotals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/categories": {
         parameters: {
             query?: never;
@@ -488,6 +508,15 @@ export interface components {
         AccountEnvelope: {
             data: components["schemas"]["Account"];
         };
+        AccountKindTotal: {
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            amount: string;
+            /** @enum {string} */
+            kind: "bank" | "cash" | "credit_card" | "wallet" | "investment" | "loan" | "other";
+        };
         AccountListEnvelope: {
             data: components["schemas"]["Account"][];
         };
@@ -532,6 +561,26 @@ export interface components {
             amount: string;
             converted?: components["schemas"]["ConvertedBalance"];
             currency: string;
+        };
+        BalanceTotals: {
+            /**
+             * Format: date
+             * @description The date every total below is computed as of.
+             */
+            as_of: string;
+            by_category: components["schemas"]["AccountKindTotal"][];
+            by_currency: components["schemas"]["CurrencyTotal"][];
+            /** @description The reporting currency "overall" and "by_category" are expressed in. */
+            currency: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            overall: string;
+            unconverted?: components["schemas"]["UnconvertedBalance"][];
+        };
+        BalanceTotalsEnvelope: {
+            data: components["schemas"]["BalanceTotals"];
         };
         Balances: {
             /**
@@ -735,6 +784,14 @@ export interface components {
              * @description The to-leg's own amount, in the to-account's own currency. Omit to reuse amount's raw digits, reinterpreted in the to-currency, as before. Set this to record a real cross-currency exchange rate rather than an accidental 1:1.
              */
             to_amount?: string;
+        };
+        CurrencyTotal: {
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            amount: string;
+            currency: string;
         };
         EditTransactionRequest: {
             /** @description An account's ID or unique name. Read when editing an outflow or an inflow. */
@@ -1544,6 +1601,36 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BalancesEnvelope"];
+                };
+            };
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    getBalanceTotals: {
+        parameters: {
+            query?: {
+                /** @description Defaults to today in the actor's own timezone when omitted. */
+                as_of?: string;
+                /** @description Convert the overall and per-category totals into this currency. Defaults to the actor's own reporting currency. */
+                currency?: string;
+                /** @description Which conversion policy to use (required). */
+                policy?: "transaction_date" | "current" | "pinned";
+                /** @description The pinned date to convert at (required when "policy" is "pinned"). */
+                pinned_date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The totals overview as of the resolved date. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BalanceTotalsEnvelope"];
                 };
             };
             422: components["responses"]["InvalidInput"];

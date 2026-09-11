@@ -117,6 +117,29 @@ export function getBalances(query: BalancesQuery = {}): Promise<Balances> {
   )
 }
 
+// BalanceTotals is issue #195's totals-overview shape: the overall net
+// balance and per-category breakdown, both converted into "currency"
+// (server-resolved to the actor's reporting currency when this call
+// leaves it unset), plus the per-currency breakdown, which is always raw
+// and unconverted — and, when the requested conversion couldn't cover
+// every account, the same "unconverted" shortfall list GET
+// /api/v1/balances already reports (never dropped silently).
+export type BalanceTotals = components['schemas']['BalanceTotals']
+
+// getBalanceTotals fetches issue #195's totals overview as of today.
+// Unlike getBalances, "policy" is required here (mirroring the M5
+// analytics endpoints' own "always a converted aggregate" shape) — this
+// screen always passes 'current', the only sensible policy for a
+// present-tense "what do I have" question.
+export function getBalanceTotals(
+  policy: BalancesQuery['policy'],
+  currency?: string,
+): Promise<BalanceTotals> {
+  return apiFetch<BalanceTotals>(
+    `/api/v1/balances/totals${buildQuery({ currency, policy })}`,
+  )
+}
+
 // --- Transactions (issue #61) ---------------------------------------------
 //
 // Typed helpers over apiFetch for the transaction list screen. The wire

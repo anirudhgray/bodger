@@ -15,6 +15,7 @@ vi.mock('@/lib/api', async () => {
   return {
     ...actual,
     getBalances: vi.fn(),
+    getBalanceTotals: vi.fn(),
     getReportingCurrency: vi.fn(),
     fetchFxRates: vi.fn(),
   }
@@ -24,11 +25,13 @@ import {
   ApiError,
   fetchFxRates,
   getBalances,
+  getBalanceTotals,
   getReportingCurrency,
 } from '@/lib/api'
 import { BalancesPage } from './Balances'
 
 const mockedGetBalances = vi.mocked(getBalances)
+const mockedGetBalanceTotals = vi.mocked(getBalanceTotals)
 const mockedGetReportingCurrency = vi.mocked(getReportingCurrency)
 const mockedFetchFxRates = vi.mocked(fetchFxRates)
 
@@ -61,6 +64,18 @@ describe('BalancesPage', () => {
       currency: '',
       is_set: false,
       effectiveCurrency: 'USD',
+    })
+    // Every test below is about the per-account list, not the totals
+    // overview (issue #195) — a resolved-but-empty totals result keeps
+    // the totals section out of these tests' way. Tests that actually
+    // exercise the totals section set their own resolved/rejected value.
+    mockedGetBalanceTotals.mockReset()
+    mockedGetBalanceTotals.mockResolvedValue({
+      as_of: '2026-09-03',
+      currency: 'USD',
+      overall: '0.00',
+      by_category: [],
+      by_currency: [],
     })
     mockedFetchFxRates.mockReset()
   })
@@ -414,5 +429,165 @@ describe('BalancesPage', () => {
 
     expect(mockedFetchFxRates).toHaveBeenCalledWith(['USD'], undefined, 'EUR')
     expect(await screen.findByText('≈ 1400.00 EUR')).toBeInTheDocument()
+  })
+
+  // Issue #195: the totals overview renders exactly what the server
+  // computed (ADR-0009 — no client-side maths), never a client-side sum
+  // of the per-account list above it.
+  describe('totals overview', () => {
+    it('renders the overall, by-category, and by-currency totals exactly as the API returned them', async () => {
+      mockedGetBalances.mockResolvedValue({
+        as_of: '2026-09-03',
+        balances: [
+          {
+            account_id: 'a1',
+            account: 'Checking',
+            amount: '1500.00',
+            currency: 'USD',
+          },
+          {
+            account_id: 'a2',
+            account: 'Rupee wallet',
+            amount: '5000.00',
+            currency: 'INR',
+          },
+          {
+            account_id: 'a3',
+            account: 'Piggy bank',
+            amount: '200.00',
+            currency: 'INR',
+          },
+        ],
+      })
+      // by_currency's INR total (5200.00) is the sum of two INR accounts
+      // above, deliberately not matching either one's own raw balance —
+      // this test would still pass "accidentally" if the screen were
+      // rendering a raw account balance instead of the server-computed
+      // total, unless the two numbers genuinely differ.
+      mockedGetBalanceTotals.mockResolvedValue({
+        as_of: '2026-09-03',
+        currency: 'USD',
+        overall: '1557.50',
+        by_category: [
+          { kind: 'bank', amount: '1500.00' },
+          { kind: 'credit_card', amount: '57.50' },
+        ],
+        by_currency: [
+          { currency: 'USD', amount: '1500.00' },
+          { currency: 'INR', amount: '5200.00' },
+        ],
+      })
+
+      renderPage()
+
+      expect(await screen.findByText('1557.50 USD')).toBeInTheDocument()
+      expect(screen.getByText('Bank')).toBeInTheDocument()
+      expect(screen.getByText('57.50 USD')).toBeInTheDocument()
+      expect(screen.getByText('Credit card')).toBeInTheDocument()
+      // By-currency only appears once the ledger itself is multi-currency
+      // (Checking/USD, the two INR accounts here) — the per-account
+      // currency selector follows the same rule.
+      expect(screen.getByText('5200.00 INR')).toBeInTheDocument()
+    })
+
+    it('does not show the by-currency breakdown for a single-currency ledger', async () => {
+      mockedGetBalances.mockResolvedValue({
+        as_of: '2026-09-03',
+        balances: [
+          {
+            account_id: 'a1',
+            account: 'Checking',
+            amount: '1500.00',
+            currency: 'USD',
+          },
+        ],
+      })
+      mockedGetBalanceTotals.mockResolvedValue({
+        as_of: '2026-09-03',
+        currency: 'USD',
+        overall: '1500.00',
+        by_category: [{ kind: 'bank', amount: '1500.00' }],
+        by_currency: [{ currency: 'USD', amount: '1500.00' }],
+      })
+
+      renderPage()
+
+      await screen.findByText('Overall')
+      expect(screen.queryByText('By currency')).not.toBeInTheDocument()
+    })
+
+    it('flags an account the totals conversion could not cover, without failing the whole section', async () => {
+      mockedGetBalances.mockResolvedValue({
+        as_of: '2026-09-03',
+        balances: [
+          {
+            account_id: 'a1',
+            account: 'Checking',
+            amount: '1500.00',
+            currency: 'USD',
+          },
+          {
+            account_id: 'a2',
+            account: 'Rupee wallet',
+            amount: '5000.00',
+            currency: 'INR',
+          },
+        ],
+      })
+      // Deliberately distinct from every raw per-account balance above
+      // (and from each other) — the assertions below would pass
+      // "accidentally" against a raw balance or a different total if any
+      // of these numbers coincided.
+      mockedGetBalanceTotals.mockResolvedValue({
+        as_of: '2026-09-03',
+        currency: 'USD',
+        overall: '9001.00',
+        by_category: [{ kind: 'bank', amount: '9002.00' }],
+        by_currency: [
+          { currency: 'USD', amount: '9003.00' },
+          { currency: 'INR', amount: '9004.00' },
+        ],
+        unconverted: [
+          { account: 'Rupee wallet', reason: 'no USD/INR rate available' },
+        ],
+      })
+
+      renderPage()
+
+      expect(await screen.findByText('9001.00 USD')).toBeInTheDocument()
+      expect(screen.getByText('9002.00 USD')).toBeInTheDocument()
+      expect(screen.getByText('9003.00 USD')).toBeInTheDocument()
+      expect(screen.getByText('9004.00 INR')).toBeInTheDocument()
+      expect(
+        screen.getByText('Not converted — no USD/INR rate available'),
+      ).toBeInTheDocument()
+    })
+
+    it('shows a totals-specific error without blocking the per-account list', async () => {
+      mockedGetBalances.mockResolvedValue({
+        as_of: '2026-09-03',
+        balances: [
+          {
+            account_id: 'a1',
+            account: 'Checking',
+            amount: '1500.00',
+            currency: 'USD',
+          },
+        ],
+      })
+      mockedGetBalanceTotals.mockRejectedValue(
+        new ApiError(
+          'internal',
+          'Something went wrong. Try again in a moment.',
+        ),
+      )
+
+      renderPage()
+
+      expect(await screen.findByText('Checking')).toBeInTheDocument()
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Something went wrong. Try again in a moment.',
+      )
+    })
   })
 })
