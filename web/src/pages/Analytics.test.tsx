@@ -4,6 +4,7 @@
 // real chart data, an empty period, a server error, and the unconverted-
 // postings banner with its refresh popover.
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -97,7 +98,8 @@ describe('AnalyticsPage', () => {
       currency: 'USD',
       points: [
         {
-          month: '2026-09',
+          from: '2026-09-01',
+          to: '2026-09-30',
           inflow: '2000.00',
           outflow: '150.00',
           net: '1850.00',
@@ -276,5 +278,85 @@ describe('AnalyticsPage', () => {
     expect(
       screen.getByText(/Not converted — no rate on file/),
     ).toBeInTheDocument()
+  })
+
+  // Granularity selector (issue #194).
+  describe('granularity selector', () => {
+    function mockEmptyResults() {
+      mockedGetCategoryBreakdown.mockResolvedValue({
+        currency: 'USD',
+        rows: [],
+      })
+      mockedGetCashFlow.mockResolvedValue({ currency: 'USD', points: [] })
+      mockedGetTrends.mockResolvedValue(emptyTrends)
+      mockedGetSavingsRate.mockResolvedValue({
+        currency: 'USD',
+        income: '0.00',
+        outflow: '0.00',
+        net: '0.00',
+        rate: null,
+      })
+    }
+
+    it('defaults to month, unchanged from before the selector existed', async () => {
+      mockEmptyResults()
+      renderPage()
+
+      await screen.findByText('Nothing to show yet')
+      expect(mockedGetCashFlow).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'month',
+      )
+      expect(mockedGetTrends).toHaveBeenCalledWith(
+        expect.anything(),
+        'month',
+        expect.anything(),
+      )
+      expect(
+        screen.getByRole('combobox', { name: 'Granularity' }),
+      ).toBeInTheDocument()
+    })
+
+    it('refetches cash flow and trends with the chosen granularity', async () => {
+      mockEmptyResults()
+      renderPage()
+      await screen.findByText('Nothing to show yet')
+
+      const user = userEvent.setup()
+      await user.click(screen.getByRole('combobox', { name: 'Granularity' }))
+      await user.click(await screen.findByRole('option', { name: 'Week' }))
+
+      await waitFor(() =>
+        expect(mockedGetCashFlow).toHaveBeenLastCalledWith(
+          expect.anything(),
+          expect.anything(),
+          'week',
+        ),
+      )
+      expect(mockedGetTrends).toHaveBeenLastCalledWith(
+        expect.anything(),
+        'week',
+        expect.anything(),
+      )
+    })
+
+    it('holds off fetching a custom range until both dates are set', async () => {
+      mockEmptyResults()
+      renderPage()
+      await screen.findByText('Nothing to show yet')
+      const callsBefore = mockedGetCashFlow.mock.calls.length
+
+      const user = userEvent.setup()
+      await user.click(screen.getByRole('combobox', { name: 'Granularity' }))
+      await user.click(await screen.findByRole('option', { name: 'Custom' }))
+
+      expect(
+        await screen.findByText(
+          'Select both From and To to use a custom range.',
+        ),
+      ).toBeInTheDocument()
+      expect(mockedGetCashFlow.mock.calls.length).toBe(callsBefore)
+    })
   })
 })

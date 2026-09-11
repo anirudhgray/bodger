@@ -384,13 +384,13 @@
       },
       "CashFlowPoint": {
         "properties": {
+          "from": {
+            "format": "date",
+            "type": "string"
+          },
           "inflow": {
             "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
             "format": "money",
-            "type": "string"
-          },
-          "month": {
-            "description": "A calendar month, YYYY-MM.",
             "type": "string"
           },
           "net": {
@@ -402,10 +402,15 @@
             "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
             "format": "money",
             "type": "string"
+          },
+          "to": {
+            "format": "date",
+            "type": "string"
           }
         },
         "required": [
-          "month",
+          "from",
+          "to",
           "inflow",
           "outflow",
           "net"
@@ -1657,7 +1662,7 @@
     },
     "/api/v1/analytics/cash-flow": {
       "get": {
-        "description": "When the filter sets both \"from\" and \"to\", every month in that range is included, even one with no matching postings. Transfers are excluded by construction.",
+        "description": "When the filter sets both \"from\" and \"to\", every period in that range is included, even one with no matching postings. \"granularity\" selects the bucket size - week, month (the default), year, or custom (the whole \"from\"..\"to\" range as one bucket, which then requires both). Transfers are excluded by construction.",
         "operationId": "getCashFlow",
         "parameters": [
           {
@@ -1690,7 +1695,7 @@
             }
           },
           {
-            "description": "The inclusive start of a booked-date range. Ignored by /trends.",
+            "description": "The inclusive start of a booked-date range. Ignored by /trends except when its own granularity is \"custom\".",
             "in": "query",
             "name": "from",
             "schema": {
@@ -1699,7 +1704,7 @@
             }
           },
           {
-            "description": "The inclusive end of a booked-date range. Ignored by /trends.",
+            "description": "The inclusive end of a booked-date range. Ignored by /trends except when its own granularity is \"custom\".",
             "in": "query",
             "name": "to",
             "schema": {
@@ -1788,6 +1793,20 @@
               "format": "date",
               "type": "string"
             }
+          },
+          {
+            "description": "How to bucket/compare periods. Defaults to \"month\".",
+            "in": "query",
+            "name": "granularity",
+            "schema": {
+              "enum": [
+                "week",
+                "month",
+                "year",
+                "custom"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1799,13 +1818,13 @@
                 }
               }
             },
-            "description": "One point per calendar month, ascending."
+            "description": "One point per period, ascending."
           },
           "422": {
             "$ref": "#/components/responses/InvalidInput"
           }
         },
-        "summary": "Inflow vs. outflow, by calendar month."
+        "summary": "Inflow vs. outflow, bucketed by period."
       }
     },
     "/api/v1/analytics/category-breakdown": {
@@ -1843,7 +1862,7 @@
             }
           },
           {
-            "description": "The inclusive start of a booked-date range. Ignored by /trends.",
+            "description": "The inclusive start of a booked-date range. Ignored by /trends except when its own granularity is \"custom\".",
             "in": "query",
             "name": "from",
             "schema": {
@@ -1852,7 +1871,7 @@
             }
           },
           {
-            "description": "The inclusive end of a booked-date range. Ignored by /trends.",
+            "description": "The inclusive end of a booked-date range. Ignored by /trends except when its own granularity is \"custom\".",
             "in": "query",
             "name": "to",
             "schema": {
@@ -1996,7 +2015,7 @@
             }
           },
           {
-            "description": "The inclusive start of a booked-date range. Ignored by /trends.",
+            "description": "The inclusive start of a booked-date range. Ignored by /trends except when its own granularity is \"custom\".",
             "in": "query",
             "name": "from",
             "schema": {
@@ -2005,7 +2024,7 @@
             }
           },
           {
-            "description": "The inclusive end of a booked-date range. Ignored by /trends.",
+            "description": "The inclusive end of a booked-date range. Ignored by /trends except when its own granularity is \"custom\".",
             "in": "query",
             "name": "to",
             "schema": {
@@ -2116,7 +2135,7 @@
     },
     "/api/v1/analytics/trends": {
       "get": {
-        "description": "\"from\"/\"to\" are ignored - this always compares the current calendar month against the previous one, in the actor's own timezone. Every other filter dimension still applies to both periods identically.",
+        "description": "\"granularity\" selects the comparison period - week, month (the default), year, or custom. For week/month/year, \"from\"/\"to\" are ignored: this compares the current period against the previous one, in the actor's own timezone. For custom, \"from\"/\"to\" (both required) name the current period, compared against the immediately preceding period of the same length. Every other filter dimension still applies to both periods identically.",
         "operationId": "getTrends",
         "parameters": [
           {
@@ -2149,7 +2168,7 @@
             }
           },
           {
-            "description": "The inclusive start of a booked-date range. Ignored by /trends.",
+            "description": "The inclusive start of a booked-date range. Ignored by /trends except when its own granularity is \"custom\".",
             "in": "query",
             "name": "from",
             "schema": {
@@ -2158,7 +2177,7 @@
             }
           },
           {
-            "description": "The inclusive end of a booked-date range. Ignored by /trends.",
+            "description": "The inclusive end of a booked-date range. Ignored by /trends except when its own granularity is \"custom\".",
             "in": "query",
             "name": "to",
             "schema": {
@@ -2247,6 +2266,20 @@
               "format": "date",
               "type": "string"
             }
+          },
+          {
+            "description": "How to bucket/compare periods. Defaults to \"month\".",
+            "in": "query",
+            "name": "granularity",
+            "schema": {
+              "enum": [
+                "week",
+                "month",
+                "year",
+                "custom"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2258,13 +2291,13 @@
                 }
               }
             },
-            "description": "The current and previous month's totals, plus each one's percentage change."
+            "description": "The current and previous period's totals, plus each one's percentage change."
           },
           "422": {
             "$ref": "#/components/responses/InvalidInput"
           }
         },
-        "summary": "This calendar month vs. the previous one."
+        "summary": "The current period vs. the immediately preceding one."
       }
     },
     "/api/v1/auth/login": {

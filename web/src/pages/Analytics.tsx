@@ -88,6 +88,7 @@ import {
   listAccounts,
   type CashFlow,
   type CategoryBreakdown,
+  type Granularity,
   type SavingsRate,
   type Trends,
 } from '@/lib/api'
@@ -138,24 +139,83 @@ const cashFlowChartConfig: ChartConfig = {
   outflow: { label: 'Outflow', color: 'var(--chart-2)' },
 }
 
-// cashFlowMonthSpan turns CashFlow's own "YYYY-MM" points into a day-
-// precision [from, to] range spanning the earliest through the last day
-// of the latest month present — the refresh popover's fallback when the
+// cashFlowSpan spans the earliest From through the latest To across
+// CashFlow's own points — the refresh popover's fallback when the
 // page's own date filter is empty, so a backfill fetch still targets the
 // dates the query actually touched rather than defaulting to "today".
-function cashFlowMonthSpan(
-  points: { month: string }[],
+// Granularity-agnostic (issue #194): every point carries its own From/To
+// regardless of bucket size, so this needs no month-specific parsing the
+// way it did when a point was only ever a "YYYY-MM" string.
+function cashFlowSpan(
+  points: { from: string; to: string }[],
 ): { from: string; to: string } | null {
   if (points.length === 0) return null
-  const months = points.map((p) => p.month).sort()
-  const earliest = months[0]
-  const latest = months[months.length - 1]
-  const [year, month] = latest.split('-').map(Number)
-  const lastDay = new Date(year, month, 0).getDate()
-  return {
-    from: `${earliest}-01`,
-    to: `${latest}-${String(lastDay).padStart(2, '0')}`,
+  const froms = points.map((p) => p.from).sort()
+  const tos = points.map((p) => p.to).sort()
+  return { from: froms[0], to: tos[tos.length - 1] }
+}
+
+// formatPeriodLabel renders one CashFlowPoint's/TrendPeriod's [from, to]
+// as a short, granularity-appropriate label — display formatting of
+// dates the server already computed, not a new value (ADR-0009's "no
+// client-side maths" rule is about deriving figures, not about choosing
+// how to print an existing date).
+function formatPeriodLabel(
+  from: string,
+  to: string,
+  granularity: Granularity,
+): string {
+  const fromDate = new Date(`${from}T00:00:00`)
+  const toDate = new Date(`${to}T00:00:00`)
+  switch (granularity) {
+    case 'year':
+      return String(fromDate.getFullYear())
+    case 'week': {
+      const fromLabel = fromDate.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      })
+      const toLabel =
+        toDate.getMonth() === fromDate.getMonth()
+          ? String(toDate.getDate())
+          : toDate.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+            })
+      return `${fromLabel}–${toLabel}`
+    }
+    case 'custom':
+      return `${from} – ${to}`
+    default: // month
+      return fromDate.toLocaleDateString('en-US', {
+        month: 'short',
+        year: 'numeric',
+      })
   }
+}
+
+// periodPhrase names the current/previous Trends period in prose that
+// matches the selected granularity ("This week"/"This month"/"This
+// year", or "Current period"/"Previous period" for a custom range,
+// which has no fixed cadence to name).
+function periodPhrase(
+  granularity: Granularity,
+  which: 'current' | 'previous',
+): string {
+  if (granularity === 'custom')
+    return which === 'current' ? 'Current period' : 'Previous period'
+  const unit =
+    granularity === 'week' ? 'week' : granularity === 'year' ? 'year' : 'month'
+  return which === 'current' ? `This ${unit}` : `Last ${unit}`
+}
+
+// previousPeriodPhrase names what the current period's change percentages
+// compare against, matching periodPhrase's own granularity-aware naming.
+function previousPeriodPhrase(granularity: Granularity): string {
+  if (granularity === 'custom') return 'the previous period'
+  const unit =
+    granularity === 'week' ? 'week' : granularity === 'year' ? 'year' : 'month'
+  return `last ${unit}`
 }
 
 // changeLabel renders a nil-safe percentage change (Trends' own
@@ -375,6 +435,9 @@ export function AnalyticsPage() {
   const [currencies, setCurrencies] = useState<string[]>([])
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  // Defaults to "month" (issue #194) so nothing about the page's default
+  // rendering changes for anyone who never touches this selector.
+  const [granularity, setGranularity] = useState<Granularity>('month')
 
   const [breakdown, setBreakdown] = useState<CategoryBreakdown | null>(null)
   const [cashFlow, setCashFlow] = useState<CashFlow | null>(null)
@@ -424,16 +487,32 @@ export function AnalyticsPage() {
     }
   }, [])
 
+  // A custom granularity needs both bounds to define CashFlow's single
+  // bucket and Trends' current period (app.CashFlow/Trends both reject
+  // an open-ended custom range as invalid input) — checked client-side
+  // so an incomplete selection shows a plain hint instead of a server
+  // error round-trip.
+  const customRangeIncomplete = granularity === 'custom' && (!from || !to)
+
   const load = useCallback(() => {
     if (!currency) return
+    if (customRangeIncomplete) {
+      setBreakdown(null)
+      setCashFlow(null)
+      setTrends(null)
+      setSavingsRate(null)
+      setError(null)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     const filter = { from: from || undefined, to: to || undefined }
     const options = { currency, policy: 'transaction_date' as const }
     Promise.all([
       getCategoryBreakdown(filter, options),
-      getCashFlow(filter, options),
-      getTrends(options),
+      getCashFlow(filter, options, granularity),
+      getTrends(options, granularity, filter),
       getSavingsRate(filter, options),
     ])
       .then(([b, cf, t, sr]) => {
@@ -444,7 +523,7 @@ export function AnalyticsPage() {
       })
       .catch((err: unknown) => setError(errorMessage(err)))
       .finally(() => setLoading(false))
-  }, [currency, from, to])
+  }, [currency, from, to, granularity, customRangeIncomplete])
 
   useEffect(() => {
     // load() fetches from the analytics API (an external system) whenever
@@ -474,7 +553,7 @@ export function AnalyticsPage() {
       setRefreshTo(to)
       return
     }
-    const span = cashFlowMonthSpan(cashFlow?.points ?? [])
+    const span = cashFlowSpan(cashFlow?.points ?? [])
     setRefreshFrom(span?.from ?? from)
     setRefreshTo(span?.to ?? to)
   }
@@ -552,11 +631,11 @@ export function AnalyticsPage() {
   const cashFlowData = useMemo(
     () =>
       (cashFlow?.points ?? []).map((point) => ({
-        month: point.month,
+        label: formatPeriodLabel(point.from, point.to, granularity),
         inflow: Number(point.inflow),
         outflow: Number(point.outflow),
       })),
-    [cashFlow],
+    [cashFlow, granularity],
   )
 
   const hasAnyData =
@@ -583,6 +662,36 @@ export function AnalyticsPage() {
         <div className="flex flex-col gap-1">
           <Label htmlFor="analytics-to">To</Label>
           <DatePicker id="analytics-to" value={to} onChange={setTo} />
+        </div>
+        {/* Granularity selector (issue #194): defaults to "month" so the
+            page's default rendering is unchanged. Drives both CashFlow's
+            bucket size and Trends' comparison period — see
+            app.Granularity's own doc comment for what each value means
+            server-side. From/To above stay enabled for every granularity
+            since CashFlow always uses them as its overall range
+            regardless of bucket size; only Trends ignores them, and only
+            for week/month/year. */}
+        <div className="flex flex-col gap-1">
+          <Label
+            htmlFor="analytics-granularity"
+            className="text-muted-foreground text-sm font-normal"
+          >
+            Granularity
+          </Label>
+          <Select
+            value={granularity}
+            onValueChange={(v) => setGranularity(v as Granularity)}
+          >
+            <SelectTrigger id="analytics-granularity" className="w-28">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="week">Week</SelectItem>
+              <SelectItem value="month">Month</SelectItem>
+              <SelectItem value="year">Year</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         {/* Multi-currency chrome only appears once a second currency is
             actually in play — docs/ux-principles.md §4's progressive-
@@ -648,20 +757,26 @@ export function AnalyticsPage() {
         )}
       </div>
 
+      {customRangeIncomplete && (
+        <p className="text-muted-foreground text-sm">
+          Select both From and To to use a custom range.
+        </p>
+      )}
+
       {error && (
         <p role="alert" className="text-destructive text-sm">
           {error}
         </p>
       )}
 
-      {loading && !error && (
+      {loading && !error && !customRangeIncomplete && (
         <div className="flex items-center gap-2">
           <Spinner />
           <span className="text-muted-foreground text-sm">Loading…</span>
         </div>
       )}
 
-      {!loading && !error && !hasAnyData && (
+      {!loading && !error && !hasAnyData && !customRangeIncomplete && (
         <Empty>
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -691,19 +806,22 @@ export function AnalyticsPage() {
               <CardContent className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-muted-foreground">
-                    This month ({trends.current.from} – {trends.current.to})
+                    {periodPhrase(granularity, 'current')} (
+                    {trends.current.from} – {trends.current.to})
                   </p>
                   <p className="text-lg font-medium tabular-nums">
                     {trends.current.net} {trends.currency}
                   </p>
                   <p className="text-muted-foreground text-xs">
                     Inflow {changeLabel(trends.inflow_change_pct)} · Outflow{' '}
-                    {changeLabel(trends.outflow_change_pct)} vs. last month
+                    {changeLabel(trends.outflow_change_pct)} vs.{' '}
+                    {previousPeriodPhrase(granularity)}
                   </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">
-                    Last month ({trends.previous.from} – {trends.previous.to})
+                    {periodPhrase(granularity, 'previous')} (
+                    {trends.previous.from} – {trends.previous.to})
                   </p>
                   <p className="text-lg font-medium tabular-nums">
                     {trends.previous.net} {trends.currency}
@@ -775,7 +893,7 @@ export function AnalyticsPage() {
                 >
                   <BarChart data={cashFlowData}>
                     <CartesianGrid vertical={false} />
-                    <XAxis dataKey="month" tickLine={false} axisLine={false} />
+                    <XAxis dataKey="label" tickLine={false} axisLine={false} />
                     <YAxis tickLine={false} axisLine={false} />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Bar

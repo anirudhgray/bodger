@@ -452,13 +452,23 @@ export type AnalyticsOptions = {
   pinnedDate?: string
 }
 
-function analyticsQuery(filter: AnalyticsFilter, options: AnalyticsOptions) {
+// Granularity (issue #194) selects how CashFlow/Trends bucket/compare
+// periods server-side — see internal/app/analytics.go's Granularity.
+// CategoryBreakdown/SavingsRate take no granularity (out of scope).
+export type Granularity = 'week' | 'month' | 'year' | 'custom'
+
+function analyticsQuery(
+  filter: AnalyticsFilter,
+  options: AnalyticsOptions,
+  granularity?: Granularity,
+) {
   return buildQuery({
     from: filter.from,
     to: filter.to,
     currency: options.currency,
     policy: options.policy,
     pinned_date: options.pinnedDate,
+    granularity,
   })
 }
 
@@ -479,17 +489,23 @@ export function getCategoryBreakdown(
 export function getCashFlow(
   filter: AnalyticsFilter,
   options: AnalyticsOptions,
+  granularity?: Granularity,
 ): Promise<CashFlow> {
   return apiFetch<CashFlow>(
-    `/api/v1/analytics/cash-flow${analyticsQuery(filter, options)}`,
+    `/api/v1/analytics/cash-flow${analyticsQuery(filter, options, granularity)}`,
   )
 }
 
-// getTrends ignores any date range — /trends defines its own current-vs-
-// previous-calendar-month comparison window server-side (issue #187).
-export function getTrends(options: AnalyticsOptions): Promise<Trends> {
+// getTrends ignores any date range except under granularity "custom" —
+// week/month/year define their own current-vs-previous comparison
+// window server-side (issue #187; #194's granularity selector).
+export function getTrends(
+  options: AnalyticsOptions,
+  granularity?: Granularity,
+  filter: AnalyticsFilter = {},
+): Promise<Trends> {
   return apiFetch<Trends>(
-    `/api/v1/analytics/trends${analyticsQuery({}, options)}`,
+    `/api/v1/analytics/trends${analyticsQuery(filter, options, granularity)}`,
   )
 }
 

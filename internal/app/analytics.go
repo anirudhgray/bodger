@@ -45,6 +45,40 @@ type AnalyticsOptions struct {
 	PinnedDate string
 }
 
+// Granularity selects how CashFlow/Trends bucket/compare periods (issue
+// #194). Empty ("", the zero value every existing caller/test sends)
+// means GranularityMonth — the fixed calendar-month behavior these two
+// methods had before this type existed is unchanged by default.
+// CategoryBreakdown/SavingsRate don't take a Granularity: they already
+// operate over an arbitrary Filter date range with no periods to bucket
+// or compare (issue #194's own scope note).
+type Granularity string
+
+const (
+	GranularityWeek   Granularity = "week"
+	GranularityMonth  Granularity = "month"
+	GranularityYear   Granularity = "year"
+	GranularityCustom Granularity = "custom"
+)
+
+// validateGranularity defaults "" to GranularityMonth (mirroring how
+// validateAnalyticsOptions defaults nothing but rejects anything not
+// recognized) and rejects anything that isn't one of the four values.
+func validateGranularity(g Granularity) (Granularity, error) {
+	if g == "" {
+		g = GranularityMonth
+	}
+	switch g {
+	case GranularityWeek, GranularityMonth, GranularityYear, GranularityCustom:
+		return g, nil
+	default:
+		return "", errs.New(errs.InvalidInput).
+			Explain("%q isn't a recognized granularity.", g).
+			Field("granularity").
+			With("valid_granularities", []string{string(GranularityWeek), string(GranularityMonth), string(GranularityYear), string(GranularityCustom)})
+	}
+}
+
 // UnconvertedPosting names one posting an analytics query's requested
 // conversion could not cover — no rate was available for its currency
 // within the staleness window. It is reported here, excluded from every
@@ -357,34 +391,40 @@ func topLevelCategoryIndex(categories []ledger.Category) map[string]ledger.Categ
 
 // ---- CashFlow ----
 
-// CashFlowQuery groups inflow vs. outflow by calendar month over
-// Filter's matching transactions.
+// CashFlowQuery groups inflow vs. outflow by period over Filter's
+// matching transactions. Granularity selects the bucket size — see
+// Granularity's own doc comment; "" defaults to GranularityMonth,
+// today's original calendar-month bucketing.
 type CashFlowQuery struct {
-	ActorID string
-	Filter  TransactionFilterInput
-	Options AnalyticsOptions
+	ActorID     string
+	Filter      TransactionFilterInput
+	Options     AnalyticsOptions
+	Granularity Granularity
 }
 
-// CashFlowPoint is one calendar month's totals, converted into the
-// query's reporting currency. Outflow is reported as a positive
-// magnitude (not negative) so a caller can plot inflow and outflow as
-// two comparable bars/lines without negating anything itself.
+// CashFlowPoint is one period's totals, converted into the query's
+// reporting currency. From/To are that period's inclusive bounds —
+// granularity-agnostic, since a week/year/custom bucket doesn't fit a
+// single (year, month) pair the way a monthly one does. Outflow is
+// reported as a positive magnitude (not negative) so a caller can plot
+// inflow and outflow as two comparable bars/lines without negating
+// anything itself.
 type CashFlowPoint struct {
-	Year    int
-	Month   time.Month
-	Inflow  money.Money
-	Outflow money.Money
-	Net     money.Money
+	From, To domain.Date
+	Inflow   money.Money
+	Outflow  money.Money
+	Net      money.Money
 }
 
-// CashFlowResult is CashFlow's result: one point per calendar month,
-// sorted ascending. When Filter specifies both a DateFrom and a DateTo,
-// every month in that closed range appears, including months with no
-// matching postings (Inflow/Outflow/Net all zero) — a continuous line
-// chart needs the gaps, not just the months that happened to have data.
-// When either bound is left open, only months that actually have a
-// matching posting are reported, since there's no bound to zero-fill
-// from.
+// CashFlowResult is CashFlow's result: one point per period, sorted
+// ascending. When Filter specifies both a DateFrom and a DateTo, every
+// period in that closed range appears, including ones with no matching
+// postings (Inflow/Outflow/Net all zero) — a continuous line chart needs
+// the gaps, not just the periods that happened to have data. When either
+// bound is left open, only periods that actually have a matching posting
+// are reported, since there's no bound to zero-fill from. Under
+// GranularityCustom, the entire Filter.DateFrom..DateTo range is exactly
+// one bucket (both bounds are required in that case).
 type CashFlowResult struct {
 	Options     AnalyticsOptions
 	Points      []CashFlowPoint
@@ -400,9 +440,18 @@ func (s *Service) CashFlow(ctx context.Context, q CashFlowQuery) (CashFlowResult
 	if err != nil {
 		return CashFlowResult{}, err
 	}
+	granularity, err := validateGranularity(q.Granularity)
+	if err != nil {
+		return CashFlowResult{}, err
+	}
 	filter, err := s.resolveTransactionFilter(ctx, q.ActorID, q.Filter)
 	if err != nil {
 		return CashFlowResult{}, err
+	}
+	if granularity == GranularityCustom && (filter.FromDate == nil || filter.ToDate == nil) {
+		return CashFlowResult{}, errs.New(errs.InvalidInput).
+			Explain("A custom granularity needs both \"from\" and \"to\" to define its single bucket.").
+			Field("granularity")
 	}
 
 	contributions, unconverted, err := s.convertPostings(ctx, q.ActorID, filter, opts)
@@ -413,9 +462,26 @@ func (s *Service) CashFlow(ctx context.Context, q CashFlowQuery) (CashFlowResult
 	type bucket struct {
 		inflow, outflow int64
 	}
-	buckets := make(map[monthKey]*bucket)
+	buckets := make(map[periodKey]*bucket)
+
+	// Under GranularityCustom, every contribution falls into the one
+	// bucket spanning the whole filter range — there's no per-posting
+	// period to compute.
+	var customKey periodKey
+	if granularity == GranularityCustom {
+		customKey = periodKey{From: *filter.FromDate, To: *filter.ToDate}
+	}
+
 	for _, c := range contributions {
-		key := monthKey{Year: c.BookedDate.Year(), Month: c.BookedDate.Month()}
+		var key periodKey
+		if granularity == GranularityCustom {
+			key = customKey
+		} else {
+			key, err = periodContaining(c.BookedDate, granularity)
+			if err != nil {
+				return CashFlowResult{}, errs.New(errs.Internal).Wrap(err)
+			}
+		}
 		b, ok := buckets[key]
 		if !ok {
 			b = &bucket{}
@@ -428,15 +494,21 @@ func (s *Service) CashFlow(ctx context.Context, q CashFlowQuery) (CashFlowResult
 		}
 	}
 
-	var keys []monthKey
-	if filter.FromDate != nil && filter.ToDate != nil {
-		keys = monthKeysInRange(*filter.FromDate, *filter.ToDate)
+	var keys []periodKey
+	switch {
+	case granularity == GranularityCustom:
+		keys = []periodKey{customKey}
+		if _, ok := buckets[customKey]; !ok {
+			buckets[customKey] = &bucket{}
+		}
+	case filter.FromDate != nil && filter.ToDate != nil:
+		keys = periodKeysInRange(*filter.FromDate, *filter.ToDate, granularity)
 		for _, k := range keys {
 			if _, ok := buckets[k]; !ok {
 				buckets[k] = &bucket{}
 			}
 		}
-	} else {
+	default:
 		for k := range buckets {
 			keys = append(keys, k)
 		}
@@ -458,23 +530,102 @@ func (s *Service) CashFlow(ctx context.Context, q CashFlowQuery) (CashFlowResult
 		if err != nil {
 			return CashFlowResult{}, errs.New(errs.Internal).Wrap(err)
 		}
-		points = append(points, CashFlowPoint{Year: k.Year, Month: k.Month, Inflow: inflow, Outflow: outflow, Net: net})
+		points = append(points, CashFlowPoint{From: k.From, To: k.To, Inflow: inflow, Outflow: outflow, Net: net})
 	}
 
 	return CashFlowResult{Options: opts, Points: points, Unconverted: unconverted}, nil
 }
 
-// monthKey identifies one calendar month.
-type monthKey struct {
-	Year  int
-	Month time.Month
+// periodKey identifies one CashFlow bucket by its inclusive [From, To]
+// span — granularity-agnostic, so week/month/year/custom buckets all
+// share the same comparison/sort machinery rather than each granularity
+// needing its own parallel key type.
+type periodKey struct {
+	From, To domain.Date
 }
 
-func (k monthKey) before(other monthKey) bool {
-	if k.Year != other.Year {
-		return k.Year < other.Year
+func (k periodKey) before(other periodKey) bool {
+	return k.From.Before(other.From)
+}
+
+// periodContaining returns the periodKey of the period of the given
+// granularity that date falls within. GranularityCustom has no fixed
+// recurring period of its own — CashFlow handles that case separately
+// (the whole filter range is one bucket) and never calls this with
+// GranularityCustom.
+func periodContaining(date domain.Date, g Granularity) (periodKey, error) {
+	switch g {
+	case GranularityWeek:
+		from, to, err := weekRange(date)
+		if err != nil {
+			return periodKey{}, err
+		}
+		return periodKey{From: from, To: to}, nil
+	case GranularityYear:
+		from, to, err := yearRange(date.Year())
+		if err != nil {
+			return periodKey{}, err
+		}
+		return periodKey{From: from, To: to}, nil
+	default: // GranularityMonth
+		from, to, err := monthRange(date.Year(), date.Month())
+		if err != nil {
+			return periodKey{}, err
+		}
+		return periodKey{From: from, To: to}, nil
 	}
-	return k.Month < other.Month
+}
+
+// periodKeysInRange returns every period of granularity g overlapping
+// [from, to], ascending, each clamped to nothing (a period always keeps
+// its own full natural bounds, even the first/last one which may extend
+// slightly outside [from, to]) — the same "zero-fill every period in the
+// range" contract monthKeysInRange established, generalized to
+// week/month/year. GranularityCustom is never passed here — CashFlow
+// treats it as a single bucket built directly from the filter's own
+// bounds.
+func periodKeysInRange(from, to domain.Date, g Granularity) []periodKey {
+	var keys []periodKey
+	cur := from
+	for {
+		key, err := periodContaining(cur, g)
+		if err != nil {
+			break
+		}
+		keys = append(keys, key)
+		if !key.To.Before(to) {
+			break
+		}
+		cur = nextPeriodStart(key, g)
+		if len(keys) > 12*200 {
+			// A 200-year range is never a real query; this bound only
+			// exists so a caller mistake can't spin this loop forever.
+			break
+		}
+	}
+	return keys
+}
+
+// nextPeriodStart returns the first date of the period immediately
+// after key, for the given granularity.
+func nextPeriodStart(key periodKey, g Granularity) domain.Date {
+	switch g {
+	case GranularityWeek:
+		return addWeeks(key.From, 1)
+	case GranularityYear:
+		from, _, err := yearRange(key.From.Year() + 1)
+		if err != nil {
+			return key.To // unreachable: yearRange never fails on a real year
+		}
+		return from
+	default: // GranularityMonth
+		y, m := addMonths(key.From.Year(), key.From.Month(), 1)
+		from, _, err := monthRange(y, m)
+		if err != nil {
+			return key.To // unreachable: monthRange never fails on a real (y, m)
+		}
+		return from
+	}
 }
 
 // addMonths returns the (year, month) delta whole months after (year,
@@ -492,26 +643,6 @@ func addMonths(year int, month time.Month, delta int) (int, time.Month) {
 	return y, time.Month(m + 1)
 }
 
-// monthKeysInRange returns every calendar month from from through to,
-// inclusive, ascending.
-func monthKeysInRange(from, to domain.Date) []monthKey {
-	var keys []monthKey
-	y, m := from.Year(), from.Month()
-	for {
-		keys = append(keys, monthKey{Year: y, Month: m})
-		if y == to.Year() && m == to.Month() {
-			break
-		}
-		y, m = addMonths(y, m, 1)
-		if len(keys) > 12*200 {
-			// A 200-year range is never a real query; this bound only
-			// exists so a caller mistake can't spin this loop forever.
-			break
-		}
-	}
-	return keys
-}
-
 // monthRange returns the first and last calendar Date of (year, month).
 func monthRange(year int, month time.Month) (domain.Date, domain.Date, error) {
 	from, err := domain.NewDate(year, month, 1)
@@ -526,16 +657,78 @@ func monthRange(year int, month time.Month) (domain.Date, domain.Date, error) {
 	return from, to, nil
 }
 
+// yearRange returns the first and last calendar Date of year.
+func yearRange(year int) (domain.Date, domain.Date, error) {
+	from, err := domain.NewDate(year, time.January, 1)
+	if err != nil {
+		return domain.Date{}, domain.Date{}, err
+	}
+	to, err := domain.NewDate(year, time.December, 31)
+	if err != nil {
+		return domain.Date{}, domain.Date{}, err
+	}
+	return from, to, nil
+}
+
+// weekRange returns the Monday-through-Sunday week containing date.
+// Weeks start on Monday (ISO 8601's own convention) rather than
+// Sunday — the unambiguous standard, avoiding the "does a week start
+// Sunday or Monday" bikeshed a US-locale default would otherwise invite.
+func weekRange(date domain.Date) (domain.Date, domain.Date, error) {
+	t := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
+	// time.Weekday has Sunday = 0 ... Saturday = 6; ISO weekday has
+	// Monday = 1 ... Sunday = 7. Converting lets "days since Monday" be
+	// a single subtraction for every day of the week, Sunday included.
+	isoWeekday := int(t.Weekday())
+	if isoWeekday == 0 {
+		isoWeekday = 7
+	}
+	monday := t.AddDate(0, 0, -(isoWeekday - 1))
+	sunday := monday.AddDate(0, 0, 6)
+	from, err := domain.NewDate(monday.Year(), monday.Month(), monday.Day())
+	if err != nil {
+		return domain.Date{}, domain.Date{}, err
+	}
+	to, err := domain.NewDate(sunday.Year(), sunday.Month(), sunday.Day())
+	if err != nil {
+		return domain.Date{}, domain.Date{}, err
+	}
+	return from, to, nil
+}
+
+// addWeeks returns the date delta whole weeks after from — delta may be
+// negative to go backwards. Mirrors addMonths' round-trip-through-
+// time.Date arithmetic pattern.
+func addWeeks(from domain.Date, delta int) domain.Date {
+	t := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC)
+	t = t.AddDate(0, 0, 7*delta)
+	d, err := domain.NewDate(t.Year(), t.Month(), t.Day())
+	if err != nil {
+		// unreachable: time.Date's own round-trip normalization always
+		// produces a valid calendar date.
+		return from
+	}
+	return d
+}
+
 // ---- Trends ----
 
-// TrendsQuery compares the current calendar month against the previous
-// one. Filter's DateFrom/DateTo are ignored — Trends defines its own
-// two periods — but every other dimension (account, category,
-// currency, description, tags) still scopes both periods identically.
+// TrendsQuery compares one period against the immediately preceding
+// one, chosen by Granularity (see Granularity's own doc comment):
+// GranularityMonth (the default, "") compares the current calendar
+// month against the previous one; GranularityWeek the current Mon-Sun
+// week against the previous one; GranularityYear the current calendar
+// year against the previous one; GranularityCustom compares
+// Filter.DateFrom..DateTo (both required) against the immediately
+// preceding period of the same length. Except under GranularityCustom,
+// Filter's own DateFrom/DateTo are ignored — Trends defines its own two
+// periods — but every other dimension (account, category, currency,
+// description, tags) still scopes both periods identically.
 type TrendsQuery struct {
-	ActorID string
-	Filter  TransactionFilterInput
-	Options AnalyticsOptions
+	ActorID     string
+	Filter      TransactionFilterInput
+	Options     AnalyticsOptions
+	Granularity Granularity
 }
 
 // TrendPeriod is one period's totals in a Trends comparison.
@@ -571,19 +764,14 @@ func (s *Service) Trends(ctx context.Context, q TrendsQuery) (TrendsResult, erro
 	if err != nil {
 		return TrendsResult{}, err
 	}
-
-	today, err := normalize.DateOf("", s.Clock, s.Config.UserTimezone)
+	granularity, err := validateGranularity(q.Granularity)
 	if err != nil {
 		return TrendsResult{}, err
 	}
-	curFrom, curTo, err := monthRange(today.Year(), today.Month())
+
+	curFrom, curTo, prevFrom, prevTo, err := s.trendsComparisonPeriods(ctx, q.ActorID, q.Filter, granularity)
 	if err != nil {
-		return TrendsResult{}, errs.New(errs.Internal).Wrap(err)
-	}
-	prevYear, prevMonth := addMonths(today.Year(), today.Month(), -1)
-	prevFrom, prevTo, err := monthRange(prevYear, prevMonth)
-	if err != nil {
-		return TrendsResult{}, errs.New(errs.Internal).Wrap(err)
+		return TrendsResult{}, err
 	}
 
 	current, unconvertedCur, err := s.trendPeriod(ctx, q.ActorID, q.Filter, curFrom, curTo, opts)
@@ -603,6 +791,86 @@ func (s *Service) Trends(ctx context.Context, q TrendsQuery) (TrendsResult, erro
 		OutflowChangePct: changePct(previous.Outflow, current.Outflow),
 		Unconverted:      append(unconvertedCur, unconvertedPrev...),
 	}, nil
+}
+
+// trendsComparisonPeriods resolves Trends' current/previous [from, to]
+// bounds for granularity (already validated/defaulted by
+// validateGranularity):
+//
+//   - GranularityMonth: the current calendar month vs. the previous one.
+//   - GranularityWeek: the current Mon-Sun week vs. the previous one.
+//   - GranularityYear: the current calendar year vs. the previous one.
+//   - GranularityCustom: filterIn.DateFrom..DateTo (both required) vs.
+//     the immediately preceding period of the same day count, ending
+//     the day before DateFrom starts.
+func (s *Service) trendsComparisonPeriods(ctx context.Context, actorID string, filterIn TransactionFilterInput, granularity Granularity) (curFrom, curTo, prevFrom, prevTo domain.Date, err error) {
+	if granularity == GranularityCustom {
+		filter, err := s.resolveTransactionFilter(ctx, actorID, filterIn)
+		if err != nil {
+			return domain.Date{}, domain.Date{}, domain.Date{}, domain.Date{}, err
+		}
+		if filter.FromDate == nil || filter.ToDate == nil {
+			return domain.Date{}, domain.Date{}, domain.Date{}, domain.Date{}, errs.New(errs.InvalidInput).
+				Explain("A custom granularity needs both \"from\" and \"to\" to define the current period.").
+				Field("granularity")
+		}
+		curFrom, curTo = *filter.FromDate, *filter.ToDate
+		// daysBetween is exclusive (0 when from == to); the period's own
+		// inclusive day count is one more than that.
+		days := daysBetween(curFrom, curTo) + 1
+		prevTo = addDays(curFrom, -1)
+		prevFrom = addDays(prevTo, -(days - 1))
+		return curFrom, curTo, prevFrom, prevTo, nil
+	}
+
+	today, err := normalize.DateOf("", s.Clock, s.Config.UserTimezone)
+	if err != nil {
+		return domain.Date{}, domain.Date{}, domain.Date{}, domain.Date{}, err
+	}
+
+	switch granularity {
+	case GranularityWeek:
+		curFrom, curTo, err = weekRange(today)
+		if err != nil {
+			return domain.Date{}, domain.Date{}, domain.Date{}, domain.Date{}, errs.New(errs.Internal).Wrap(err)
+		}
+		prevFrom, prevTo = addWeeks(curFrom, -1), addWeeks(curTo, -1)
+	case GranularityYear:
+		curFrom, curTo, err = yearRange(today.Year())
+		if err != nil {
+			return domain.Date{}, domain.Date{}, domain.Date{}, domain.Date{}, errs.New(errs.Internal).Wrap(err)
+		}
+		prevFrom, prevTo, err = yearRange(today.Year() - 1)
+		if err != nil {
+			return domain.Date{}, domain.Date{}, domain.Date{}, domain.Date{}, errs.New(errs.Internal).Wrap(err)
+		}
+	default: // GranularityMonth
+		curFrom, curTo, err = monthRange(today.Year(), today.Month())
+		if err != nil {
+			return domain.Date{}, domain.Date{}, domain.Date{}, domain.Date{}, errs.New(errs.Internal).Wrap(err)
+		}
+		prevYear, prevMonth := addMonths(today.Year(), today.Month(), -1)
+		prevFrom, prevTo, err = monthRange(prevYear, prevMonth)
+		if err != nil {
+			return domain.Date{}, domain.Date{}, domain.Date{}, domain.Date{}, errs.New(errs.Internal).Wrap(err)
+		}
+	}
+	return curFrom, curTo, prevFrom, prevTo, nil
+}
+
+// addDays returns the date delta whole days after from — delta may be
+// negative to go backwards. Mirrors addWeeks/addMonths' round-trip-
+// through-time.Date arithmetic pattern.
+func addDays(from domain.Date, delta int) domain.Date {
+	t := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC)
+	t = t.AddDate(0, 0, delta)
+	d, err := domain.NewDate(t.Year(), t.Month(), t.Day())
+	if err != nil {
+		// unreachable: time.Date's own round-trip normalization always
+		// produces a valid calendar date.
+		return from
+	}
+	return d
 }
 
 // trendPeriod computes one TrendPeriod's totals over [from, to],
