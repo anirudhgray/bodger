@@ -77,6 +77,112 @@ type ListTransactionsQuery struct {
 	Offset      int
 }
 
+// TransactionFilterInput carries ADR-0009's raw, unvalidated filter
+// dimensions — the fields ListTransactionsQuery and every M5 analytics
+// query (CategoryBreakdown, CashFlow, Trends, SavingsRate; issue #187)
+// share verbatim, since they all filter "which transactions" identically
+// (ADR-0009's "one TransactionFilter... used identically by transaction
+// listing, every analytics method, every chart"). Pagination (Limit/
+// Offset) is deliberately not part of this shared shape — it's a
+// listing-only concern; an analytics aggregate always considers every
+// matching posting, the same way AccountBalances does.
+type TransactionFilterInput struct {
+	AccountRef  string
+	CategoryRef string
+	Kind        string
+	DateFrom    string
+	DateTo      string
+	Currencies  []string
+	AmountMin   string
+	AmountMax   string
+	Description string
+	Tags        []string
+	TagMode     string
+}
+
+// resolveTransactionFilter validates and normalises in into a
+// ports.TransactionFilter — the one place this happens, called by
+// ListTransactions and every M5 analytics method, so a validation rule
+// changed here changes identically everywhere (ADR-0009's whole point).
+func (s *Service) resolveTransactionFilter(ctx context.Context, actorID string, in TransactionFilterInput) (ports.TransactionFilter, error) {
+	var filter ports.TransactionFilter
+
+	if strings.TrimSpace(in.AccountRef) != "" {
+		account, err := s.resolveOwnedAccount(ctx, actorID, in.AccountRef)
+		if err != nil {
+			return ports.TransactionFilter{}, attachField(err, "account_ref")
+		}
+		filter.AccountID = account.ID()
+	}
+
+	if strings.TrimSpace(in.CategoryRef) != "" {
+		category, err := s.resolveOwnedCategory(ctx, actorID, in.CategoryRef)
+		if err != nil {
+			return ports.TransactionFilter{}, attachField(err, "category_ref")
+		}
+		filter.CategoryID = category.ID()
+	}
+
+	if strings.TrimSpace(in.Kind) != "" {
+		kind, err := parseTransactionKind(in.Kind)
+		if err != nil {
+			return ports.TransactionFilter{}, err
+		}
+		filter.Kind = kind
+	}
+
+	if strings.TrimSpace(in.DateFrom) != "" {
+		d, err := normalize.DateOf(in.DateFrom, s.Clock, s.Config.UserTimezone)
+		if err != nil {
+			return ports.TransactionFilter{}, err
+		}
+		filter.FromDate = &d
+	}
+	if strings.TrimSpace(in.DateTo) != "" {
+		d, err := normalize.DateOf(in.DateTo, s.Clock, s.Config.UserTimezone)
+		if err != nil {
+			return ports.TransactionFilter{}, err
+		}
+		filter.ToDate = &d
+	}
+
+	if len(in.Currencies) > 0 {
+		currencies, err := validateCurrencyCodes(in.Currencies)
+		if err != nil {
+			return ports.TransactionFilter{}, err
+		}
+		filter.Currencies = currencies
+	}
+
+	amountMin, amountMax, err := validateAmountRange(in.AmountMin, in.AmountMax)
+	if err != nil {
+		return ports.TransactionFilter{}, err
+	}
+	filter.AmountMin, filter.AmountMax = amountMin, amountMax
+
+	filter.Description = strings.TrimSpace(in.Description)
+
+	if len(in.Tags) > 0 {
+		tags := make([]string, 0, len(in.Tags))
+		for _, raw := range in.Tags {
+			tag, err := normalize.Tag(raw)
+			if err != nil {
+				return ports.TransactionFilter{}, err
+			}
+			tags = append(tags, tag.String())
+		}
+		filter.Tags = tags
+
+		tagMode, err := parseTagMode(in.TagMode)
+		if err != nil {
+			return ports.TransactionFilter{}, err
+		}
+		filter.TagMode = tagMode
+	}
+
+	return filter, nil
+}
+
 // ListTransactionsResult is ListTransactions' result: every matching
 // transaction, sorted (booked_date DESC, created_at DESC, id DESC) —
 // ADR-0009's fully-specified sort, so the same query run twice returns the
@@ -103,79 +209,21 @@ func (s *Service) ListTransactions(ctx context.Context, q ListTransactionsQuery)
 		return ListTransactionsResult{}, err
 	}
 
-	var filter ports.TransactionFilter
-
-	if strings.TrimSpace(q.AccountRef) != "" {
-		account, err := s.resolveOwnedAccount(ctx, q.ActorID, q.AccountRef)
-		if err != nil {
-			return ListTransactionsResult{}, attachField(err, "account_ref")
-		}
-		filter.AccountID = account.ID()
-	}
-
-	if strings.TrimSpace(q.CategoryRef) != "" {
-		category, err := s.resolveOwnedCategory(ctx, q.ActorID, q.CategoryRef)
-		if err != nil {
-			return ListTransactionsResult{}, attachField(err, "category_ref")
-		}
-		filter.CategoryID = category.ID()
-	}
-
-	if strings.TrimSpace(q.Kind) != "" {
-		kind, err := parseTransactionKind(q.Kind)
-		if err != nil {
-			return ListTransactionsResult{}, err
-		}
-		filter.Kind = kind
-	}
-
-	if strings.TrimSpace(q.DateFrom) != "" {
-		d, err := normalize.DateOf(q.DateFrom, s.Clock, s.Config.UserTimezone)
-		if err != nil {
-			return ListTransactionsResult{}, err
-		}
-		filter.FromDate = &d
-	}
-	if strings.TrimSpace(q.DateTo) != "" {
-		d, err := normalize.DateOf(q.DateTo, s.Clock, s.Config.UserTimezone)
-		if err != nil {
-			return ListTransactionsResult{}, err
-		}
-		filter.ToDate = &d
-	}
-
-	if len(q.Currencies) > 0 {
-		currencies, err := validateCurrencyCodes(q.Currencies)
-		if err != nil {
-			return ListTransactionsResult{}, err
-		}
-		filter.Currencies = currencies
-	}
-
-	amountMin, amountMax, err := validateAmountRange(q.AmountMin, q.AmountMax)
+	filter, err := s.resolveTransactionFilter(ctx, q.ActorID, TransactionFilterInput{
+		AccountRef:  q.AccountRef,
+		CategoryRef: q.CategoryRef,
+		Kind:        q.Kind,
+		DateFrom:    q.DateFrom,
+		DateTo:      q.DateTo,
+		Currencies:  q.Currencies,
+		AmountMin:   q.AmountMin,
+		AmountMax:   q.AmountMax,
+		Description: q.Description,
+		Tags:        q.Tags,
+		TagMode:     q.TagMode,
+	})
 	if err != nil {
 		return ListTransactionsResult{}, err
-	}
-	filter.AmountMin, filter.AmountMax = amountMin, amountMax
-
-	filter.Description = strings.TrimSpace(q.Description)
-
-	if len(q.Tags) > 0 {
-		tags := make([]string, 0, len(q.Tags))
-		for _, raw := range q.Tags {
-			tag, err := normalize.Tag(raw)
-			if err != nil {
-				return ListTransactionsResult{}, err
-			}
-			tags = append(tags, tag.String())
-		}
-		filter.Tags = tags
-
-		tagMode, err := parseTagMode(q.TagMode)
-		if err != nil {
-			return ListTransactionsResult{}, err
-		}
-		filter.TagMode = tagMode
 	}
 
 	filter.Limit = q.Limit
