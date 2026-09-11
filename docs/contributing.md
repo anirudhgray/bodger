@@ -46,6 +46,8 @@ The [`Makefile`](../Makefile) is the build contract. **CI runs `make check-go` a
 
 `TZ=UTC` is exported by the Makefile and set in CI. Reporting periods are defined in the *user's* timezone and resolved in the application layer ([ADR-0005](decisions/0005-shared-application-layer.md)); pinning the host to UTC means a test that accidentally depends on the machine's timezone fails immediately rather than at 18:30 one evening.
 
+`lint-web` runs oxlint (config: [`web/.oxlintrc.json`](../web/.oxlintrc.json)). A genuine warning gets fixed or restructured; a false positive or a deliberate, already-justified pattern (a fetch-on-mount effect, a route registry file that exports non-component values alongside a component) gets a narrow `// oxlint-disable-next-line <rule>` comment directly above the flagged line, with a one-line reason. **Gotcha:** as of oxlint 1.81, inline disable comments aren't honored for `react-hooks/exhaustive-deps` — suppress that one via a file-scoped `overrides` entry in `.oxlintrc.json` instead (see the one there for `TransactionsList.tsx`). `web/.oxlintrc.json` also has an `overrides` entry disabling `react/only-export-components` for `src/components/ui/**` — see [`design-system.md`'s Component primitives section](design-system.md#component-primitives) for why.
+
 ---
 
 ## Where code goes

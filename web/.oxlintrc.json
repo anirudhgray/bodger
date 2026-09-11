@@ -14,6 +14,15 @@
       // satisfy Fast Refresh would just be undone by the next re-pull.
       "files": ["src/components/ui/**"],
       "rules": { "react/only-export-components": "off" }
+    },
+    {
+      // react-hooks(exhaustive-deps) intentionally omits `initialFilter`
+      // from the mount-only effect's deps (see the comment above that
+      // effect in TransactionsList.tsx for the full rationale). oxlint
+      // 1.81 doesn't honor inline oxlint-disable comments for this rule,
+      // so it's suppressed here at file scope instead.
+      "files": ["src/pages/TransactionsList.tsx"],
+      "rules": { "react-hooks/exhaustive-deps": "off" }
     }
   ]
 }
