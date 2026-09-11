@@ -47,6 +47,86 @@ export interface paths {
         patch: operations["patchAccount"];
         trace?: never;
     };
+    "/api/v1/analytics/cash-flow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inflow vs. outflow, by calendar month.
+         * @description When the filter sets both "from" and "to", every month in that range is included, even one with no matching postings. Transfers are excluded by construction.
+         */
+        get: operations["getCashFlow"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/category-breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Spending and income, by top-level category.
+         * @description Every matching posting rolls up into its top-level category (a posting under Groceries or Restaurants both count toward "Food") - an "Uncategorized" row covers postings with no category at all. Transfers are excluded by construction.
+         */
+        get: operations["getCategoryBreakdown"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/savings-rate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * (Income − outflow) / income, over the filter's date range.
+         * @description "rate" is absent when income is zero - an undefined ratio, not zero.
+         */
+        get: operations["getSavingsRate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/trends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This calendar month vs. the previous one.
+         * @description "from"/"to" are ignored - this always compares the current calendar month against the previous one, in the actor's own timezone. Every other filter dimension still applies to both periods identically.
+         */
+        get: operations["getTrends"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -465,6 +545,33 @@ export interface components {
         BalancesEnvelope: {
             data: components["schemas"]["Balances"];
         };
+        CashFlow: {
+            currency: string;
+            points: components["schemas"]["CashFlowPoint"][];
+            unconverted?: components["schemas"]["UnconvertedPosting"][];
+        };
+        CashFlowEnvelope: {
+            data: components["schemas"]["CashFlow"];
+        };
+        CashFlowPoint: {
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            inflow: string;
+            /** @description A calendar month, YYYY-MM. */
+            month: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            net: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            outflow: string;
+        };
         Category: {
             archived: boolean;
             /**
@@ -480,6 +587,32 @@ export interface components {
             sort_order: number;
             /** @enum {string} */
             type: "expense" | "income";
+        };
+        CategoryBreakdown: {
+            currency: string;
+            rows: components["schemas"]["CategoryBreakdownRow"][];
+            unconverted?: components["schemas"]["UnconvertedPosting"][];
+        };
+        CategoryBreakdownEnvelope: {
+            data: components["schemas"]["CategoryBreakdown"];
+        };
+        CategoryBreakdownRow: {
+            category: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            income: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            net: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            spending: string;
         };
         CategoryEnvelope: {
             data: components["schemas"]["Category"];
@@ -741,6 +874,30 @@ export interface components {
         ReportingCurrencyEnvelope: {
             data: components["schemas"]["ReportingCurrency"];
         };
+        SavingsRate: {
+            currency: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            income: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            net: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            outflow: string;
+            /** Format: double */
+            rate?: number | null;
+            unconverted?: components["schemas"]["UnconvertedPosting"][];
+        };
+        SavingsRateEnvelope: {
+            data: components["schemas"]["SavingsRate"];
+        };
         SetReportingCurrencyRequest: {
             currency: string;
         };
@@ -792,9 +949,53 @@ export interface components {
         TransactionListEnvelope: {
             data: components["schemas"]["TransactionList"];
         };
+        TrendPeriod: {
+            /** Format: date */
+            from: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            inflow: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            net: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            outflow: string;
+            /** Format: date */
+            to: string;
+        };
+        Trends: {
+            currency: string;
+            current: components["schemas"]["TrendPeriod"];
+            /** Format: double */
+            inflow_change_pct?: number | null;
+            /** Format: double */
+            outflow_change_pct?: number | null;
+            previous: components["schemas"]["TrendPeriod"];
+            unconverted?: components["schemas"]["UnconvertedPosting"][];
+        };
+        TrendsEnvelope: {
+            data: components["schemas"]["Trends"];
+        };
         UnconvertedBalance: {
             account: string;
             reason: string;
+        };
+        UnconvertedPosting: {
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            amount: string;
+            currency: string;
+            reason: string;
+            transaction_id: string;
         };
     };
     responses: {
@@ -955,6 +1156,206 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    getCashFlow: {
+        parameters: {
+            query?: {
+                /** @description An account's ID or unique name. */
+                account?: string;
+                /** @description A category's ID or unique name; its whole subtree is included. */
+                category?: string;
+                /** @description One of "outflow", "inflow", or "transfer" - a transfer never contributes to an analytics result (transfers are excluded by construction), so filtering to "transfer" alone always returns an empty result. */
+                type?: "outflow" | "inflow" | "transfer";
+                /** @description The inclusive start of a booked-date range. Ignored by /trends. */
+                from?: string;
+                /** @description The inclusive end of a booked-date range. Ignored by /trends. */
+                to?: string;
+                /** @description Only include this transaction currency (repeatable). */
+                filter_currency?: string;
+                /** @description Only include transactions at or above this amount (absolute value). */
+                amount_min?: string;
+                /** @description Only include transactions at or below this amount (absolute value). */
+                amount_max?: string;
+                /** @description Only include transactions whose description contains this text. */
+                description?: string;
+                /** @description Only include transactions carrying this tag (repeatable). */
+                tag?: string;
+                /** @description How multiple "tag" values combine. */
+                tag_mode?: "any" | "all";
+                /** @description Convert every figure in the result into this currency (required). */
+                currency?: string;
+                /** @description Which conversion policy to use (required). */
+                policy?: "transaction_date" | "current" | "pinned";
+                /** @description The pinned date to convert at (required when "policy" is "pinned"). */
+                pinned_date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One point per calendar month, ascending. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashFlowEnvelope"];
+                };
+            };
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    getCategoryBreakdown: {
+        parameters: {
+            query?: {
+                /** @description An account's ID or unique name. */
+                account?: string;
+                /** @description A category's ID or unique name; its whole subtree is included. */
+                category?: string;
+                /** @description One of "outflow", "inflow", or "transfer" - a transfer never contributes to an analytics result (transfers are excluded by construction), so filtering to "transfer" alone always returns an empty result. */
+                type?: "outflow" | "inflow" | "transfer";
+                /** @description The inclusive start of a booked-date range. Ignored by /trends. */
+                from?: string;
+                /** @description The inclusive end of a booked-date range. Ignored by /trends. */
+                to?: string;
+                /** @description Only include this transaction currency (repeatable). */
+                filter_currency?: string;
+                /** @description Only include transactions at or above this amount (absolute value). */
+                amount_min?: string;
+                /** @description Only include transactions at or below this amount (absolute value). */
+                amount_max?: string;
+                /** @description Only include transactions whose description contains this text. */
+                description?: string;
+                /** @description Only include transactions carrying this tag (repeatable). */
+                tag?: string;
+                /** @description How multiple "tag" values combine. */
+                tag_mode?: "any" | "all";
+                /** @description Convert every figure in the result into this currency (required). */
+                currency?: string;
+                /** @description Which conversion policy to use (required). */
+                policy?: "transaction_date" | "current" | "pinned";
+                /** @description The pinned date to convert at (required when "policy" is "pinned"). */
+                pinned_date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One row per top-level category with at least one matching posting. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryBreakdownEnvelope"];
+                };
+            };
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    getSavingsRate: {
+        parameters: {
+            query?: {
+                /** @description An account's ID or unique name. */
+                account?: string;
+                /** @description A category's ID or unique name; its whole subtree is included. */
+                category?: string;
+                /** @description One of "outflow", "inflow", or "transfer" - a transfer never contributes to an analytics result (transfers are excluded by construction), so filtering to "transfer" alone always returns an empty result. */
+                type?: "outflow" | "inflow" | "transfer";
+                /** @description The inclusive start of a booked-date range. Ignored by /trends. */
+                from?: string;
+                /** @description The inclusive end of a booked-date range. Ignored by /trends. */
+                to?: string;
+                /** @description Only include this transaction currency (repeatable). */
+                filter_currency?: string;
+                /** @description Only include transactions at or above this amount (absolute value). */
+                amount_min?: string;
+                /** @description Only include transactions at or below this amount (absolute value). */
+                amount_max?: string;
+                /** @description Only include transactions whose description contains this text. */
+                description?: string;
+                /** @description Only include transactions carrying this tag (repeatable). */
+                tag?: string;
+                /** @description How multiple "tag" values combine. */
+                tag_mode?: "any" | "all";
+                /** @description Convert every figure in the result into this currency (required). */
+                currency?: string;
+                /** @description Which conversion policy to use (required). */
+                policy?: "transaction_date" | "current" | "pinned";
+                /** @description The pinned date to convert at (required when "policy" is "pinned"). */
+                pinned_date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Income, outflow, net, and the savings rate over the resolved filter. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavingsRateEnvelope"];
+                };
+            };
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    getTrends: {
+        parameters: {
+            query?: {
+                /** @description An account's ID or unique name. */
+                account?: string;
+                /** @description A category's ID or unique name; its whole subtree is included. */
+                category?: string;
+                /** @description One of "outflow", "inflow", or "transfer" - a transfer never contributes to an analytics result (transfers are excluded by construction), so filtering to "transfer" alone always returns an empty result. */
+                type?: "outflow" | "inflow" | "transfer";
+                /** @description The inclusive start of a booked-date range. Ignored by /trends. */
+                from?: string;
+                /** @description The inclusive end of a booked-date range. Ignored by /trends. */
+                to?: string;
+                /** @description Only include this transaction currency (repeatable). */
+                filter_currency?: string;
+                /** @description Only include transactions at or above this amount (absolute value). */
+                amount_min?: string;
+                /** @description Only include transactions at or below this amount (absolute value). */
+                amount_max?: string;
+                /** @description Only include transactions whose description contains this text. */
+                description?: string;
+                /** @description Only include transactions carrying this tag (repeatable). */
+                tag?: string;
+                /** @description How multiple "tag" values combine. */
+                tag_mode?: "any" | "all";
+                /** @description Convert every figure in the result into this currency (required). */
+                currency?: string;
+                /** @description Which conversion policy to use (required). */
+                policy?: "transaction_date" | "current" | "pinned";
+                /** @description The pinned date to convert at (required when "policy" is "pinned"). */
+                pinned_date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current and previous month's totals, plus each one's percentage change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrendsEnvelope"];
+                };
+            };
             422: components["responses"]["InvalidInput"];
         };
     };

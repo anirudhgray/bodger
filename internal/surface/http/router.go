@@ -393,6 +393,51 @@ var routeTable = []route{
 	},
 
 	{
+		Method: http.MethodGet, Pattern: "/api/v1/analytics/category-breakdown",
+		Handler: func(h *handlers) http.HandlerFunc { return h.getCategoryBreakdown },
+
+		OperationID: "getCategoryBreakdown", Summary: "Spending and income, by top-level category.",
+		Description:   "Every matching posting rolls up into its top-level category (a posting under Groceries or Restaurants both count toward \"Food\") - an \"Uncategorized\" row covers postings with no category at all. Transfers are excluded by construction.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "One row per top-level category with at least one matching posting.",
+		Response: categoryBreakdownView{},
+		Errors:   []int{http.StatusUnprocessableEntity},
+		Query:    reportQueryParams,
+	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/analytics/cash-flow",
+		Handler: func(h *handlers) http.HandlerFunc { return h.getCashFlow },
+
+		OperationID: "getCashFlow", Summary: "Inflow vs. outflow, by calendar month.",
+		Description:   "When the filter sets both \"from\" and \"to\", every month in that range is included, even one with no matching postings. Transfers are excluded by construction.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "One point per calendar month, ascending.",
+		Response: cashFlowView{},
+		Errors:   []int{http.StatusUnprocessableEntity},
+		Query:    reportQueryParams,
+	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/analytics/trends",
+		Handler: func(h *handlers) http.HandlerFunc { return h.getTrends },
+
+		OperationID: "getTrends", Summary: "This calendar month vs. the previous one.",
+		Description:   "\"from\"/\"to\" are ignored - this always compares the current calendar month against the previous one, in the actor's own timezone. Every other filter dimension still applies to both periods identically.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The current and previous month's totals, plus each one's percentage change.",
+		Response: trendsView{},
+		Errors:   []int{http.StatusUnprocessableEntity},
+		Query:    reportQueryParams,
+	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/analytics/savings-rate",
+		Handler: func(h *handlers) http.HandlerFunc { return h.getSavingsRate },
+
+		OperationID: "getSavingsRate", Summary: "(Income − outflow) / income, over the filter's date range.",
+		Description:   "\"rate\" is absent when income is zero - an undefined ratio, not zero.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "Income, outflow, net, and the savings rate over the resolved filter.",
+		Response: savingsRateView{},
+		Errors:   []int{http.StatusUnprocessableEntity},
+		Query:    reportQueryParams,
+	},
+
+	{
 		Method: http.MethodGet, Pattern: "/api/v1/reporting-currency",
 		Handler: func(h *handlers) http.HandlerFunc { return h.getReportingCurrency },
 
@@ -412,6 +457,29 @@ var routeTable = []route{
 }
 
 func intPtr(n int) *int { return &n }
+
+// reportQueryParams is every /api/v1/analytics/* route's shared query
+// string: ADR-0009's TransactionFilterInput dimensions (account through
+// tag_mode) plus ADR-0004's conversion options (currency through
+// pinned_date) - the exact same list on all four routes, since
+// parseReportFilterQuery/parseReportOptionsQuery (analytics.go) read them
+// identically regardless of which metric is being requested.
+var reportQueryParams = []queryParam{
+	{Name: "account", Description: "An account's ID or unique name.", Type: "string"},
+	{Name: "category", Description: "A category's ID or unique name; its whole subtree is included.", Type: "string"},
+	{Name: "type", Description: `One of "outflow", "inflow", or "transfer" - a transfer never contributes to an analytics result (transfers are excluded by construction), so filtering to "transfer" alone always returns an empty result.`, Type: "string", Enum: []string{"outflow", "inflow", "transfer"}},
+	{Name: "from", Description: "The inclusive start of a booked-date range. Ignored by /trends.", Type: "string", Format: "date"},
+	{Name: "to", Description: "The inclusive end of a booked-date range. Ignored by /trends.", Type: "string", Format: "date"},
+	{Name: "filter_currency", Description: "Only include this transaction currency (repeatable).", Type: "string"},
+	{Name: "amount_min", Description: "Only include transactions at or above this amount (absolute value).", Type: "string"},
+	{Name: "amount_max", Description: "Only include transactions at or below this amount (absolute value).", Type: "string"},
+	{Name: "description", Description: "Only include transactions whose description contains this text.", Type: "string"},
+	{Name: "tag", Description: "Only include transactions carrying this tag (repeatable).", Type: "string"},
+	{Name: "tag_mode", Description: `How multiple "tag" values combine.`, Type: "string", Enum: []string{"any", "all"}},
+	{Name: "currency", Description: "Convert every figure in the result into this currency (required).", Type: "string"},
+	{Name: "policy", Description: "Which conversion policy to use (required).", Type: "string", Enum: []string{"transaction_date", "current", "pinned"}},
+	{Name: "pinned_date", Description: "The pinned date to convert at (required when \"policy\" is \"pinned\").", Type: "string", Format: "date"},
+}
 
 // NewMux builds bodger's REST API as a stdlib *http.ServeMux, wiring
 // every routeTable entry to svc. It has no other side effect — no
