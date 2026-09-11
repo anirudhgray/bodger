@@ -625,3 +625,38 @@ chroma and lightness as the existing one, only the hue changes. A new
 neutral: same near-zero chroma, same hue (240) as the rest of the gray
 scale. If neither fits, that's a sign the need is a new _semantic_
 token (like `success` was), not a one-off hex value.
+
+## Charts (issue #189)
+
+`components/ui/chart.tsx`, pulled via `npx shadcn add chart`, is the
+only charting primitive in the app — every analytics chart
+(`pages/Analytics.tsx`) wraps `recharts` components in `ChartContainer`
+rather than reaching for `recharts` directly or a second library. At
+install time this pulled `recharts` **3.8.0**: shadcn's own chart docs
+still carry a "we're working on upgrading to Recharts v3" note pointing
+at an unofficial manual snippet, but the *default*, officially-supported
+`add chart` install already resolves to a real v3 release today — no
+manual patch was needed, and the unofficial v3 snippet was deliberately
+not used. Re-running `npx shadcn add chart` to pick up a future version
+should stay on whatever the default install resolves to unless a
+concrete v3 incompatibility shows up; don't reach for an unofficial
+snippet preemptively.
+
+Five categorical CSS custom properties back every chart's `ChartConfig`
+(`index.css`'s `:root`/`.dark`, mirrored into `@theme inline` as
+`--color-chart-*`): `--chart-1`/`--chart-2` alias the existing
+`--success`/`--destructive` tokens (inflow/outflow already read as
+"good"/"bad" everywhere else in the app, e.g. `TransactionsList`), and
+`--chart-3`/`--chart-4`/`--chart-5` are new hues spread away from both
+for per-category series that need more than two colors. A future chart
+needing more series than these five should extend this same palette
+(same lightness/chroma family, new hue) rather than picking an
+unrelated color, per "Adding a color" above.
+
+`ChartContainer`'s text-node output (recharts renders axis/legend labels
+as SVG `<text>`/`<tspan>`, sometimes split across multiple `<tspan>`s
+per label) doesn't reliably match `@testing-library`'s exact-text
+queries under jsdom's `ResizeObserver` stub (`src/test/setup.ts`) — a
+chart's own component test should assert on the screen's plain-HTML
+figures (stat cards, headings) rather than on text inside the chart's
+SVG itself; see `Analytics.test.tsx`'s own comment on this.
