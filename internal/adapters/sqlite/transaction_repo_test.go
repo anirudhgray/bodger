@@ -312,6 +312,168 @@ func TestTransactionRepository_List_FilterByAccountAndAsOf(t *testing.T) {
 	}
 }
 
+func TestTransactionRepository_List_FilterByCurrency(t *testing.T) {
+	db, _ := newTestDB(t)
+	seedAccountAndCategory(t, db, ports.SeededUserID, "acc-1", "cat-1")
+	repo := NewTransactionRepository(db)
+	ctx := context.Background()
+
+	inr := mustPosting(t, "post-inr", "acc-1", -1000, "INR", nil)
+	txnINR, err := ledger.NewOutflow("txn-inr", ports.SeededUserID, mustDate(t, 2026, time.August, 1), "INR spend", []ledger.Posting{inr})
+	if err != nil {
+		t.Fatalf("NewOutflow txnINR: %v", err)
+	}
+	if err := repo.Create(ctx, ports.SeededUserID, txnINR, nil); err != nil {
+		t.Fatalf("Create txnINR: %v", err)
+	}
+
+	usd := mustPosting(t, "post-usd", "acc-1", -1000, "USD", nil)
+	txnUSD, err := ledger.NewOutflow("txn-usd", ports.SeededUserID, mustDate(t, 2026, time.August, 2), "USD spend", []ledger.Posting{usd})
+	if err != nil {
+		t.Fatalf("NewOutflow txnUSD: %v", err)
+	}
+	if err := repo.Create(ctx, ports.SeededUserID, txnUSD, nil); err != nil {
+		t.Fatalf("Create txnUSD: %v", err)
+	}
+
+	list, err := repo.List(ctx, ports.SeededUserID, ports.TransactionFilter{Currencies: []string{"USD"}})
+	if err != nil {
+		t.Fatalf("List filtered by currency: %v", err)
+	}
+	if len(list) != 1 || list[0].ID() != "txn-usd" {
+		t.Errorf("List(Currencies=[USD]) = %+v, want only txn-usd", list)
+	}
+}
+
+func TestTransactionRepository_List_FilterByAmountRange(t *testing.T) {
+	db, _ := newTestDB(t)
+	seedAccountAndCategory(t, db, ports.SeededUserID, "acc-1", "cat-1")
+	repo := NewTransactionRepository(db)
+	ctx := context.Background()
+
+	// 500.00 INR
+	small := mustPosting(t, "post-small", "acc-1", -50000, "INR", nil)
+	txnSmall, err := ledger.NewOutflow("txn-small", ports.SeededUserID, mustDate(t, 2026, time.August, 1), "Small", []ledger.Posting{small})
+	if err != nil {
+		t.Fatalf("NewOutflow txnSmall: %v", err)
+	}
+	if err := repo.Create(ctx, ports.SeededUserID, txnSmall, nil); err != nil {
+		t.Fatalf("Create txnSmall: %v", err)
+	}
+
+	// 5,000.00 INR
+	large := mustPosting(t, "post-large", "acc-1", -500000, "INR", nil)
+	txnLarge, err := ledger.NewOutflow("txn-large", ports.SeededUserID, mustDate(t, 2026, time.August, 2), "Large", []ledger.Posting{large})
+	if err != nil {
+		t.Fatalf("NewOutflow txnLarge: %v", err)
+	}
+	if err := repo.Create(ctx, ports.SeededUserID, txnLarge, nil); err != nil {
+		t.Fatalf("Create txnLarge: %v", err)
+	}
+
+	list, err := repo.List(ctx, ports.SeededUserID, ports.TransactionFilter{AmountMin: "1000"})
+	if err != nil {
+		t.Fatalf("List filtered by amount range: %v", err)
+	}
+	if len(list) != 1 || list[0].ID() != "txn-large" {
+		t.Errorf("List(AmountMin=1000) = %+v, want only txn-large", list)
+	}
+
+	list, err = repo.List(ctx, ports.SeededUserID, ports.TransactionFilter{AmountMax: "1000"})
+	if err != nil {
+		t.Fatalf("List filtered by amount max: %v", err)
+	}
+	if len(list) != 1 || list[0].ID() != "txn-small" {
+		t.Errorf("List(AmountMax=1000) = %+v, want only txn-small", list)
+	}
+}
+
+func TestTransactionRepository_List_FilterByDescription(t *testing.T) {
+	db, _ := newTestDB(t)
+	seedAccountAndCategory(t, db, ports.SeededUserID, "acc-1", "cat-1")
+	repo := NewTransactionRepository(db)
+	ctx := context.Background()
+
+	groceries := mustPosting(t, "post-groceries", "acc-1", -1000, "INR", nil)
+	txnGroceries, err := ledger.NewOutflow("txn-groceries", ports.SeededUserID, mustDate(t, 2026, time.August, 1), "Whole Foods Groceries", []ledger.Posting{groceries})
+	if err != nil {
+		t.Fatalf("NewOutflow txnGroceries: %v", err)
+	}
+	if err := repo.Create(ctx, ports.SeededUserID, txnGroceries, nil); err != nil {
+		t.Fatalf("Create txnGroceries: %v", err)
+	}
+
+	rent := mustPosting(t, "post-rent", "acc-1", -1000, "INR", nil)
+	txnRent, err := ledger.NewOutflow("txn-rent", ports.SeededUserID, mustDate(t, 2026, time.August, 2), "Monthly Rent", []ledger.Posting{rent})
+	if err != nil {
+		t.Fatalf("NewOutflow txnRent: %v", err)
+	}
+	if err := repo.Create(ctx, ports.SeededUserID, txnRent, nil); err != nil {
+		t.Fatalf("Create txnRent: %v", err)
+	}
+
+	list, err := repo.List(ctx, ports.SeededUserID, ports.TransactionFilter{Description: "groceries"})
+	if err != nil {
+		t.Fatalf("List filtered by description: %v", err)
+	}
+	if len(list) != 1 || list[0].ID() != "txn-groceries" {
+		t.Errorf("List(Description=groceries) = %+v, want only txn-groceries", list)
+	}
+}
+
+func TestTransactionRepository_List_FilterByTags(t *testing.T) {
+	db, _ := newTestDB(t)
+	seedAccountAndCategory(t, db, ports.SeededUserID, "acc-1", "cat-1")
+	repo := NewTransactionRepository(db)
+	ctx := context.Background()
+
+	vacation := mustTag(t, "vacation")
+	food := mustTag(t, "food")
+
+	both := mustPosting(t, "post-both", "acc-1", -1000, "INR", nil)
+	txnBoth, err := ledger.NewOutflow("txn-both", ports.SeededUserID, mustDate(t, 2026, time.August, 1), "Both tags", []ledger.Posting{both})
+	if err != nil {
+		t.Fatalf("NewOutflow txnBoth: %v", err)
+	}
+	if err := repo.Create(ctx, ports.SeededUserID, txnBoth, []ledger.Tag{vacation, food}); err != nil {
+		t.Fatalf("Create txnBoth: %v", err)
+	}
+
+	vacationOnly := mustPosting(t, "post-vacation", "acc-1", -1000, "INR", nil)
+	txnVacation, err := ledger.NewOutflow("txn-vacation", ports.SeededUserID, mustDate(t, 2026, time.August, 2), "Vacation only", []ledger.Posting{vacationOnly})
+	if err != nil {
+		t.Fatalf("NewOutflow txnVacation: %v", err)
+	}
+	if err := repo.Create(ctx, ports.SeededUserID, txnVacation, []ledger.Tag{vacation}); err != nil {
+		t.Fatalf("Create txnVacation: %v", err)
+	}
+
+	untagged := mustPosting(t, "post-untagged", "acc-1", -1000, "INR", nil)
+	txnUntagged, err := ledger.NewOutflow("txn-untagged", ports.SeededUserID, mustDate(t, 2026, time.August, 3), "Untagged", []ledger.Posting{untagged})
+	if err != nil {
+		t.Fatalf("NewOutflow txnUntagged: %v", err)
+	}
+	if err := repo.Create(ctx, ports.SeededUserID, txnUntagged, nil); err != nil {
+		t.Fatalf("Create txnUntagged: %v", err)
+	}
+
+	any, err := repo.List(ctx, ports.SeededUserID, ports.TransactionFilter{Tags: []string{"vacation", "food"}, TagMode: "any"})
+	if err != nil {
+		t.Fatalf("List TagMode=any: %v", err)
+	}
+	if len(any) != 2 {
+		t.Errorf("List(Tags=[vacation,food], TagMode=any) = %d results, want 2", len(any))
+	}
+
+	all, err := repo.List(ctx, ports.SeededUserID, ports.TransactionFilter{Tags: []string{"vacation", "food"}, TagMode: "all"})
+	if err != nil {
+		t.Fatalf("List TagMode=all: %v", err)
+	}
+	if len(all) != 1 || all[0].ID() != "txn-both" {
+		t.Errorf("List(Tags=[vacation,food], TagMode=all) = %+v, want only txn-both", all)
+	}
+}
+
 func TestTransactionRepository_Update_WritesRevision(t *testing.T) {
 	db, clk := newTestDB(t)
 	seedAccountAndCategory(t, db, ports.SeededUserID, "acc-1", "cat-1")

@@ -135,7 +135,9 @@ func (r *TransactionRepository) List(ctx context.Context, actorID string, filter
 	where := []string{"t.user_id = ?", "t.deleted_at IS NULL"}
 	whereArgs := []any{actorID}
 
-	if filter.AccountID != "" || filter.CategoryID != "" {
+	needsPostingsJoin := filter.AccountID != "" || filter.CategoryID != "" ||
+		len(filter.Currencies) > 0 || filter.AmountMin != "" || filter.AmountMax != ""
+	if needsPostingsJoin {
 		query += " JOIN postings p ON p.transaction_id = t.id"
 	}
 	if filter.AccountID != "" {
@@ -156,6 +158,30 @@ func (r *TransactionRepository) List(ctx context.Context, actorID string, filter
 	if filter.ToDate != nil {
 		where = append(where, "t.booked_date <= ?")
 		whereArgs = append(whereArgs, formatDate(*filter.ToDate))
+	}
+	if len(filter.Currencies) > 0 {
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(filter.Currencies)), ",")
+		where = append(where, "p.currency IN ("+placeholders+")")
+		for _, c := range filter.Currencies {
+			whereArgs = append(whereArgs, c)
+		}
+	}
+	if filter.AmountMin != "" || filter.AmountMax != "" {
+		clause, amountArgs, err := amountRangeClause(filter.Currencies, filter.AmountMin, filter.AmountMax)
+		if err != nil {
+			return nil, err
+		}
+		where = append(where, clause)
+		whereArgs = append(whereArgs, amountArgs...)
+	}
+	if filter.Description != "" {
+		where = append(where, "LOWER(t.description) LIKE ? ESCAPE '\\'")
+		whereArgs = append(whereArgs, "%"+escapeLike(strings.ToLower(filter.Description))+"%")
+	}
+	if len(filter.Tags) > 0 {
+		clause, tagArgs := tagFilterClause(actorID, filter.Tags, filter.TagMode)
+		where = append(where, clause)
+		whereArgs = append(whereArgs, tagArgs...)
 	}
 
 	query += " WHERE " + strings.Join(where, " AND ")
@@ -223,6 +249,113 @@ func (r *TransactionRepository) List(ctx context.Context, actorID string, filter
 		txns = append(txns, txn)
 	}
 	return txns, nil
+}
+
+// amountRangeClause builds the SQL fragment and args for filter.AmountMin/
+// AmountMax (ADR-0009: comparison is on absolute value). Minor-unit scale
+// is currency-specific (0 digits for JPY, 2 for USD/INR, 3 for BHD/KWD),
+// and there is no currency reference data in the database for SQL to look
+// up per row (money/currency.go: "persisting currency reference data...
+// is out of scope") — so the clause is one OR'd comparison per candidate
+// currency, converting the decimal bound to that currency's own minor
+// units in Go. Candidates are currencies when the caller already narrowed
+// to specific ones (filter.Currencies), or every known currency
+// otherwise, so the amount bound still applies regardless of currency.
+func amountRangeClause(currencies []string, minRaw, maxRaw string) (string, []any, error) {
+	candidates := currencies
+	if len(candidates) == 0 {
+		all := money.Currencies()
+		candidates = make([]string, len(all))
+		for i, c := range all {
+			candidates[i] = c.Code
+		}
+	}
+
+	var minDec, maxDec decimal.Decimal
+	var hasMin, hasMax bool
+	if minRaw != "" {
+		d, err := decimal.NewFromString(minRaw)
+		if err != nil {
+			return "", nil, errs.New(errs.Internal).Wrap(err)
+		}
+		minDec, hasMin = d, true
+	}
+	if maxRaw != "" {
+		d, err := decimal.NewFromString(maxRaw)
+		if err != nil {
+			return "", nil, errs.New(errs.Internal).Wrap(err)
+		}
+		maxDec, hasMax = d, true
+	}
+
+	var clauses []string
+	var args []any
+	for _, code := range candidates {
+		cur, ok := money.LookupCurrency(code)
+		if !ok {
+			continue
+		}
+		cond := "p.currency = ?"
+		condArgs := []any{code}
+		if hasMin {
+			cond += " AND ABS(p.amount_minor) >= ?"
+			condArgs = append(condArgs, minDec.Shift(int32(cur.MinorUnitExponent)).Round(0).IntPart())
+		}
+		if hasMax {
+			cond += " AND ABS(p.amount_minor) <= ?"
+			condArgs = append(condArgs, maxDec.Shift(int32(cur.MinorUnitExponent)).Round(0).IntPart())
+		}
+		clauses = append(clauses, "("+cond+")")
+		args = append(args, condArgs...)
+	}
+	if len(clauses) == 0 {
+		// No candidate currency resolved to reference data (every
+		// filter.Currencies entry was unknown) - match nothing rather than
+		// silently ignoring the amount bound.
+		return "0 = 1", nil, nil
+	}
+	return "(" + strings.Join(clauses, " OR ") + ")", args, nil
+}
+
+// escapeLike escapes SQLite LIKE's own wildcards (% and _) and its escape
+// character itself out of user-supplied search text, paired with the
+// "ESCAPE '\'" clause callers add to the LIKE expression — so a
+// description search for "50%" matches the literal text "50%", not
+// "anything starting with 50".
+func escapeLike(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+	return r.Replace(s)
+}
+
+// tagFilterClause builds the SQL fragment and args for filter.Tags: an
+// EXISTS check for "any" (ADR-0009's default "multiple values in one
+// dimension are OR"), or a count-equals-len(tags) check for "all" (the one
+// dimension-level exception the mode exists to express).
+func tagFilterClause(actorID string, tags []string, tagMode string) (string, []any) {
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(tags)), ",")
+
+	if tagMode == "all" {
+		args := make([]any, 0, len(tags)+2)
+		args = append(args, actorID)
+		for _, t := range tags {
+			args = append(args, t)
+		}
+		args = append(args, len(tags))
+		return fmt.Sprintf(`(
+			SELECT COUNT(DISTINCT tt.tag_value) FROM transaction_tags tt
+			WHERE tt.transaction_id = t.id AND tt.user_id = ? AND tt.tag_value IN (%s)
+		) = ?`, placeholders), args
+	}
+
+	args := make([]any, 0, len(tags)+1)
+	args = append(args, actorID)
+	for _, t := range tags {
+		args = append(args, t)
+	}
+	return fmt.Sprintf(`EXISTS (
+		SELECT 1 FROM transaction_tags tt
+		WHERE tt.transaction_id = t.id AND tt.user_id = ? AND tt.tag_value IN (%s)
+	)`, placeholders), args
 }
 
 // Update implements ports.TransactionRepository.
