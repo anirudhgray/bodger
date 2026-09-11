@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 
 	"github.com/anirudhgray/bodger/internal/app/normalize"
 	"github.com/anirudhgray/bodger/internal/domain"
@@ -304,7 +305,11 @@ func (s *Service) BalanceTotals(ctx context.Context, q BalanceTotalsQuery) (Bala
 		return BalanceTotalsResult{}, err
 	}
 
-	var overallMinor int64
+	overall, err := sumConvertedBalances(balances.Balances, opts.ReportingCurrency)
+	if err != nil {
+		return BalanceTotalsResult{}, err
+	}
+
 	categoryMinor := make(map[ledger.AccountKind]int64)
 	var kindsPresent []ledger.AccountKind
 	seenKind := make(map[ledger.AccountKind]bool)
@@ -318,7 +323,6 @@ func (s *Service) BalanceTotals(ctx context.Context, q BalanceTotalsQuery) (Bala
 			kindsPresent = append(kindsPresent, kind)
 		}
 		if b.Converted != nil {
-			overallMinor += b.Converted.Amount.AmountMinor()
 			categoryMinor[kind] += b.Converted.Amount.AmountMinor()
 		}
 
@@ -333,11 +337,6 @@ func (s *Service) BalanceTotals(ctx context.Context, q BalanceTotalsQuery) (Bala
 			currencyTotals[cur] = b.Balance
 			currenciesPresent = append(currenciesPresent, cur)
 		}
-	}
-
-	overall, err := money.NewMoney(overallMinor, opts.ReportingCurrency)
-	if err != nil {
-		return BalanceTotalsResult{}, errs.New(errs.Internal).Wrap(err)
 	}
 
 	sort.Slice(kindsPresent, func(i, j int) bool { return kindsPresent[i] < kindsPresent[j] })
@@ -377,4 +376,173 @@ func errSafeMessage(err error) string {
 		return e.Message
 	}
 	return err.Error()
+}
+
+// sumConvertedBalances sums every AccountBalance's Converted.Amount into
+// one net total in currency, skipping any entry with a nil Converted
+// (reported separately by the caller as Unconverted rather than dropped
+// silently). Liability accounts (credit_card, loan) already reduce the
+// total without any special-casing — see BalanceTotalsResult.Overall's own
+// doc comment for why a plain signed sum is correct here. Extracted as a
+// pure function (issue #196) so overallBalance below and BalanceTotals'
+// own already-fetched AccountBalancesResult can both reuse it without
+// BalanceTotals paying for a second AccountBalances call just to get a
+// number it can already compute from the balances it already has.
+func sumConvertedBalances(balances []AccountBalance, currency string) (money.Money, error) {
+	var minor int64
+	for _, b := range balances {
+		if b.Converted != nil {
+			minor += b.Converted.Amount.AmountMinor()
+		}
+	}
+	total, err := money.NewMoney(minor, currency)
+	if err != nil {
+		return money.Money{}, errs.New(errs.Internal).Wrap(err)
+	}
+	return total, nil
+}
+
+// overallBalance computes the net balance across every account as of
+// asOf, converted into targetCurrency under policy — issue #196's shared
+// core for NetWorthOverTime's per-period figure (BalanceTotals computes
+// its own Overall directly from the AccountBalancesResult it already
+// fetched, via sumConvertedBalances, rather than calling this and
+// fetching a second time). It calls AccountBalances once and sums the
+// result via sumConvertedBalances.
+func (s *Service) overallBalance(ctx context.Context, actorID, asOf, targetCurrency string, policy ConversionPolicy, pinnedDate string) (money.Money, []UnconvertedBalance, error) {
+	balances, err := s.AccountBalances(ctx, AccountBalancesQuery{
+		ActorID:        actorID,
+		AsOf:           asOf,
+		TargetCurrency: targetCurrency,
+		Policy:         policy,
+		PinnedDate:     pinnedDate,
+	})
+	if err != nil {
+		return money.Money{}, nil, err
+	}
+	overall, err := sumConvertedBalances(balances.Balances, targetCurrency)
+	if err != nil {
+		return money.Money{}, nil, err
+	}
+	return overall, balances.Unconverted, nil
+}
+
+// ---- NetWorthOverTime ----
+
+// NetWorthOverTimeQuery computes issue #196's net-worth-over-time use
+// case: the total balance across every account (in TargetCurrency),
+// plotted at each Granularity period boundary within
+// Filter.DateFrom..DateTo — a time series, distinct from BalanceTotals'
+// own single point-in-time snapshot.
+type NetWorthOverTimeQuery struct {
+	ActorID string
+	// Filter's only fields that matter here are DateFrom/DateTo, which
+	// define the series' overall range — net worth is a whole-ledger
+	// figure, not scoped to one account/category/description/etc, so
+	// every other TransactionFilterInput dimension is ignored outright
+	// (never even inspected, let alone validated).
+	Filter         TransactionFilterInput
+	TargetCurrency string
+	Policy         ConversionPolicy
+	PinnedDate     string
+	Granularity    Granularity
+}
+
+// NetWorthPoint is one period's net worth, computed as of that period's
+// own end date (periodKey.To) — "net worth as of the end of this
+// week/month/year".
+type NetWorthPoint struct {
+	Date   domain.Date
+	Amount money.Money
+}
+
+// NetWorthOverTimeResult is NetWorthOverTime's result: one point per
+// period boundary in the requested range, ascending, plus every account
+// any period's own conversion couldn't cover. An account is reported at
+// most once in Unconverted even if it lacked a rate across multiple
+// periods — the first period it turned up unconvertible in — rather than
+// once per period, which would just repeat the same shortfall
+// redundantly for a chart that only cares "was this account ever
+// excluded from a point on this line".
+type NetWorthOverTimeResult struct {
+	Options     AnalyticsOptions
+	Points      []NetWorthPoint
+	Unconverted []UnconvertedBalance
+}
+
+// NetWorthOverTime implements issue #196's net-worth-over-time use case.
+// Each point is computed by its own call to overallBalance (in turn, its
+// own AccountBalances call) — one independent balance-as-of-a-date
+// computation per period, consistent with ADR-0002's "no cached
+// balances, recompute every time" stance elsewhere in this codebase
+// rather than an attempt to fold N dates into a single running total.
+func (s *Service) NetWorthOverTime(ctx context.Context, q NetWorthOverTimeQuery) (NetWorthOverTimeResult, error) {
+	if err := requireActorID(q.ActorID); err != nil {
+		return NetWorthOverTimeResult{}, err
+	}
+
+	var fromDate, toDate *domain.Date
+	if strings.TrimSpace(q.Filter.DateFrom) != "" {
+		d, err := normalize.DateOf(q.Filter.DateFrom, s.Clock, s.Config.UserTimezone)
+		if err != nil {
+			return NetWorthOverTimeResult{}, err
+		}
+		fromDate = &d
+	}
+	if strings.TrimSpace(q.Filter.DateTo) != "" {
+		d, err := normalize.DateOf(q.Filter.DateTo, s.Clock, s.Config.UserTimezone)
+		if err != nil {
+			return NetWorthOverTimeResult{}, err
+		}
+		toDate = &d
+	}
+	if fromDate == nil || toDate == nil {
+		return NetWorthOverTimeResult{}, errs.New(errs.InvalidInput).
+			Explain("Net worth over time needs both \"from\" and \"to\" to define its date range.").
+			Field("filter")
+	}
+
+	currency, err := s.resolveBalanceTotalsCurrency(ctx, q.ActorID, q.TargetCurrency)
+	if err != nil {
+		return NetWorthOverTimeResult{}, err
+	}
+	opts, err := validateAnalyticsOptions(AnalyticsOptions{ReportingCurrency: currency, Policy: q.Policy, PinnedDate: q.PinnedDate})
+	if err != nil {
+		return NetWorthOverTimeResult{}, err
+	}
+
+	granularity, err := validateGranularity(q.Granularity)
+	if err != nil {
+		return NetWorthOverTimeResult{}, err
+	}
+
+	var keys []periodKey
+	if granularity == GranularityCustom {
+		// Mirrors CashFlow's own custom-granularity handling: the whole
+		// requested range is exactly one bucket rather than one of the
+		// fixed recurring periods periodKeysInRange would otherwise walk.
+		keys = []periodKey{{From: *fromDate, To: *toDate}}
+	} else {
+		keys = periodKeysInRange(*fromDate, *toDate, granularity)
+	}
+
+	points := make([]NetWorthPoint, 0, len(keys))
+	seenUnconverted := make(map[string]bool)
+	var unconverted []UnconvertedBalance
+	for _, k := range keys {
+		overall, periodUnconverted, err := s.overallBalance(ctx, q.ActorID, k.To.String(), opts.ReportingCurrency, opts.Policy, opts.PinnedDate)
+		if err != nil {
+			return NetWorthOverTimeResult{}, err
+		}
+		points = append(points, NetWorthPoint{Date: k.To, Amount: overall})
+		for _, u := range periodUnconverted {
+			if seenUnconverted[u.Account.ID()] {
+				continue
+			}
+			seenUnconverted[u.Account.ID()] = true
+			unconverted = append(unconverted, u)
+		}
+	}
+
+	return NetWorthOverTimeResult{Options: opts, Points: points, Unconverted: unconverted}, nil
 }
