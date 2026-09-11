@@ -186,6 +186,61 @@ describe('AnalyticsPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('hides the currency selector for a single-currency ledger', async () => {
+    mockedGetCategoryBreakdown.mockResolvedValue({ currency: 'USD', rows: [] })
+    mockedGetCashFlow.mockResolvedValue({ currency: 'USD', points: [] })
+    mockedGetTrends.mockResolvedValue(emptyTrends)
+    mockedGetSavingsRate.mockResolvedValue({
+      currency: 'USD',
+      income: '0.00',
+      outflow: '0.00',
+      net: '0.00',
+      rate: null,
+    })
+
+    renderPage()
+
+    await screen.findByText('Nothing to show yet')
+    expect(screen.queryByLabelText('Currency')).not.toBeInTheDocument()
+  })
+
+  it('shows the currency selector once a second currency is in use', async () => {
+    mockedListAccounts.mockResolvedValue([
+      {
+        id: 'a1',
+        name: 'Checking',
+        type: 'bank',
+        currency: 'USD',
+        archived: false,
+        opening_balance: '0.00',
+        sort_order: 0,
+      },
+      {
+        id: 'a2',
+        name: 'Reisekonto',
+        type: 'bank',
+        currency: 'EUR',
+        archived: false,
+        opening_balance: '0.00',
+        sort_order: 1,
+      },
+    ])
+    mockedGetCategoryBreakdown.mockResolvedValue({ currency: 'USD', rows: [] })
+    mockedGetCashFlow.mockResolvedValue({ currency: 'USD', points: [] })
+    mockedGetTrends.mockResolvedValue(emptyTrends)
+    mockedGetSavingsRate.mockResolvedValue({
+      currency: 'USD',
+      income: '0.00',
+      outflow: '0.00',
+      net: '0.00',
+      rate: null,
+    })
+
+    renderPage()
+
+    expect(await screen.findByLabelText('Currency')).toBeInTheDocument()
+  })
+
   it('surfaces unconverted postings with a refresh-rates affordance', async () => {
     mockedGetCategoryBreakdown.mockResolvedValue({
       currency: 'USD',
