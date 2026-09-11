@@ -82,6 +82,10 @@ export function AccountsSettings() {
   }
 
   useEffect(() => {
+    // Fetch-on-mount: refresh() calls the list API, an external system
+    // that can't be read during render, so an effect is the right tool
+    // here — not a value to derive during render or initialize state from.
+    // oxlint-disable-next-line react/set-state-in-effect
     refresh()
   }, [])
 
