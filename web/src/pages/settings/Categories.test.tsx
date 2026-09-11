@@ -1,7 +1,8 @@
 // Component tests for the Categories settings subpage (issue #107, split
 // out of the old Settings.test.tsx; issue #106 added the tree display
 // and swapped the "Parent" field for a Combobox). web/src/lib/settings
-// is mocked here so these exercise only the page's own logic against a
+// and web/src/lib/api (listCategories lives there — issue #183) are
+// mocked here so these exercise only the page's own logic against a
 // controlled fake API. The Parent field is a real interaction target
 // now, not a native <select> — see combobox.test.tsx and
 // TransactionDialog.test.tsx's pickCategory for the same convention.
@@ -10,12 +11,19 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 
 vi.mock('@/lib/settings', () => ({
-  listCategories: vi.fn(),
   createCategory: vi.fn(),
   renameCategory: vi.fn(),
   archiveCategory: vi.fn(),
   reparentCategory: vi.fn(),
 }))
+
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>()
+  return {
+    ...actual,
+    listCategories: vi.fn(),
+  }
+})
 
 // Create/rename/archive/reparent are user-triggered actions, so their
 // failures now report via a toast rather than inline (docs/design-
@@ -29,11 +37,10 @@ vi.mock('sonner', () => ({
   },
 }))
 
-import { ApiError } from '@/lib/api'
+import { ApiError, listCategories } from '@/lib/api'
 import {
   archiveCategory,
   createCategory,
-  listCategories,
   reparentCategory,
 } from '@/lib/settings'
 import { CategoriesSettings } from './Categories'

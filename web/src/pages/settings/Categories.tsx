@@ -21,12 +21,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
-import { type Category, type CategoryKind } from '@/lib/api'
+import { listCategories, type Category, type CategoryKind } from '@/lib/api'
 import { buildCategoryTree } from '@/lib/category-tree'
 import {
   archiveCategory,
   createCategory,
-  listCategories,
   renameCategory,
   reparentCategory,
 } from '@/lib/settings'

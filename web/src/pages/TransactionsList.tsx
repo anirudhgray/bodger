@@ -289,7 +289,7 @@ export function TransactionsList() {
     // above requires it), not that the transaction list itself fails.
     getReportingCurrency()
       .then((result) => {
-        if (result.is_set) setReportingCurrency(result.currency)
+        setReportingCurrency(result.effectiveCurrency)
       })
       .catch(() => {})
     load(initialFilter ?? {}, false)

@@ -60,6 +60,7 @@ describe('BalancesPage', () => {
     mockedGetReportingCurrency.mockResolvedValue({
       currency: '',
       is_set: false,
+      effectiveCurrency: 'USD',
     })
     mockedFetchFxRates.mockReset()
   })
@@ -166,11 +167,45 @@ describe('BalancesPage', () => {
     ).not.toBeInTheDocument()
   })
 
+  // Issue #170: the same effective-currency resolution TransactionsList
+  // needed — the selector should label the instance default as "the
+  // reporting currency" even when nothing's been explicitly set (default
+  // beforeEach mock: is_set false, effectiveCurrency 'USD').
+  it('labels the instance-default currency as the reporting currency when none is explicitly set', async () => {
+    const user = userEvent.setup()
+    mockedGetBalances.mockResolvedValue({
+      as_of: '2026-09-03',
+      balances: [
+        {
+          account_id: 'a1',
+          account: 'Checking',
+          amount: '1500.00',
+          currency: 'USD',
+        },
+        {
+          account_id: 'a2',
+          account: 'Savings',
+          amount: '900.00',
+          currency: 'EUR',
+        },
+      ],
+    })
+
+    renderPage()
+    await screen.findByText('Checking')
+
+    await user.click(screen.getByRole('combobox', { name: 'Show in' }))
+    expect(
+      await screen.findByRole('option', { name: /USD \(reporting currency\)/ }),
+    ).toBeInTheDocument()
+  })
+
   it('converts balances into the chosen currency and shows rate provenance on demand', async () => {
     const user = userEvent.setup()
     mockedGetReportingCurrency.mockResolvedValue({
       currency: 'EUR',
       is_set: true,
+      effectiveCurrency: 'EUR',
     })
     mockedGetBalances.mockResolvedValueOnce({
       as_of: '2026-09-03',
@@ -282,7 +317,9 @@ describe('BalancesPage', () => {
     await screen.findByText('Checking')
 
     await user.click(screen.getByRole('combobox', { name: 'Show in' }))
-    await user.click(await screen.findByRole('option', { name: 'USD' }))
+    await user.click(
+      await screen.findByRole('option', { name: /USD \(reporting currency\)/ }),
+    )
 
     expect(
       await screen.findByText('Not converted — no USD/INR rate available'),

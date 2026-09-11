@@ -362,7 +362,7 @@ function TransactionDialogSheet({
     getReportingCurrency()
       .then((rc) => {
         if (cancelled) return
-        setReportingCurrency(rc.currency)
+        setReportingCurrency(rc.effectiveCurrency)
       })
       .catch(() => {
         // Left as '' — every hint below stays hidden, same as a

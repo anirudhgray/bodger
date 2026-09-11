@@ -952,6 +952,10 @@
           "currency": {
             "type": "string"
           },
+          "effectiveCurrency": {
+            "description": "The effective reporting currency for this actor; either the actor-set value or the instance default if none is set.",
+            "type": "string"
+          },
           "is_set": {
             "description": "False when this actor has never set a reporting currency; the instance default is used instead.",
             "type": "boolean"
@@ -959,7 +963,8 @@
         },
         "required": [
           "currency",
-          "is_set"
+          "is_set",
+          "effectiveCurrency"
         ],
         "type": "object"
       },

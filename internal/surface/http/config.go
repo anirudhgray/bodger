@@ -12,8 +12,18 @@ import "net/http"
 // happens to render the same either way — mirrors
 // internal/surface/cli/config.go's reportingCurrencyView.
 type reportingCurrencyView struct {
-	Currency string `json:"currency"`
-	IsSet    bool   `json:"is_set" doc:"False when this actor has never set a reporting currency; the instance default is used instead."`
+	Currency          string `json:"currency"`
+	IsSet             bool   `json:"is_set" doc:"False when this actor has never set a reporting currency; the instance default is used instead."`
+	EffectiveCurrency string `json:"effectiveCurrency" doc:"The effective reporting currency for this actor; either the actor-set value or the instance default if none is set."`
+}
+
+func includeEffectiveReportingCurrency(view reportingCurrencyView, instanceDefault string) reportingCurrencyView {
+	if view.Currency != "" {
+		view.EffectiveCurrency = view.Currency
+	} else {
+		view.EffectiveCurrency = instanceDefault
+	}
+	return view
 }
 
 func (h *handlers) getReportingCurrency(w http.ResponseWriter, r *http.Request) {
@@ -22,7 +32,7 @@ func (h *handlers) getReportingCurrency(w http.ResponseWriter, r *http.Request) 
 		h.respondError(w, r, err)
 		return
 	}
-	respond(w, http.StatusOK, reportingCurrencyView{Currency: currency, IsSet: currency != ""})
+	respond(w, http.StatusOK, includeEffectiveReportingCurrency(reportingCurrencyView{Currency: currency, IsSet: currency != ""}, h.svc.Config.DefaultCurrency))
 }
 
 // setReportingCurrencyRequest is POST /api/v1/reporting-currency's request
