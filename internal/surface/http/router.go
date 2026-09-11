@@ -362,6 +362,22 @@ var routeTable = []route{
 			{Name: "pinned_date", Description: "The pinned date to convert at (required when \"policy\" is \"pinned\" and \"currency\" is set).", Type: "string", Format: "date"},
 		},
 	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/balances/totals",
+		Handler: func(h *handlers) http.HandlerFunc { return h.getBalanceTotals },
+
+		OperationID: "getBalanceTotals", Summary: "Totals overview: overall net balance, per category, per currency.",
+		Description:   "The overall net balance and the per-category breakdown are converted into \"currency\" under \"policy\" - left unset, \"currency\" resolves to the actor's own reporting-currency preference, falling back to the instance default. The per-currency breakdown is always raw and unconverted. Any account the conversion couldn't cover is reported under \"unconverted\" rather than silently dropped or excluded without explanation.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The totals overview as of the resolved date.",
+		Response: balanceTotalsView{},
+		Errors:   []int{http.StatusUnprocessableEntity},
+		Query: []queryParam{
+			{Name: "as_of", Description: "Defaults to today in the actor's own timezone when omitted.", Type: "string", Format: "date"},
+			{Name: "currency", Description: "Convert the overall and per-category totals into this currency. Defaults to the actor's own reporting currency.", Type: "string"},
+			{Name: "policy", Description: "Which conversion policy to use (required).", Type: "string", Enum: []string{"transaction_date", "current", "pinned"}},
+			{Name: "pinned_date", Description: "The pinned date to convert at (required when \"policy\" is \"pinned\").", Type: "string", Format: "date"},
+		},
+	},
 
 	{
 		Method: http.MethodGet, Pattern: "/api/v1/fx/rates",

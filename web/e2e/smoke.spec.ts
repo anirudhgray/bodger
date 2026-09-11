@@ -42,8 +42,17 @@ test('log in, record a transaction, see the updated balance, log out', async ({
 
   await page.getByRole('link', { name: 'Balances' }).click()
   await expect(page).toHaveURL(/\/balances$/)
-  await expect(page.getByText(E2E_ACCOUNT_NAME)).toBeVisible()
-  await expect(page.getByText(`${E2E_EXPECTED_BALANCE} USD`)).toBeVisible()
+  // Scoped to the account row itself (a button, per Balances.tsx's
+  // single-currency rendering): issue #195's totals overview also
+  // renders this same figure (a single-account ledger's "Overall" and
+  // "By category" totals both equal that one account's own balance), so
+  // a bare page-wide text match would now resolve to more than one
+  // element.
+  await expect(
+    page.getByRole('button', {
+      name: `${E2E_ACCOUNT_NAME} ${E2E_EXPECTED_BALANCE} USD`,
+    }),
+  ).toBeVisible()
 
   await page.getByRole('button', { name: 'Log out' }).click()
   await expect(page).toHaveURL(/\/login$/)

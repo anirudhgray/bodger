@@ -987,6 +987,94 @@ func TestBalance_CurrencyAndPolicyRenderProvenanceAndUnconverted(t *testing.T) {
 	}
 }
 
+// TestBalanceTotals_OverallByCategoryByCurrency is issue #195's totals
+// overview, end to end: an INR account and a USD account converted into
+// the resolved reporting currency (an identity conversion for the USD
+// account, a stored rate for the INR one), and a EUR account with no
+// stored rate excluded from "overall"/per-category but still summed raw
+// under per-currency and listed under "unconverted".
+func TestBalanceTotals_OverallByCategoryByCurrency(t *testing.T) {
+	provider := newFakeFxProvider()
+	factory := newTestFactoryWithFxProvider(t, mustFrozen(t), provider)
+
+	mustRun(t, factory, "accounts", "add", "Wallet", "--type", "cash", "--currency", "INR", "--opening-balance", "1000")
+	mustRun(t, factory, "accounts", "add", "Checking", "--type", "bank", "--currency", "USD", "--opening-balance", "500")
+	mustRun(t, factory, "accounts", "add", "Euro Account", "--type", "bank", "--currency", "EUR", "--opening-balance", "200")
+
+	provider.setRate(t, "INR", "USD", "0.0115", mustFxTestDate(t, 2026, time.August, 14))
+	mustRun(t, factory, "fx", "rates", "fetch", "--pair", "INR")
+
+	var got struct {
+		Currency   string `json:"currency"`
+		Overall    string `json:"overall"`
+		ByCategory []struct {
+			Kind   string `json:"kind"`
+			Amount string `json:"amount"`
+		} `json:"by_category"`
+		ByCurrency []struct {
+			Currency string `json:"currency"`
+			Amount   string `json:"amount"`
+		} `json:"by_currency"`
+		Unconverted []struct {
+			Account string `json:"account"`
+			Reason  string `json:"reason"`
+		} `json:"unconverted"`
+	}
+	decodeData(t, mustRun(t, factory, "balance", "totals", "--currency", "USD", "--policy", "current", "--json"), &got)
+
+	if got.Currency != "USD" {
+		t.Errorf("currency = %q, want USD", got.Currency)
+	}
+	if got.Overall != "511.50" {
+		t.Errorf("overall = %q, want 511.50 (1000 INR @ 0.0115 + 500.00 USD; Euro Account excluded, no rate)", got.Overall)
+	}
+
+	byKind := map[string]string{}
+	for _, c := range got.ByCategory {
+		byKind[c.Kind] = c.Amount
+	}
+	if byKind["cash"] != "11.50" {
+		t.Errorf("by_category[cash] = %q, want 11.50", byKind["cash"])
+	}
+	if byKind["bank"] != "500.00" {
+		t.Errorf("by_category[bank] = %q, want 500.00 (Euro Account excluded)", byKind["bank"])
+	}
+
+	byCurrency := map[string]string{}
+	for _, c := range got.ByCurrency {
+		byCurrency[c.Currency] = c.Amount
+	}
+	if byCurrency["INR"] != "1000.00" || byCurrency["USD"] != "500.00" || byCurrency["EUR"] != "200.00" {
+		t.Errorf("by_currency = %+v, want raw INR 1000.00, USD 500.00, EUR 200.00", byCurrency)
+	}
+
+	if len(got.Unconverted) != 1 || got.Unconverted[0].Account != "Euro Account" || got.Unconverted[0].Reason == "" {
+		t.Fatalf("unconverted = %+v, want Euro Account with a reason", got.Unconverted)
+	}
+
+	// The plain-text rendering surfaces the same shortfall.
+	text := mustRun(t, factory, "balance", "totals", "--currency", "USD", "--policy", "current")
+	if !strings.Contains(text, "Overall: 511.50 USD") {
+		t.Errorf("text = %q, want the overall line", text)
+	}
+	if !strings.Contains(text, "Euro Account") {
+		t.Errorf("text = %q, want the unconverted account named", text)
+	}
+}
+
+// TestBalanceTotals_RequiresPolicy checks --policy's "required" contract:
+// leaving it off (unlike plain `balance`, where --currency/--policy are
+// optional together) surfaces the app layer's own InvalidInput.
+func TestBalanceTotals_RequiresPolicy(t *testing.T) {
+	factory := newTestFactory(t, mustFrozen(t))
+	mustRun(t, factory, "accounts", "add", "Cash", "--type", "cash", "--currency", "USD")
+
+	_, stderr, err := run(t, factory, "balance", "totals")
+	if err == nil {
+		t.Fatalf("balance totals with no --policy succeeded, want an error; stderr: %s", stderr)
+	}
+}
+
 // TestJSONError_UsesSharedEnvelope checks that an application-layer error
 // surfaced through --json uses the {"error": {...}} shape RenderError
 // documents, with the registered code and field intact — the same

@@ -365,3 +365,229 @@ func TestAccountBalances_InvalidPolicyFailsTheWholeQuery(t *testing.T) {
 	})
 	wantErrCode(t, err, errs.InvalidInput)
 }
+
+// categoryTotalFor finds row's total for kind, failing the test outright if
+// ByCategory has no row for it -- every test below asserts against a
+// specific kind's row, never "the first row", so a reordering of
+// BalanceTotals' own sort never breaks these assertions.
+func categoryTotalFor(t *testing.T, rows []app.AccountKindTotal, kind string) app.AccountKindTotal {
+	t.Helper()
+	for _, r := range rows {
+		if string(r.Kind) == kind {
+			return r
+		}
+	}
+	t.Fatalf("no ByCategory row for kind %q", kind)
+	return app.AccountKindTotal{}
+}
+
+// currencyTotalFor finds row's total for currency, failing the test
+// outright if ByCurrency has no row for it.
+func currencyTotalFor(t *testing.T, rows []app.CurrencyTotal, currency string) app.CurrencyTotal {
+	t.Helper()
+	for _, r := range rows {
+		if r.Currency == currency {
+			return r
+		}
+	}
+	t.Fatalf("no ByCurrency row for currency %q", currency)
+	return app.CurrencyTotal{}
+}
+
+func TestBalanceTotals_OverallByCategoryByCurrency(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	bank := mustAccountFixture(t, svc, "HDFC", "bank", "INR")
+	if _, err := svc.RecordInflow(ctx, app.RecordInflowCommand{
+		ActorID: testActorID, AccountRef: bank.Account.ID(), Amount: "1000", Date: "2026-08-01", Description: "Salary",
+	}); err != nil {
+		t.Fatalf("RecordInflow: %v", err)
+	}
+	cash := mustAccountFixture(t, svc, "Cash", "cash", "INR")
+	if _, err := svc.RecordInflow(ctx, app.RecordInflowCommand{
+		ActorID: testActorID, AccountRef: cash.Account.ID(), Amount: "50", Date: "2026-08-01", Description: "Pocket money",
+	}); err != nil {
+		t.Fatalf("RecordInflow: %v", err)
+	}
+	usd := mustAccountFixture(t, svc, "Checking", "bank", "USD")
+	if _, err := svc.RecordInflow(ctx, app.RecordInflowCommand{
+		ActorID: testActorID, AccountRef: usd.Account.ID(), Amount: "500", Date: "2026-08-01", Description: "Deposit",
+	}); err != nil {
+		t.Fatalf("RecordInflow: %v", err)
+	}
+	seedRate(t, svc, "USD", "INR", "85", "2026-08-20", "ecb")
+
+	result, err := svc.BalanceTotals(ctx, app.BalanceTotalsQuery{
+		ActorID: testActorID, AsOf: "2026-08-20", TargetCurrency: "INR", Policy: app.PolicyCurrent,
+	})
+	if err != nil {
+		t.Fatalf("BalanceTotals: %v", err)
+	}
+	if len(result.Unconverted) != 0 {
+		t.Fatalf("Unconverted = %+v, want empty", result.Unconverted)
+	}
+
+	// Overall: 1000.00 INR (bank) + 50.00 INR (cash) + 500 USD * 85 =
+	// 1050.00 + 42500.00 = 43550.00 INR -> 4355000 minor units.
+	if got, want := result.Overall.AmountMinor(), int64(4355000); got != want {
+		t.Errorf("Overall.AmountMinor() = %d, want %d", got, want)
+	}
+	if got := result.Overall.Currency(); got != "INR" {
+		t.Errorf("Overall.Currency() = %q, want INR", got)
+	}
+
+	// ByCategory: bank = HDFC (1000.00 INR) + Checking (42500.00 INR
+	// converted) = 43500.00 INR; cash = 50.00 INR.
+	bankTotal := categoryTotalFor(t, result.ByCategory, "bank")
+	if got, want := bankTotal.Total.AmountMinor(), int64(4350000); got != want {
+		t.Errorf("bank category total = %d, want %d", got, want)
+	}
+	cashTotal := categoryTotalFor(t, result.ByCategory, "cash")
+	if got, want := cashTotal.Total.AmountMinor(), int64(5000); got != want {
+		t.Errorf("cash category total = %d, want %d", got, want)
+	}
+
+	// ByCurrency: raw, unconverted -- INR accounts summed in INR (1050.00),
+	// USD accounts summed in USD (500.00), no cross-currency arithmetic.
+	inrTotal := currencyTotalFor(t, result.ByCurrency, "INR")
+	if got, want := inrTotal.Total.AmountMinor(), int64(105000); got != want {
+		t.Errorf("INR currency total = %d, want %d (raw, unconverted)", got, want)
+	}
+	usdTotal := currencyTotalFor(t, result.ByCurrency, "USD")
+	if got, want := usdTotal.Total.AmountMinor(), int64(50000); got != want {
+		t.Errorf("USD currency total = %d, want %d (raw, unconverted)", got, want)
+	}
+}
+
+func TestBalanceTotals_UnconvertibleAccountExcludedFromOverallButNotFromByCurrency(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	inrAcc := mustAccountFixture(t, svc, "HDFC", "bank", "INR")
+	if _, err := svc.RecordInflow(ctx, app.RecordInflowCommand{
+		ActorID: testActorID, AccountRef: inrAcc.Account.ID(), Amount: "1000", Date: "2026-08-01", Description: "Salary",
+	}); err != nil {
+		t.Fatalf("RecordInflow: %v", err)
+	}
+	usdAcc := mustAccountFixture(t, svc, "Checking", "bank", "USD")
+	if _, err := svc.RecordInflow(ctx, app.RecordInflowCommand{
+		ActorID: testActorID, AccountRef: usdAcc.Account.ID(), Amount: "500", Date: "2026-08-01", Description: "Deposit",
+	}); err != nil {
+		t.Fatalf("RecordInflow: %v", err)
+	}
+	// No INR/USD rate seeded at all -- the INR account can't be converted.
+
+	result, err := svc.BalanceTotals(ctx, app.BalanceTotalsQuery{
+		ActorID: testActorID, AsOf: "2026-08-20", TargetCurrency: "USD", Policy: app.PolicyCurrent,
+	})
+	if err != nil {
+		t.Fatalf("BalanceTotals: %v, want success with the shortfall reported instead", err)
+	}
+
+	if len(result.Unconverted) != 1 {
+		t.Fatalf("len(Unconverted) = %d, want 1", len(result.Unconverted))
+	}
+	if result.Unconverted[0].Account.ID() != inrAcc.Account.ID() {
+		t.Errorf("Unconverted[0].Account = %s, want %s", result.Unconverted[0].Account.ID(), inrAcc.Account.ID())
+	}
+
+	// Overall must reflect only the USD account (500.00 USD) -- the
+	// unconvertible INR account is excluded, not treated as zero silently
+	// merged in (it would still coincidentally look like exactly 500.00 if
+	// this test didn't check Unconverted above too).
+	if got, want := result.Overall.AmountMinor(), int64(50000); got != want {
+		t.Errorf("Overall.AmountMinor() = %d, want %d (USD account only)", got, want)
+	}
+
+	// ByCategory's one row (both accounts are "bank") must likewise only
+	// carry the convertible account's contribution.
+	bankTotal := categoryTotalFor(t, result.ByCategory, "bank")
+	if got, want := bankTotal.Total.AmountMinor(), int64(50000); got != want {
+		t.Errorf("bank category total = %d, want %d (USD account only)", got, want)
+	}
+
+	// ByCurrency needs no conversion at all, so the INR account still
+	// contributes its own raw balance here despite being unconvertible.
+	inrTotal := currencyTotalFor(t, result.ByCurrency, "INR")
+	if got, want := inrTotal.Total.AmountMinor(), int64(100000); got != want {
+		t.Errorf("INR currency total = %d, want %d (raw, still present)", got, want)
+	}
+}
+
+func TestBalanceTotals_NoAccountsIsAllZero(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	result, err := svc.BalanceTotals(ctx, app.BalanceTotalsQuery{
+		ActorID: testActorID, AsOf: "2026-08-20", TargetCurrency: "USD", Policy: app.PolicyCurrent,
+	})
+	if err != nil {
+		t.Fatalf("BalanceTotals: %v", err)
+	}
+	if !result.Overall.IsZero() {
+		t.Errorf("Overall = %s, want zero", result.Overall)
+	}
+	if got := result.Overall.Currency(); got != "USD" {
+		t.Errorf("Overall.Currency() = %q, want USD", got)
+	}
+	if len(result.ByCategory) != 0 {
+		t.Errorf("ByCategory = %+v, want empty", result.ByCategory)
+	}
+	if len(result.ByCurrency) != 0 {
+		t.Errorf("ByCurrency = %+v, want empty", result.ByCurrency)
+	}
+	if len(result.Unconverted) != 0 {
+		t.Errorf("Unconverted = %+v, want empty", result.Unconverted)
+	}
+}
+
+func TestBalanceTotals_BlankCurrencyResolvesThroughTheReportingCurrencyLadder(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	mustAccountFixture(t, svc, "Cash", "cash", "USD")
+
+	// No reporting currency set for testActorID, and no TargetCurrency
+	// override -- must fall through to the instance default (USD, per
+	// config.Defaults), the same ladder resolveFetchReportingCurrency
+	// applies.
+	result, err := svc.BalanceTotals(ctx, app.BalanceTotalsQuery{
+		ActorID: testActorID, AsOf: "2026-08-20", Policy: app.PolicyCurrent,
+	})
+	if err != nil {
+		t.Fatalf("BalanceTotals: %v", err)
+	}
+	if got := result.Options.ReportingCurrency; got != "USD" {
+		t.Errorf("Options.ReportingCurrency = %q, want USD (the instance default)", got)
+	}
+
+	if err := svc.SetReportingCurrency(ctx, testActorID, "EUR"); err != nil {
+		t.Fatalf("SetReportingCurrency: %v", err)
+	}
+	result, err = svc.BalanceTotals(ctx, app.BalanceTotalsQuery{
+		ActorID: testActorID, AsOf: "2026-08-20", Policy: app.PolicyCurrent,
+	})
+	if err != nil {
+		t.Fatalf("BalanceTotals: %v", err)
+	}
+	if got := result.Options.ReportingCurrency; got != "EUR" {
+		t.Errorf("Options.ReportingCurrency = %q, want EUR (the actor's own preference)", got)
+	}
+}
+
+func TestBalanceTotals_RequiresActorID(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	_, err := svc.BalanceTotals(context.Background(), app.BalanceTotalsQuery{})
+	wantErrCode(t, err, errs.InvalidInput)
+}
+
+func TestBalanceTotals_InvalidPolicyFailsTheWholeQuery(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	mustAccountFixture(t, svc, "HDFC", "bank", "INR")
+
+	_, err := svc.BalanceTotals(ctx, app.BalanceTotalsQuery{
+		ActorID: testActorID, AsOf: "2026-08-20", Policy: "not_a_real_policy",
+	})
+	wantErrCode(t, err, errs.InvalidInput)
+}

@@ -566,7 +566,10 @@ screen and were filed rather than folded in:
 period-granularity selector — week/month/year/custom — since `Trends` is
 currently fixed to a calendar-month comparison),
 [#195](https://github.com/anirudhgray/bodger/issues/195) (a Balances-screen
-totals overview), and [#196](https://github.com/anirudhgray/bodger/issues/196)
+totals overview — landed: `Service.BalanceTotals`, `GET
+/api/v1/balances/totals`, `bodger balance totals`, and a totals section on
+the Balances screen, reusing `AccountBalances`' own conversion/provenance
+pattern), and [#196](https://github.com/anirudhgray/bodger/issues/196)
 (net worth over time, top transactions, average transaction size, and
 per-category trend deltas).
 

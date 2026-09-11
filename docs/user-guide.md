@@ -213,6 +213,12 @@ Shows what every account holds right now. Add `--on` to see what it held on some
 bodger balance --on 2026-01-01
 ```
 
+For your overall financial position instead of one row per account, use `bodger balance totals`: your overall net balance (liabilities like a credit card or loan reduce it, the way they should), a breakdown by account type (bank, cash, credit card, and so on), and a breakdown by currency (each currency's own accounts summed in that currency, with no conversion). `--policy` is required here — the totals are always converted into one currency, unlike `bodger balance`'s own per-account figures, which stay meaningful unconverted:
+
+```sh
+bodger balance totals --policy current
+```
+
 ---
 
 ## Getting output a script can read
@@ -302,6 +308,15 @@ curl -H 'Authorization: Bearer bdg_...' \
 
 You can also do this from the command line with `bodger balance --currency --policy`.
 
+`GET /api/v1/balances/totals` returns your overall net balance and a breakdown by account type — both converted into `currency` under `policy` (`policy` is required here; `currency` defaults to your reporting currency when omitted) — plus a breakdown by currency, which is always raw and unconverted. An account the conversion couldn't cover is reported under `unconverted` the same way `GET /api/v1/balances` does.
+
+```sh
+curl -H 'Authorization: Bearer bdg_...' \
+  'http://127.0.0.1:8080/api/v1/balances/totals?policy=current'
+```
+
+You can also do this from the command line with `bodger balance totals --policy`.
+
 `GET /api/v1/fx/rates` looks up the exchange rate between two currencies straight from what's already stored, without ever reaching out to the network. Add `amount` to also get a converted figure back alongside the rate:
 
 ```sh
@@ -333,7 +348,7 @@ You can also do this from the command line with `bodger config reporting-currenc
 
 ### Using the web UI
 
-With `bodger serve` running, open its address in a browser (`http://127.0.0.1:8080` by default). Visiting it without a signed-in session lands you on a login screen; enter the password you set with `bodger auth set-password` — there's no separate web password, it's the same credential the CLI and REST API use. A successful login takes you into the app itself; visiting the login page again while already signed in just sends you straight back in. Transactions, Balances, Analytics, and Settings live in a sidebar — always visible on a wider screen, tucked behind the icon in the top-left corner on a narrow one. The sun/moon button switches between light and dark mode; your choice is remembered on that browser for next time, overriding your OS/browser's own light/dark setting. The "Log out" button next to it ends your session and returns you to the login screen. The **Balances** tab shows what every account holds as of today, the same figures `bodger balance` prints on the command line.
+With `bodger serve` running, open its address in a browser (`http://127.0.0.1:8080` by default). Visiting it without a signed-in session lands you on a login screen; enter the password you set with `bodger auth set-password` — there's no separate web password, it's the same credential the CLI and REST API use. A successful login takes you into the app itself; visiting the login page again while already signed in just sends you straight back in. Transactions, Balances, Analytics, and Settings live in a sidebar — always visible on a wider screen, tucked behind the icon in the top-left corner on a narrow one. The sun/moon button switches between light and dark mode; your choice is remembered on that browser for next time, overriding your OS/browser's own light/dark setting. The "Log out" button next to it ends your session and returns you to the login screen. The **Balances** tab shows what every account holds as of today, the same figures `bodger balance` prints on the command line, plus a totals overview — your overall net balance, a breakdown by account type, and (once more than one currency is in play) a breakdown by currency — the same figures `bodger balance totals` prints.
 
 **Recording a transaction** works the same way it does at the command line: pick Spend, Receive, or Move, and fill in the amount, category (or the two accounts, for a move), and account — three fields is all it takes, and if you've only got one account it's preselected for you. The category field shows how your categories nest under one another (a "Groceries" tucked under "Food" reads as such, not as an unrelated name in a flat list) and you can type to search instead of scrolling. If the one you want doesn't exist yet, typing its name offers to create it right there — pick that option and it's created and selected in one step, without losing anything else you've already filled in. The date defaults to today unless you open "Add details," which also has fields for notes and tags. Nothing you've typed is lost if the server rejects the entry (a category that doesn't exist, say) — fix the problem and submit again.
 
@@ -402,6 +417,7 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | `bodger receive <amount> <category> [--account] [--on] [--tag] [--note]` | Record money you received |
 | `bodger move <amount> --from <account> --to <account> [--to-amount] [--on] [--tag] [--note]` | Move money between two of your accounts — accounts in different currencies are fine, and the implied exchange rate is shown alongside the transfer; add `--to-amount` to state exactly how much arrived instead of reusing `<amount>`'s digits |
 | `bodger balance [--on] [--currency] [--policy] [--pinned-date]` | See what every account holds — add `--currency`/`--policy` to convert every balance into one currency, with the rate shown alongside |
+| `bodger balance totals --policy [--on] [--currency] [--pinned-date]` | Your overall net balance, plus breakdowns by account type and by currency |
 | `bodger transactions list [--account] [--category] [--type] [--since] [--until] [--limit] [--offset]` | List what you've recorded, newest first |
 | `bodger transactions edit <id> --amount <amount> --description <text> [--account] [--category] [--currency] [--from] [--to] [--to-amount] [--on] [--tag] [--note]` | Correct a transaction — replaces every value |
 | `bodger transactions delete <id>` | Delete a transaction you recorded by mistake |
