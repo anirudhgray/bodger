@@ -660,3 +660,54 @@ queries under jsdom's `ResizeObserver` stub (`src/test/setup.ts`) — a
 chart's own component test should assert on the screen's plain-HTML
 figures (stat cards, headings) rather than on text inside the chart's
 SVG itself; see `Analytics.test.tsx`'s own comment on this.
+
+**Donut/pie charts and their category-legend pairing (`pages/Analytics.tsx`'s
+`CategoryDonut`)** follow shadcn's own chart examples directly rather than
+inventing a shape: a `<Pie>` with `innerRadius`/`outerRadius` for the donut
+ring, a `<ChartLegend content={<ChartLegendContent nameKey="..." />} />`
+naming the field the pie's `nameKey` points at (the payload's `dataKey` is
+the *value* field, e.g. `"value"` — without `nameKey` the legend can't
+resolve each slice's label from `ChartConfig`), and a `<Label content>`
+render prop nested inside `<Pie>` for whatever belongs in the donut's
+hole (shadcn's own "donut with text" example centers a total figure this
+way; this screen centers a plain icon instead — see the next paragraph
+for why). Every chart on this screen (bar or pie) gets both a
+`ChartTooltip`+`ChartTooltipContent` and a `ChartLegend`+
+`ChartLegendContent` — a legend isn't optional decoration once a chart has
+more than one series/color, since the colors alone don't say which is
+which.
+
+**No client-computed total in a donut's center.** ADR-0009's "the web UI
+does no maths" rule forbids summing figures across rows to produce a
+number the server didn't return — a donut's own slice values are exactly
+that sum's inputs, so a "$1,305 total" label in the hole would be this
+screen computing a figure itself rather than rendering one the API
+already returned. `CategoryDonut` centers a plain `lucide-react` icon
+instead (via the `<Label content>` above, not a CSS-positioned overlay
+div — tying the icon to the same `viewBox` recharts computes keeps it
+centered through any resize without a second positioning system to keep
+in sync). A future donut that legitimately has a server-computed total to
+show (the API returns it, not the page) should reach for the icon
+pattern's `<Label content>` shape and swap the icon for that figure.
+
+**Sortable tables** (`CategoryDonut`'s sibling table on the same
+screen) use `components/ui/table.tsx`, pulled via `npx shadcn add table`
+— the same "pull the primitive, don't hand-roll `<table>`" convention as
+every other `components/ui` piece. Sorting is a plain client-side
+re-order of rows the API already returned (never a re-fetch, never a
+derived figure), driven by local `sortKey`/`sortDir` state; a column
+header is a button showing a neutral icon for every other column and the
+active sort direction's icon for the current one, per
+`Analytics.tsx`'s `SortableHead`.
+
+**A pie/donut's slice-sweep animation is not instant.** recharts animates
+a `<Pie>`'s sectors in from zero over several hundred milliseconds on
+mount, and mounting/resizing a chart (e.g. a `ChartLegend` being added
+changes the container's available height, which can trigger a remount)
+restarts it. A screenshot taken immediately after a chart-bearing page
+loads can catch this mid-animation — a ring rendered as a thin sliver
+near its start angle, not a bug. When manually verifying a chart via
+claude-in-chrome, wait a few seconds and re-screenshot before concluding
+something is actually broken; when in doubt, inspect the actual SVG
+(`getComputedStyle` on a `path.recharts-sector`'s `fill`/`opacity`, or
+its `d` attribute's arc-flag values) rather than trusting one screenshot.
