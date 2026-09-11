@@ -191,3 +191,84 @@ func normalizeBalances(v balancesResultView) map[string]any {
 	}
 	return map[string]any{"balances": balances, "unconverted": unconverted}
 }
+
+// balanceTotalsResultView mirrors internal/surface/cli/balance.go's and
+// internal/surface/http/balance_totals.go's balanceTotalsView field for
+// field (issue #195).
+type balanceTotalsResultView struct {
+	Currency    string                      `json:"currency"`
+	Overall     string                      `json:"overall"`
+	ByCategory  []accountKindTotalEntryView `json:"by_category"`
+	ByCurrency  []currencyTotalEntryView    `json:"by_currency"`
+	Unconverted []unconvertedEntryView      `json:"unconverted"`
+}
+
+type accountKindTotalEntryView struct {
+	Kind   string `json:"kind"`
+	Amount string `json:"amount"`
+}
+
+type currencyTotalEntryView struct {
+	Currency string `json:"currency"`
+	Amount   string `json:"amount"`
+}
+
+// normalizeBalanceTotals keys ByCategory/ByCurrency by their own row key
+// rather than list order, the same reason normalizeBalances does above.
+func normalizeBalanceTotals(v balanceTotalsResultView) map[string]any {
+	byCategory := map[string]string{}
+	for _, c := range v.ByCategory {
+		byCategory[c.Kind] = c.Amount
+	}
+	byCurrency := map[string]string{}
+	for _, c := range v.ByCurrency {
+		byCurrency[c.Currency] = c.Amount
+	}
+	unconverted := map[string]unconvertedEntryView{}
+	for _, u := range v.Unconverted {
+		unconverted[u.Account] = u
+	}
+	return map[string]any{
+		"currency":    v.Currency,
+		"overall":     v.Overall,
+		"by_category": byCategory,
+		"by_currency": byCurrency,
+		"unconverted": unconverted,
+	}
+}
+
+// TestBalanceTotalsConformance drives `bodger balance totals --currency
+// --policy --json` and `GET /api/v1/balances/totals?currency=&policy=`
+// against the same seeded accounts and stored rate
+// TestBalanceQueryConformance uses, and asserts the two surfaces agree
+// field for field on the totals-overview result (issue #195).
+func TestBalanceTotalsConformance(t *testing.T) {
+	for _, tc := range balanceQueryCases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.seed()
+			h.seedFxRate("INR", "USD", "0.0115", mustHarnessDate(t, 2026, time.August, 1), "conformance-seed")
+
+			cliOut, cliErr := h.runCLI("balance", "totals", "--currency", tc.currency, "--policy", tc.policy)
+			if cliErr != nil {
+				t.Fatalf("CLI: unexpected error: %v (output: %s)", cliErr, cliOut)
+			}
+			httpStatus, httpDecoded := h.runHTTP("GET", "/api/v1/balances/totals?currency="+tc.currency+"&policy="+tc.policy, nil)
+			if httpStatus >= 300 {
+				t.Fatalf("HTTP: unexpected error status %d: %v", httpStatus, httpDecoded)
+			}
+
+			cliResult := decodeCLIEnvelope[balanceTotalsResultView](t, cliOut)
+			httpResult := remarshalInto[balanceTotalsResultView](t, h.httpData(httpDecoded))
+
+			cliJSON, _ := json.MarshalIndent(normalizeBalanceTotals(cliResult), "", "  ")
+			httpJSON, _ := json.MarshalIndent(normalizeBalanceTotals(httpResult), "", "  ")
+			if string(cliJSON) != string(httpJSON) {
+				t.Errorf("CLI and HTTP disagree on the balance totals result:\nCLI:\n%s\nHTTP:\n%s", cliJSON, httpJSON)
+			}
+			if len(cliResult.ByCurrency) == 0 {
+				t.Fatalf("no by_currency rows returned at all — the comparison above would pass vacuously")
+			}
+		})
+	}
+}

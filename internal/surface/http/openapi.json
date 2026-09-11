@@ -115,6 +115,32 @@
         ],
         "type": "object"
       },
+      "AccountKindTotal": {
+        "properties": {
+          "amount": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "bank",
+              "cash",
+              "credit_card",
+              "wallet",
+              "investment",
+              "loan",
+              "other"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "amount"
+        ],
+        "type": "object"
+      },
       "AccountListEnvelope": {
         "properties": {
           "data": {
@@ -226,6 +252,61 @@
           "account",
           "amount",
           "currency"
+        ],
+        "type": "object"
+      },
+      "BalanceTotals": {
+        "properties": {
+          "as_of": {
+            "description": "The date every total below is computed as of.",
+            "format": "date",
+            "type": "string"
+          },
+          "by_category": {
+            "items": {
+              "$ref": "#/components/schemas/AccountKindTotal"
+            },
+            "type": "array"
+          },
+          "by_currency": {
+            "items": {
+              "$ref": "#/components/schemas/CurrencyTotal"
+            },
+            "type": "array"
+          },
+          "currency": {
+            "description": "The reporting currency \"overall\" and \"by_category\" are expressed in.",
+            "type": "string"
+          },
+          "overall": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "unconverted": {
+            "items": {
+              "$ref": "#/components/schemas/UnconvertedBalance"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "as_of",
+          "currency",
+          "overall",
+          "by_category",
+          "by_currency"
+        ],
+        "type": "object"
+      },
+      "BalanceTotalsEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/BalanceTotals"
+          }
+        },
+        "required": [
+          "data"
         ],
         "type": "object"
       },
@@ -737,6 +818,23 @@
           "to_account",
           "amount",
           "description"
+        ],
+        "type": "object"
+      },
+      "CurrencyTotal": {
+        "properties": {
+          "amount": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "amount"
         ],
         "type": "object"
       },
@@ -2411,6 +2509,69 @@
           }
         },
         "summary": "Every account's balance as of a date."
+      }
+    },
+    "/api/v1/balances/totals": {
+      "get": {
+        "description": "The overall net balance and the per-category breakdown are converted into \"currency\" under \"policy\" (ADR-0004) - left unset, \"currency\" resolves to the actor's own reporting-currency preference, falling back to the instance default. The per-currency breakdown is always raw and unconverted. Any account the conversion couldn't cover is reported under \"unconverted\" rather than silently dropped or excluded without explanation.",
+        "operationId": "getBalanceTotals",
+        "parameters": [
+          {
+            "description": "Defaults to today in the actor's own timezone when omitted.",
+            "in": "query",
+            "name": "as_of",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Convert the overall and per-category totals into this currency. Defaults to the actor's own reporting currency.",
+            "in": "query",
+            "name": "currency",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Which conversion policy to use (required).",
+            "in": "query",
+            "name": "policy",
+            "schema": {
+              "enum": [
+                "transaction_date",
+                "current",
+                "pinned"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The pinned date to convert at (required when \"policy\" is \"pinned\").",
+            "in": "query",
+            "name": "pinned_date",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BalanceTotalsEnvelope"
+                }
+              }
+            },
+            "description": "The totals overview as of the resolved date."
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Totals overview: overall net balance, per category, per currency."
       }
     },
     "/api/v1/categories": {
