@@ -219,8 +219,8 @@ design system should settle once rather than patch per-screen.
 ### M4 · The Grey Havens — Multi-currency and FX
 Cross-currency transfers enabled. FX provider abstraction, rate storage, explicit conversion policies, reporting currency. Every converted figure carries its rate, date, source, and policy ([ADR-0004](decisions/0004-multi-currency-and-fx.md)). Rate fetching is always an explicit, user-triggered action — never a background poller — and a fetch is the only thing that ever writes to `fx_rates`; there is no manual-rate entry. Named for the Havens where those who cross over the Sea depart from — a fitting name for the milestone where money finally crosses between currencies.
 
-### M5 — Analytics and charts
-The shared query/filter model ([ADR-0009](decisions/0009-query-and-analytics-model.md)), spending and income by category, cash flow, trends, savings rate. Charts in the web UI and machine-readable output from the CLI, both over the same analytics methods.
+### M5 · Orthanc — Analytics and charts
+The shared query/filter model ([ADR-0009](decisions/0009-query-and-analytics-model.md)), spending and income by category, cash flow, trends, savings rate. Charts in the web UI and machine-readable output from the CLI, both over the same analytics methods. Named for Saruman's tower and its palantír — a seeing-stone, for the milestone where the ledger's data finally becomes something you can *see*.
 
 ### M6 — Import and export
 The staged import pipeline, CSV import with column mapping, duplicate detection, preview and commit. Canonical versioned JSON export and full backup ([ADR-0008](decisions/0008-import-export-architecture.md)). Export lands before or with import: backup is what makes import safe to attempt.
@@ -534,6 +534,16 @@ from reading as the same kind of number. See `docs/design-system.md`'s
 "Balances: rate-provenance detail row" section, "Transfer rows (issue
 #141)" for the full rendering rules.
 
+**M5 · Orthanc is scoped and seeded** — see the
+[M5 milestone](https://github.com/anirudhgray/bodger/milestone/5) for its
+issues: [#186](https://github.com/anirudhgray/bodger/issues/186) (extending
+`TransactionFilter` to ADR-0009's full shape), [#187](https://github.com/anirudhgray/bodger/issues/187)
+(the analytics app methods — category breakdown, cash flow, trends,
+savings rate), [#188](https://github.com/anirudhgray/bodger/issues/188)
+(REST/CLI analytics surfaces plus conformance), and
+[#189](https://github.com/anirudhgray/bodger/issues/189) (the web UI charts
+screen), in that dependency order. Nothing has landed yet.
+
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
@@ -541,7 +551,7 @@ from reading as the same kind of number. See `docs/design-system.md`'s
 | M2 · The Shire — Web UI and authentication | ✅ Complete |
 | M3 · Rivendell — UI polish and design system | ✅ Complete |
 | M4 · The Grey Havens — Multi-currency and FX | ✅ Complete |
-| M5 — Analytics and charts | ⬜ Not started |
+| M5 · Orthanc — Analytics and charts | ⬜ Not started |
 | M6 — Import and export | ⬜ Not started |
 | M7 — Budgets | ⬜ Not started |
 | M8 — MCP server | ⬜ Not started |
