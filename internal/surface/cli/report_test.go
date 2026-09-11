@@ -76,13 +76,56 @@ func TestReportSavingsRate_ZeroIncomeOmitsRate(t *testing.T) {
 	}
 }
 
-// TestReportCategoryBreakdown_MissingCurrencyIsRejected checks that
-// omitting --currency surfaces the app layer's own InvalidInput, without
-// this command pre-validating the flag itself.
-func TestReportCategoryBreakdown_MissingCurrencyIsRejected(t *testing.T) {
+// TestReportCategoryBreakdown_MissingCurrencyFallsBackToReportingCurrency
+// is issue #199's regression test: omitting --currency must resolve
+// ADR-0004's ladder (the actor's configured reporting currency) via
+// app.resolveAnalyticsOptions, the same way `bodger balance` and `bodger
+// fx rates fetch` already fall back, rather than sending an empty
+// ReportingCurrency straight into validation.
+func TestReportCategoryBreakdown_MissingCurrencyFallsBackToReportingCurrency(t *testing.T) {
 	factory := newTestFactory(t, time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC))
-	_, _, err := run(t, factory, "report", "category-breakdown", "--policy", "current")
-	if err == nil {
-		t.Fatal("run: want an error when --currency is omitted, got nil")
+	mustRun(t, factory, "accounts", "add", "Checking", "--type", "bank", "--currency", "USD")
+	mustRun(t, factory, "categories", "add", "Food", "--type", "expense")
+	mustRun(t, factory, "spend", "50", "Food", "--account", "Checking")
+	mustRun(t, factory, "config", "reporting-currency", "set", "USD")
+
+	out := mustRun(t, factory, "report", "category-breakdown", "--policy", "current", "--json")
+
+	var envelope struct {
+		Data struct {
+			Currency string `json:"currency"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &envelope); err != nil {
+		t.Fatalf("decode --json output: %v (output: %s)", err, out)
+	}
+	if envelope.Data.Currency != "USD" {
+		t.Errorf("currency = %q, want the configured reporting currency USD", envelope.Data.Currency)
+	}
+}
+
+// TestReportCategoryBreakdown_MissingCurrencyFallsBackToInstanceDefault
+// checks the ladder's bottom rung: with neither --currency nor a
+// configured reporting currency, it falls all the way through to
+// config.Config.DefaultCurrency (this test factory's "USD") rather than
+// erroring, per ADR-0004.
+func TestReportCategoryBreakdown_MissingCurrencyFallsBackToInstanceDefault(t *testing.T) {
+	factory := newTestFactory(t, time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC))
+	mustRun(t, factory, "accounts", "add", "Checking", "--type", "bank", "--currency", "USD")
+	mustRun(t, factory, "categories", "add", "Food", "--type", "expense")
+	mustRun(t, factory, "spend", "50", "Food", "--account", "Checking")
+
+	out := mustRun(t, factory, "report", "category-breakdown", "--policy", "current", "--json")
+
+	var envelope struct {
+		Data struct {
+			Currency string `json:"currency"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &envelope); err != nil {
+		t.Fatalf("decode --json output: %v (output: %s)", err, out)
+	}
+	if envelope.Data.Currency != "USD" {
+		t.Errorf("currency = %q, want the instance default USD", envelope.Data.Currency)
 	}
 }

@@ -70,15 +70,25 @@ func TestCategoryBreakdown_GroupsByTopLevelCategoryAndExcludesTransfers(t *testi
 // InvalidInput as a 422, without this handler pre-validating the field
 // itself (AnalyticsOptions.ReportingCurrency is required — see
 // internal/app/analytics.go's validateAnalyticsOptions).
-func TestCategoryBreakdown_MissingCurrencyIs422(t *testing.T) {
+// TestCategoryBreakdown_MissingCurrencyFallsBackToReportingCurrency is
+// issue #199's regression test: an analytics request with no ?currency=
+// must resolve ADR-0004's ladder (the actor's configured reporting
+// currency, then the instance default) via
+// app.resolveAnalyticsOptions, the same way `bodger report` and `bodger
+// balance` already fall back, rather than rejecting with a blank
+// reporting_currency.
+func TestCategoryBreakdown_MissingCurrencyFallsBackToReportingCurrency(t *testing.T) {
 	srv := newTestServer(t, time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC), "UTC")
 
+	do(t, srv, http.MethodPost, "/api/v1/reporting-currency", map[string]any{"currency": "USD"})
+
 	status, decoded := do(t, srv, http.MethodGet, "/api/v1/analytics/category-breakdown?policy=current", nil)
-	if status != http.StatusUnprocessableEntity {
-		t.Fatalf("status = %d, want 422: %+v", status, decoded)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %+v", status, decoded)
 	}
-	if code := errorCodeOf(t, decoded); code != "invalid_input" {
-		t.Errorf("error code = %q, want invalid_input", code)
+	data := dataOf(t, decoded)
+	if data["currency"] != "USD" {
+		t.Errorf("currency = %v, want the configured reporting currency USD", data["currency"])
 	}
 }
 

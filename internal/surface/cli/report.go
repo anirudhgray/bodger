@@ -71,10 +71,15 @@ func bindReportFilterFlags(cmd *cobra.Command, includeDateRange bool) *reportFil
 
 // reportOptionsFlags holds the flag variables every `report` subcommand
 // binds for ADR-0004's conversion options: the same three flags `bodger
-// balance --currency/--policy/--pinned-date` already uses, except
-// --currency is required here - every M5 analytics result is a single
-// converted aggregate, unlike balance's per-account figures, which
-// remain meaningful unconverted.
+// balance --currency/--policy/--pinned-date` already uses. Unlike
+// balance, every M5 analytics result is a single converted aggregate, so
+// conversion itself isn't optional here - but --currency still isn't
+// required on the command line: a blank value falls through
+// app.resolveAnalyticsOptions' ADR-0004 ladder (the actor's own reporting
+// currency preference, then the instance default), the same way `bodger
+// balance` and `bodger fx rates fetch` already resolve theirs. --policy
+// has no such ladder - there's no sensible default conversion policy, so
+// it stays required.
 type reportOptionsFlags struct {
 	currency   string
 	policy     string
@@ -91,7 +96,7 @@ func (f *reportOptionsFlags) options() app.AnalyticsOptions {
 
 func bindReportOptionsFlags(cmd *cobra.Command) *reportOptionsFlags {
 	f := &reportOptionsFlags{}
-	cmd.Flags().StringVar(&f.currency, "currency", "", "convert every figure into this currency (required)")
+	cmd.Flags().StringVar(&f.currency, "currency", "", "convert every figure into this currency (defaults to your reporting currency)")
 	cmd.Flags().StringVar(&f.policy, "policy", "", "which conversion policy to use: transaction_date, current, or pinned (required)")
 	cmd.Flags().StringVar(&f.pinnedDate, "pinned-date", "", "the pinned date to convert at (required with --policy pinned)")
 	return f

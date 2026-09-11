@@ -87,7 +87,11 @@ type categoryBreakdownView struct {
 }
 
 func categoryBreakdownViewFrom(r app.CategoryBreakdownResult) categoryBreakdownView {
-	v := categoryBreakdownView{Currency: r.Options.ReportingCurrency, Unconverted: unconvertedPostingViewsFrom(r.Unconverted)}
+	v := categoryBreakdownView{
+		Currency:    r.Options.ReportingCurrency,
+		Rows:        []categoryBreakdownRowView{},
+		Unconverted: unconvertedPostingViewsFrom(r.Unconverted),
+	}
 	for _, row := range r.Rows {
 		name := "Uncategorized"
 		if row.Category != nil {
@@ -134,7 +138,11 @@ type cashFlowView struct {
 }
 
 func cashFlowViewFrom(r app.CashFlowResult) cashFlowView {
-	v := cashFlowView{Currency: r.Options.ReportingCurrency, Unconverted: unconvertedPostingViewsFrom(r.Unconverted)}
+	v := cashFlowView{
+		Currency:    r.Options.ReportingCurrency,
+		Points:      []cashFlowPointView{},
+		Unconverted: unconvertedPostingViewsFrom(r.Unconverted),
+	}
 	for _, p := range r.Points {
 		v.Points = append(v.Points, cashFlowPointView{
 			Month:   fmt.Sprintf("%04d-%02d", p.Year, int(p.Month)),

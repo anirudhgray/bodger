@@ -30,7 +30,12 @@ import (
 // already established.
 type AnalyticsOptions struct {
 	// ReportingCurrency is the ISO 4217 code every converted figure in
-	// the result is expressed in. Required.
+	// the result is expressed in. Optional: a blank value is resolved via
+	// ADR-0004's ladder (actor's own preference, then instance default) by
+	// resolveAnalyticsOptions, the same way FetchFxRates resolves its own
+	// reporting currency — a caller (CLI/HTTP) should never have to
+	// re-derive the actor's preference itself just to call an analytics
+	// method.
 	ReportingCurrency string
 	// Policy selects which of ADR-0004's conversion policies converts
 	// each posting — see ConversionPolicy. Required.
@@ -49,6 +54,26 @@ type UnconvertedPosting struct {
 	TransactionID string
 	Amount        money.Money
 	Reason        string
+}
+
+// resolveAnalyticsOptions fills in opts.ReportingCurrency via ADR-0004's
+// ladder (actor's own preference, then instance default) when the caller
+// left it blank — mirroring resolveFetchReportingCurrency: an analytics
+// query has no entry or account of its own, so only those two rungs
+// apply — then validates the result exactly as before.
+func (s *Service) resolveAnalyticsOptions(ctx context.Context, actorID string, opts AnalyticsOptions) (AnalyticsOptions, error) {
+	if strings.TrimSpace(opts.ReportingCurrency) == "" {
+		preference, err := s.resolveReportingCurrency(ctx, actorID)
+		if err != nil {
+			return AnalyticsOptions{}, err
+		}
+		currency, err := normalize.Currency("", "", preference, s.Config.DefaultCurrency)
+		if err != nil {
+			return AnalyticsOptions{}, err
+		}
+		opts.ReportingCurrency = currency
+	}
+	return validateAnalyticsOptions(opts)
 }
 
 // validateAnalyticsOptions checks opts.ReportingCurrency is a known
@@ -220,7 +245,7 @@ func (s *Service) CategoryBreakdown(ctx context.Context, q CategoryBreakdownQuer
 	if err := requireActorID(q.ActorID); err != nil {
 		return CategoryBreakdownResult{}, err
 	}
-	opts, err := validateAnalyticsOptions(q.Options)
+	opts, err := s.resolveAnalyticsOptions(ctx, q.ActorID, q.Options)
 	if err != nil {
 		return CategoryBreakdownResult{}, err
 	}
@@ -371,7 +396,7 @@ func (s *Service) CashFlow(ctx context.Context, q CashFlowQuery) (CashFlowResult
 	if err := requireActorID(q.ActorID); err != nil {
 		return CashFlowResult{}, err
 	}
-	opts, err := validateAnalyticsOptions(q.Options)
+	opts, err := s.resolveAnalyticsOptions(ctx, q.ActorID, q.Options)
 	if err != nil {
 		return CashFlowResult{}, err
 	}
@@ -542,7 +567,7 @@ func (s *Service) Trends(ctx context.Context, q TrendsQuery) (TrendsResult, erro
 	if err := requireActorID(q.ActorID); err != nil {
 		return TrendsResult{}, err
 	}
-	opts, err := validateAnalyticsOptions(q.Options)
+	opts, err := s.resolveAnalyticsOptions(ctx, q.ActorID, q.Options)
 	if err != nil {
 		return TrendsResult{}, err
 	}
@@ -660,7 +685,7 @@ func (s *Service) SavingsRate(ctx context.Context, q SavingsRateQuery) (SavingsR
 	if err := requireActorID(q.ActorID); err != nil {
 		return SavingsRateResult{}, err
 	}
-	opts, err := validateAnalyticsOptions(q.Options)
+	opts, err := s.resolveAnalyticsOptions(ctx, q.ActorID, q.Options)
 	if err != nil {
 		return SavingsRateResult{}, err
 	}
