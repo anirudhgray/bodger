@@ -4,5 +4,16 @@
   "rules": {
     "react/rules-of-hooks": "error",
     "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+  },
+  "overrides": [
+    {
+      // shadcn-generated primitives (pulled via `npx shadcn add`, see
+      // docs/contributing.md). Their upstream shape mixes component and
+      // non-component exports (e.g. button.tsx's `buttonVariants`,
+      // sidebar.tsx's `useSidebar`) by design — hand-restructuring them to
+      // satisfy Fast Refresh would just be undone by the next re-pull.
+      "files": ["src/components/ui/**"],
+      "rules": { "react/only-export-components": "off" }
+    }
+  ]
 }
