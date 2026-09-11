@@ -165,6 +165,7 @@ func newBalanceCmd(factory ServiceFactory) *cobra.Command {
 	cmd.Flags().StringVar(&pinnedDate, "pinned-date", "",
 		"the pinned date to convert at (required when --policy pinned is used with --currency)")
 	cmd.AddCommand(newBalanceTotalsCmd(factory))
+	cmd.AddCommand(newBalanceNetWorthCmd(factory))
 	return cmd
 }
 
@@ -302,5 +303,103 @@ func newBalanceTotalsCmd(factory ServiceFactory) *cobra.Command {
 		"which conversion policy to use: transaction_date, current, or pinned (required)")
 	cmd.Flags().StringVar(&pinnedDate, "pinned-date", "",
 		"the pinned date to convert at (required when --policy pinned is used)")
+	return cmd
+}
+
+// ---- net-worth ----
+
+// netWorthPointView is one period's net worth (app.NetWorthPoint), as of
+// that period's own end date.
+type netWorthPointView struct {
+	Date   string `json:"date"`
+	Amount string `json:"amount"`
+}
+
+// netWorthOverTimeView is `balance net-worth`'s output shape: mirrors
+// internal/surface/http/net_worth.go's netWorthOverTimeView field for
+// field (internal/surface/conformance proves the two agree).
+type netWorthOverTimeView struct {
+	Currency    string                   `json:"currency"`
+	Points      []netWorthPointView      `json:"points"`
+	Unconverted []unconvertedBalanceView `json:"unconverted,omitempty"`
+}
+
+func netWorthOverTimeViewFrom(r app.NetWorthOverTimeResult) netWorthOverTimeView {
+	v := netWorthOverTimeView{Currency: r.Options.ReportingCurrency}
+	for _, p := range r.Points {
+		v.Points = append(v.Points, netWorthPointView{Date: p.Date.String(), Amount: p.Amount.AmountString()})
+	}
+	for _, u := range r.Unconverted {
+		v.Unconverted = append(v.Unconverted, unconvertedBalanceView{Account: u.Account.Name(), Reason: u.Reason})
+	}
+	return v
+}
+
+func printNetWorthOverTime(w io.Writer, v netWorthOverTimeView) {
+	if len(v.Points) == 0 {
+		_, _ = fmt.Fprintln(w, "No points in this range.")
+		return
+	}
+	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
+	_, _ = fmt.Fprintf(tw, "DATE\tNET WORTH\n")
+	for _, p := range v.Points {
+		_, _ = fmt.Fprintf(tw, "%s\t%s %s\n", p.Date, p.Amount, v.Currency)
+	}
+	_ = tw.Flush()
+
+	if len(v.Unconverted) > 0 {
+		_, _ = fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w, "Couldn't convert (fetch the missing rate with `bodger fx rates fetch`):")
+		for _, u := range v.Unconverted {
+			_, _ = fmt.Fprintf(w, "  %s: %s\n", u.Account, u.Reason)
+		}
+	}
+}
+
+// newBalanceNetWorthCmd builds "balance net-worth" -- issue #196's
+// net-worth-over-time use case: the total balance across every account,
+// plotted at each --granularity period boundary within --from..--to
+// (both required -- there's no sensible default range for a time series,
+// unlike `balance`/`balance totals`' own single --on date). --currency
+// stays optional, resolving through ADR-0004's ladder server-side the
+// same way `balance totals`' own --currency does; --policy is required.
+func newBalanceNetWorthCmd(factory ServiceFactory) *cobra.Command {
+	var from, to, currency, policy, pinnedDate, granularity string
+	cmd := &cobra.Command{
+		Use:   "net-worth",
+		Short: "Total balance across every account, as a time series",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+			svc, closeDB, err := factory(ctx)
+			if err != nil {
+				return err
+			}
+			defer closeQuietly(cmd, closeDB)
+
+			result, err := svc.NetWorthOverTime(ctx, app.NetWorthOverTimeQuery{
+				ActorID:        ports.SeededUserID,
+				Filter:         app.TransactionFilterInput{DateFrom: from, DateTo: to},
+				TargetCurrency: currency,
+				Policy:         app.ConversionPolicy(policy),
+				PinnedDate:     pinnedDate,
+				Granularity:    app.Granularity(granularity),
+			})
+			if err != nil {
+				return err
+			}
+			view := netWorthOverTimeViewFrom(result)
+			return render(cmd, view, func(w io.Writer) { printNetWorthOverTime(w, view) })
+		},
+	}
+	cmd.Flags().StringVar(&from, "from", "", "the inclusive start of the range (required)")
+	cmd.Flags().StringVar(&to, "to", "", "the inclusive end of the range (required)")
+	cmd.Flags().StringVar(&currency, "currency", "",
+		"convert every point into this currency (defaults to your reporting currency)")
+	cmd.Flags().StringVar(&policy, "policy", "",
+		"which conversion policy to use: transaction_date, current, or pinned (required)")
+	cmd.Flags().StringVar(&pinnedDate, "pinned-date", "",
+		"the pinned date to convert at (required when --policy pinned is used)")
+	cmd.Flags().StringVar(&granularity, "granularity", "", `how to bucket periods: "week", "month" (default), "year", or "custom"`)
 	return cmd
 }

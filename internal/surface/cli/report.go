@@ -475,6 +475,278 @@ func newReportSavingsRateCmd(factory ServiceFactory) *cobra.Command {
 	return cmd
 }
 
+// ---- top-transactions ----
+
+type topTransactionsRowView struct {
+	TransactionID string `json:"transaction_id"`
+	Description   string `json:"description"`
+	Date          string `json:"date"`
+	Category      string `json:"category"`
+	Amount        string `json:"amount"`
+}
+
+type topTransactionsView struct {
+	Currency    string                   `json:"currency"`
+	Rows        []topTransactionsRowView `json:"rows"`
+	Unconverted []unconvertedPostingView `json:"unconverted,omitempty"`
+}
+
+func topTransactionsViewFrom(r app.TopTransactionsResult) topTransactionsView {
+	v := topTransactionsView{Currency: r.Options.ReportingCurrency, Unconverted: unconvertedPostingViewsFrom(r.Unconverted)}
+	for _, row := range r.Rows {
+		name := "Uncategorized"
+		if row.Category != nil {
+			name = row.Category.Name()
+		}
+		v.Rows = append(v.Rows, topTransactionsRowView{
+			TransactionID: row.TransactionID,
+			Description:   row.Description,
+			Date:          row.BookedDate.String(),
+			Category:      name,
+			Amount:        row.Amount.AmountString(),
+		})
+	}
+	return v
+}
+
+func printTopTransactions(w io.Writer, v topTransactionsView) {
+	if len(v.Rows) == 0 {
+		_, _ = fmt.Fprintln(w, "No matching transactions.")
+		return
+	}
+	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
+	_, _ = fmt.Fprintf(tw, "DATE\tDESCRIPTION\tCATEGORY\tAMOUNT\n")
+	for _, row := range v.Rows {
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s %s\n", row.Date, row.Description, row.Category, row.Amount, v.Currency)
+	}
+	_ = tw.Flush()
+	printUnconverted(w, v.Unconverted)
+}
+
+func newReportTopTransactionsCmd(factory ServiceFactory) *cobra.Command {
+	var filter *reportFilterFlags
+	var opts *reportOptionsFlags
+	var limit int
+	cmd := &cobra.Command{
+		Use:   "top-transactions",
+		Short: "The largest transactions in a period, by absolute amount",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+			svc, closeDB, err := factory(ctx)
+			if err != nil {
+				return err
+			}
+			defer closeQuietly(cmd, closeDB)
+
+			result, err := svc.TopTransactions(ctx, app.TopTransactionsQuery{
+				ActorID: ports.SeededUserID,
+				Filter:  filter.input(),
+				Options: opts.options(),
+				Limit:   limit,
+			})
+			if err != nil {
+				return err
+			}
+			view := topTransactionsViewFrom(result)
+			return render(cmd, view, func(w io.Writer) { printTopTransactions(w, view) })
+		},
+	}
+	filter = bindReportFilterFlags(cmd, true)
+	opts = bindReportOptionsFlags(cmd)
+	cmd.Flags().IntVar(&limit, "limit", 0, "the top-N count (defaults to 10, capped at 100)")
+	return cmd
+}
+
+// ---- average-transaction-size ----
+
+type averageTransactionSizeRowView struct {
+	Category string `json:"category"`
+	Count    int    `json:"count"`
+	Average  string `json:"average"`
+}
+
+type averageTransactionSizeView struct {
+	Currency    string                          `json:"currency"`
+	Overall     averageTransactionSizeRowView   `json:"overall"`
+	ByCategory  []averageTransactionSizeRowView `json:"by_category"`
+	Unconverted []unconvertedPostingView        `json:"unconverted,omitempty"`
+}
+
+func averageTransactionSizeRowViewFrom(row app.AverageTransactionSizeRow) averageTransactionSizeRowView {
+	name := "Uncategorized"
+	if row.Category != nil {
+		name = row.Category.Name()
+	}
+	return averageTransactionSizeRowView{Category: name, Count: row.Count, Average: row.Average.AmountString()}
+}
+
+func averageTransactionSizeViewFrom(r app.AverageTransactionSizeResult) averageTransactionSizeView {
+	v := averageTransactionSizeView{
+		Currency:    r.Options.ReportingCurrency,
+		Overall:     averageTransactionSizeRowViewFrom(r.Overall),
+		Unconverted: unconvertedPostingViewsFrom(r.Unconverted),
+	}
+	for _, row := range r.ByCategory {
+		v.ByCategory = append(v.ByCategory, averageTransactionSizeRowViewFrom(row))
+	}
+	return v
+}
+
+func printAverageTransactionSize(w io.Writer, v averageTransactionSizeView) {
+	_, _ = fmt.Fprintf(w, "Overall: %s %s (%d transactions)\n", v.Overall.Average, v.Currency, v.Overall.Count)
+	if len(v.ByCategory) > 0 {
+		_, _ = fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w, "By category:")
+		tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
+		_, _ = fmt.Fprintf(tw, "CATEGORY\tCOUNT\tAVERAGE\n")
+		for _, row := range v.ByCategory {
+			_, _ = fmt.Fprintf(tw, "%s\t%d\t%s %s\n", row.Category, row.Count, row.Average, v.Currency)
+		}
+		_ = tw.Flush()
+	}
+	printUnconverted(w, v.Unconverted)
+}
+
+func newReportAverageTransactionSizeCmd(factory ServiceFactory) *cobra.Command {
+	var filter *reportFilterFlags
+	var opts *reportOptionsFlags
+	cmd := &cobra.Command{
+		Use:   "average-transaction-size",
+		Short: "The mean transaction amount, overall and by top-level category",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+			svc, closeDB, err := factory(ctx)
+			if err != nil {
+				return err
+			}
+			defer closeQuietly(cmd, closeDB)
+
+			result, err := svc.AverageTransactionSize(ctx, app.AverageTransactionSizeQuery{
+				ActorID: ports.SeededUserID,
+				Filter:  filter.input(),
+				Options: opts.options(),
+			})
+			if err != nil {
+				return err
+			}
+			view := averageTransactionSizeViewFrom(result)
+			return render(cmd, view, func(w io.Writer) { printAverageTransactionSize(w, view) })
+		},
+	}
+	filter = bindReportFilterFlags(cmd, true)
+	opts = bindReportOptionsFlags(cmd)
+	return cmd
+}
+
+// ---- category-trends ----
+
+type categoryTrendDeltaView struct {
+	Category          string                   `json:"category"`
+	Current           categoryBreakdownRowView `json:"current"`
+	Previous          categoryBreakdownRowView `json:"previous"`
+	SpendingChangePct *float64                 `json:"spending_change_pct,omitempty"`
+	IncomeChangePct   *float64                 `json:"income_change_pct,omitempty"`
+}
+
+type categoryTrendsView struct {
+	Currency     string                   `json:"currency"`
+	CurrentFrom  string                   `json:"current_from"`
+	CurrentTo    string                   `json:"current_to"`
+	PreviousFrom string                   `json:"previous_from"`
+	PreviousTo   string                   `json:"previous_to"`
+	Rows         []categoryTrendDeltaView `json:"rows"`
+	Unconverted  []unconvertedPostingView `json:"unconverted,omitempty"`
+}
+
+func categoryBreakdownRowViewFrom(row app.CategoryBreakdownRow) categoryBreakdownRowView {
+	name := "Uncategorized"
+	if row.Category != nil {
+		name = row.Category.Name()
+	}
+	return categoryBreakdownRowView{Category: name, Spending: row.Spending.AmountString(), Income: row.Income.AmountString(), Net: row.Net.AmountString()}
+}
+
+func categoryTrendsViewFrom(r app.CategoryTrendsResult) categoryTrendsView {
+	v := categoryTrendsView{
+		Currency:     r.Options.ReportingCurrency,
+		CurrentFrom:  r.CurrentFrom.String(),
+		CurrentTo:    r.CurrentTo.String(),
+		PreviousFrom: r.PreviousFrom.String(),
+		PreviousTo:   r.PreviousTo.String(),
+		Unconverted:  unconvertedPostingViewsFrom(r.Unconverted),
+	}
+	for _, row := range r.Rows {
+		name := "Uncategorized"
+		if row.Category != nil {
+			name = row.Category.Name()
+		}
+		v.Rows = append(v.Rows, categoryTrendDeltaView{
+			Category:          name,
+			Current:           categoryBreakdownRowViewFrom(row.Current),
+			Previous:          categoryBreakdownRowViewFrom(row.Previous),
+			SpendingChangePct: row.SpendingChangePct,
+			IncomeChangePct:   row.IncomeChangePct,
+		})
+	}
+	return v
+}
+
+func printCategoryTrends(w io.Writer, v categoryTrendsView) {
+	if len(v.Rows) == 0 {
+		_, _ = fmt.Fprintln(w, "No matching transactions.")
+		return
+	}
+	_, _ = fmt.Fprintf(w, "Previous (%s to %s) vs. current (%s to %s):\n", v.PreviousFrom, v.PreviousTo, v.CurrentFrom, v.CurrentTo)
+	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
+	_, _ = fmt.Fprintf(tw, "CATEGORY\tSPENDING\tCHANGE\tINCOME\tCHANGE\n")
+	for _, row := range v.Rows {
+		_, _ = fmt.Fprintf(tw, "%s\t%s %s\t%s\t%s %s\t%s\n",
+			row.Category, row.Current.Spending, v.Currency, formatChangePct(row.SpendingChangePct),
+			row.Current.Income, v.Currency, formatChangePct(row.IncomeChangePct))
+	}
+	_ = tw.Flush()
+	printUnconverted(w, v.Unconverted)
+}
+
+func newReportCategoryTrendsCmd(factory ServiceFactory) *cobra.Command {
+	var filter *reportFilterFlags
+	var opts *reportOptionsFlags
+	var granularity *string
+	cmd := &cobra.Command{
+		Use:   "category-trends",
+		Short: "Month-over-month (or period-over-period) spending/income change, per category",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+			svc, closeDB, err := factory(ctx)
+			if err != nil {
+				return err
+			}
+			defer closeQuietly(cmd, closeDB)
+
+			result, err := svc.CategoryTrends(ctx, app.CategoryTrendsQuery{
+				ActorID:     ports.SeededUserID,
+				Filter:      filter.input(),
+				Options:     opts.options(),
+				Granularity: app.Granularity(*granularity),
+			})
+			if err != nil {
+				return err
+			}
+			view := categoryTrendsViewFrom(result)
+			return render(cmd, view, func(w io.Writer) { printCategoryTrends(w, view) })
+		},
+	}
+	filter = bindReportFilterFlags(cmd, true,
+		`the inclusive start of the current period (required, and only used, with --granularity custom)`,
+		`the inclusive end of the current period (required, and only used, with --granularity custom)`)
+	opts = bindReportOptionsFlags(cmd)
+	granularity = bindGranularityFlag(cmd)
+	return cmd
+}
+
 // newReportCmd builds "report", the parent command for every M5
 // analytics query - docs/architecture.md §8's "machine-readable output
 // from the CLI" line, exposed as `bodger report <metric> --json` over
@@ -488,5 +760,8 @@ func newReportCmd(factory ServiceFactory) *cobra.Command {
 	cmd.AddCommand(newReportCashFlowCmd(factory))
 	cmd.AddCommand(newReportTrendsCmd(factory))
 	cmd.AddCommand(newReportSavingsRateCmd(factory))
+	cmd.AddCommand(newReportTopTransactionsCmd(factory))
+	cmd.AddCommand(newReportAverageTransactionSizeCmd(factory))
+	cmd.AddCommand(newReportCategoryTrendsCmd(factory))
 	return cmd
 }

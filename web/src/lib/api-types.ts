@@ -47,6 +47,26 @@ export interface paths {
         patch: operations["patchAccount"];
         trace?: never;
     };
+    "/api/v1/analytics/average-transaction-size": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The mean transaction amount, overall and by top-level category.
+         * @description "average" is the mean of each matching posting's absolute amount (a magnitude, not a signed net) - "overall" covers every matching posting; "by_category" breaks that down by top-level category, with an "Uncategorized" row for postings with no category at all. Transfers are excluded by construction.
+         */
+        get: operations["getAverageTransactionSize"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analytics/cash-flow": {
         parameters: {
             query?: never;
@@ -87,6 +107,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/category-trends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Month-over-month (or period-over-period) spending/income change, per category.
+         * @description Extends /trends' aggregate-only comparison to one row per top-level category: "granularity" selects the comparison period the same way it does for /trends (week, month - the default, year, or custom). A category present in only one of the two periods still gets a row, zeroed on the side with nothing to report, rather than being omitted. "spending_change_pct"/"income_change_pct" are absent when the previous period's corresponding figure is zero - an undefined ratio, not zero.
+         */
+        get: operations["getCategoryTrends"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analytics/savings-rate": {
         parameters: {
             query?: never;
@@ -99,6 +139,26 @@ export interface paths {
          * @description "rate" is absent when income is zero - an undefined ratio, not zero.
          */
         get: operations["getSavingsRate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/top-transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The largest transactions in a period, by absolute amount.
+         * @description "limit" is the top-N count (defaults to 10, capped at 100) - every matching posting is still fetched and converted first, and only then truncated to the largest "limit" by magnitude. "amount" stays signed (negative for an outflow) even though the sort itself is by magnitude. Transfers are excluded by construction.
+         */
+        get: operations["getTopTransactions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -263,6 +323,26 @@ export interface paths {
          * @description Setting "currency" converts every account's balance into it, under "policy" (ADR-0004) - the response's "balances[].converted" carries the converted figure and its full provenance, and any account the conversion couldn't cover is reported under "unconverted" rather than silently dropped.
          */
         get: operations["getBalances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/balances/net-worth-over-time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Total balance across every account, as a time series.
+         * @description The total balance across every account, converted into "currency" under "policy", at each "granularity" period boundary within "from".."to" (both required - there's no sensible default range for a time series). Every filter dimension other than "from"/"to" is ignored: net worth is a whole-ledger figure, not scoped to one account or category. Any account some period's conversion couldn't cover is reported once under "unconverted", not once per period.
+         */
+        get: operations["getNetWorthOverTime"];
         put?: never;
         post?: never;
         delete?: never;
@@ -550,6 +630,24 @@ export interface components {
         AuthEnvelope: {
             data: components["schemas"]["Auth"];
         };
+        AverageTransactionSize: {
+            by_category: components["schemas"]["AverageTransactionSizeRow"][];
+            currency: string;
+            overall: components["schemas"]["AverageTransactionSizeRow"];
+            unconverted?: components["schemas"]["UnconvertedPosting"][];
+        };
+        AverageTransactionSizeEnvelope: {
+            data: components["schemas"]["AverageTransactionSize"];
+        };
+        AverageTransactionSizeRow: {
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            average: string;
+            category: string;
+            count: number;
+        };
         Balance: {
             /** @description The account's name. */
             account: string;
@@ -670,6 +768,31 @@ export interface components {
         };
         CategoryListEnvelope: {
             data: components["schemas"]["Category"][];
+        };
+        CategoryTrendDelta: {
+            category: string;
+            current: components["schemas"]["CategoryBreakdownRow"];
+            /** Format: double */
+            income_change_pct?: number | null;
+            previous: components["schemas"]["CategoryBreakdownRow"];
+            /** Format: double */
+            spending_change_pct?: number | null;
+        };
+        CategoryTrends: {
+            currency: string;
+            /** Format: date */
+            current_from: string;
+            /** Format: date */
+            current_to: string;
+            /** Format: date */
+            previous_from: string;
+            /** Format: date */
+            previous_to: string;
+            rows: components["schemas"]["CategoryTrendDelta"][];
+            unconverted?: components["schemas"]["UnconvertedPosting"][];
+        };
+        CategoryTrendsEnvelope: {
+            data: components["schemas"]["CategoryTrends"];
         };
         ChangePasswordRequest: {
             new_password: string;
@@ -897,6 +1020,23 @@ export interface components {
         LoginRequest: {
             password: string;
         };
+        NetWorthOverTime: {
+            currency: string;
+            points: components["schemas"]["NetWorthPoint"][];
+            unconverted?: components["schemas"]["UnconvertedBalance"][];
+        };
+        NetWorthOverTimeEnvelope: {
+            data: components["schemas"]["NetWorthOverTime"];
+        };
+        NetWorthPoint: {
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            amount: string;
+            /** Format: date */
+            date: string;
+        };
         Ok: {
             ok: boolean;
         };
@@ -959,6 +1099,26 @@ export interface components {
         };
         SetReportingCurrencyRequest: {
             currency: string;
+        };
+        TopTransactions: {
+            currency: string;
+            rows: components["schemas"]["TopTransactionsRow"][];
+            unconverted?: components["schemas"]["UnconvertedPosting"][];
+        };
+        TopTransactionsEnvelope: {
+            data: components["schemas"]["TopTransactions"];
+        };
+        TopTransactionsRow: {
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            amount: string;
+            category: string;
+            /** Format: date */
+            date: string;
+            description: string;
+            transaction_id: string;
         };
         Transaction: {
             /** @description Set on an outflow or an inflow. */
@@ -1218,6 +1378,56 @@ export interface operations {
             422: components["responses"]["InvalidInput"];
         };
     };
+    getAverageTransactionSize: {
+        parameters: {
+            query?: {
+                /** @description An account's ID or unique name. */
+                account?: string;
+                /** @description A category's ID or unique name; its whole subtree is included. */
+                category?: string;
+                /** @description One of "outflow", "inflow", or "transfer" - a transfer never contributes to an analytics result (transfers are excluded by construction), so filtering to "transfer" alone always returns an empty result. */
+                type?: "outflow" | "inflow" | "transfer";
+                /** @description The inclusive start of a booked-date range. Ignored by /trends except when its own granularity is "custom". */
+                from?: string;
+                /** @description The inclusive end of a booked-date range. Ignored by /trends except when its own granularity is "custom". */
+                to?: string;
+                /** @description Only include this transaction currency (repeatable). */
+                filter_currency?: string;
+                /** @description Only include transactions at or above this amount (absolute value). */
+                amount_min?: string;
+                /** @description Only include transactions at or below this amount (absolute value). */
+                amount_max?: string;
+                /** @description Only include transactions whose description contains this text. */
+                description?: string;
+                /** @description Only include transactions carrying this tag (repeatable). */
+                tag?: string;
+                /** @description How multiple "tag" values combine. */
+                tag_mode?: "any" | "all";
+                /** @description Convert every figure in the result into this currency (required). */
+                currency?: string;
+                /** @description Which conversion policy to use (required). */
+                policy?: "transaction_date" | "current" | "pinned";
+                /** @description The pinned date to convert at (required when "policy" is "pinned"). */
+                pinned_date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The overall and per-category mean transaction size. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AverageTransactionSizeEnvelope"];
+                };
+            };
+            422: components["responses"]["InvalidInput"];
+        };
+    };
     getCashFlow: {
         parameters: {
             query?: {
@@ -1320,6 +1530,58 @@ export interface operations {
             422: components["responses"]["InvalidInput"];
         };
     };
+    getCategoryTrends: {
+        parameters: {
+            query?: {
+                /** @description An account's ID or unique name. */
+                account?: string;
+                /** @description A category's ID or unique name; its whole subtree is included. */
+                category?: string;
+                /** @description One of "outflow", "inflow", or "transfer" - a transfer never contributes to an analytics result (transfers are excluded by construction), so filtering to "transfer" alone always returns an empty result. */
+                type?: "outflow" | "inflow" | "transfer";
+                /** @description The inclusive start of a booked-date range. Ignored by /trends except when its own granularity is "custom". */
+                from?: string;
+                /** @description The inclusive end of a booked-date range. Ignored by /trends except when its own granularity is "custom". */
+                to?: string;
+                /** @description Only include this transaction currency (repeatable). */
+                filter_currency?: string;
+                /** @description Only include transactions at or above this amount (absolute value). */
+                amount_min?: string;
+                /** @description Only include transactions at or below this amount (absolute value). */
+                amount_max?: string;
+                /** @description Only include transactions whose description contains this text. */
+                description?: string;
+                /** @description Only include transactions carrying this tag (repeatable). */
+                tag?: string;
+                /** @description How multiple "tag" values combine. */
+                tag_mode?: "any" | "all";
+                /** @description Convert every figure in the result into this currency (required). */
+                currency?: string;
+                /** @description Which conversion policy to use (required). */
+                policy?: "transaction_date" | "current" | "pinned";
+                /** @description The pinned date to convert at (required when "policy" is "pinned"). */
+                pinned_date?: string;
+                /** @description How to bucket/compare periods. Defaults to "month". */
+                granularity?: "week" | "month" | "year" | "custom";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The resolved current/previous period bounds and one row per top-level category present in either period. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryTrendsEnvelope"];
+                };
+            };
+            422: components["responses"]["InvalidInput"];
+        };
+    };
     getSavingsRate: {
         parameters: {
             query?: {
@@ -1365,6 +1627,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SavingsRateEnvelope"];
+                };
+            };
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    getTopTransactions: {
+        parameters: {
+            query?: {
+                /** @description An account's ID or unique name. */
+                account?: string;
+                /** @description A category's ID or unique name; its whole subtree is included. */
+                category?: string;
+                /** @description One of "outflow", "inflow", or "transfer" - a transfer never contributes to an analytics result (transfers are excluded by construction), so filtering to "transfer" alone always returns an empty result. */
+                type?: "outflow" | "inflow" | "transfer";
+                /** @description The inclusive start of a booked-date range. Ignored by /trends except when its own granularity is "custom". */
+                from?: string;
+                /** @description The inclusive end of a booked-date range. Ignored by /trends except when its own granularity is "custom". */
+                to?: string;
+                /** @description Only include this transaction currency (repeatable). */
+                filter_currency?: string;
+                /** @description Only include transactions at or above this amount (absolute value). */
+                amount_min?: string;
+                /** @description Only include transactions at or below this amount (absolute value). */
+                amount_max?: string;
+                /** @description Only include transactions whose description contains this text. */
+                description?: string;
+                /** @description Only include transactions carrying this tag (repeatable). */
+                tag?: string;
+                /** @description How multiple "tag" values combine. */
+                tag_mode?: "any" | "all";
+                /** @description Convert every figure in the result into this currency (required). */
+                currency?: string;
+                /** @description Which conversion policy to use (required). */
+                policy?: "transaction_date" | "current" | "pinned";
+                /** @description The pinned date to convert at (required when "policy" is "pinned"). */
+                pinned_date?: string;
+                /** @description The top-N count. Defaults to 10, capped at 100. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The largest matching transactions, descending by absolute amount. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopTransactionsEnvelope"];
                 };
             };
             422: components["responses"]["InvalidInput"];
@@ -1607,6 +1921,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BalancesEnvelope"];
+                };
+            };
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    getNetWorthOverTime: {
+        parameters: {
+            query?: {
+                /** @description The inclusive start of the range (required). */
+                from?: string;
+                /** @description The inclusive end of the range (required). */
+                to?: string;
+                /** @description Convert every point into this currency. Defaults to the actor's own reporting currency. */
+                currency?: string;
+                /** @description Which conversion policy to use (required). */
+                policy?: "transaction_date" | "current" | "pinned";
+                /** @description The pinned date to convert at (required when "policy" is "pinned"). */
+                pinned_date?: string;
+                /** @description How to bucket/compare periods. Defaults to "month". */
+                granularity?: "week" | "month" | "year" | "custom";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One point per period boundary in the requested range, ascending. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetWorthOverTimeEnvelope"];
                 };
             };
             422: components["responses"]["InvalidInput"];

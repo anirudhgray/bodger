@@ -79,6 +79,58 @@ type savingsRateResultView struct {
 	Unconverted []analyticsUnconvertedView `json:"unconverted"`
 }
 
+// topTransactionsRowView mirrors internal/surface/cli/report.go's and
+// internal/surface/http/analytics.go's topTransactionsRowView field for
+// field (issue #196).
+type topTransactionsRowView struct {
+	TransactionID string `json:"transaction_id"`
+	Description   string `json:"description"`
+	Date          string `json:"date"`
+	Category      string `json:"category"`
+	Amount        string `json:"amount"`
+}
+
+type topTransactionsResultView struct {
+	Currency    string                     `json:"currency"`
+	Rows        []topTransactionsRowView   `json:"rows"`
+	Unconverted []analyticsUnconvertedView `json:"unconverted"`
+}
+
+// averageTransactionSizeRowView mirrors both surfaces'
+// averageTransactionSizeRowView field for field (issue #196).
+type averageTransactionSizeRowView struct {
+	Category string `json:"category"`
+	Count    int    `json:"count"`
+	Average  string `json:"average"`
+}
+
+type averageTransactionSizeResultView struct {
+	Currency    string                          `json:"currency"`
+	Overall     averageTransactionSizeRowView   `json:"overall"`
+	ByCategory  []averageTransactionSizeRowView `json:"by_category"`
+	Unconverted []analyticsUnconvertedView      `json:"unconverted"`
+}
+
+// categoryTrendDeltaView mirrors both surfaces' categoryTrendDeltaView
+// field for field (issue #196).
+type categoryTrendDeltaView struct {
+	Category          string                   `json:"category"`
+	Current           categoryBreakdownRowView `json:"current"`
+	Previous          categoryBreakdownRowView `json:"previous"`
+	SpendingChangePct *float64                 `json:"spending_change_pct,omitempty"`
+	IncomeChangePct   *float64                 `json:"income_change_pct,omitempty"`
+}
+
+type categoryTrendsResultView struct {
+	Currency     string                     `json:"currency"`
+	CurrentFrom  string                     `json:"current_from"`
+	CurrentTo    string                     `json:"current_to"`
+	PreviousFrom string                     `json:"previous_from"`
+	PreviousTo   string                     `json:"previous_to"`
+	Rows         []categoryTrendDeltaView   `json:"rows"`
+	Unconverted  []analyticsUnconvertedView `json:"unconverted"`
+}
+
 // seedAnalyticsFixtures records a small set of transactions both this
 // month (2026-08, hostileInstant's actor-timezone "today") and last month
 // (2026-07) - enough for category-breakdown, cash-flow, trends, and
@@ -219,6 +271,42 @@ func TestAnalyticsConformance(t *testing.T) {
 			extraQuery: "&from=2026-08-01&to=2026-08-31",
 			decode: func(t *testing.T, cliOut string, httpData map[string]any) (any, any) {
 				return decodeCLIEnvelope[savingsRateResultView](t, cliOut), remarshalInto[savingsRateResultView](t, httpData)
+			},
+		},
+		{
+			// Issue #196: the largest transactions by absolute amount,
+			// fully deterministic order (magnitude desc, then booked date
+			// desc, then transaction ID) - no normalization needed to
+			// compare CLI and HTTP directly.
+			name:       "top-transactions",
+			metric:     "top-transactions",
+			extraArgs:  []string{"--from", "2026-07-01", "--to", "2026-08-31", "--limit", "5"},
+			extraQuery: "&from=2026-07-01&to=2026-08-31&limit=5",
+			decode: func(t *testing.T, cliOut string, httpData map[string]any) (any, any) {
+				return decodeCLIEnvelope[topTransactionsResultView](t, cliOut), remarshalInto[topTransactionsResultView](t, httpData)
+			},
+		},
+		{
+			name:   "average-transaction-size",
+			metric: "average-transaction-size",
+			decode: func(t *testing.T, cliOut string, httpData map[string]any) (any, any) {
+				return decodeCLIEnvelope[averageTransactionSizeResultView](t, cliOut), remarshalInto[averageTransactionSizeResultView](t, httpData)
+			},
+		},
+		{
+			name:   "category-trends",
+			metric: "category-trends",
+			decode: func(t *testing.T, cliOut string, httpData map[string]any) (any, any) {
+				return decodeCLIEnvelope[categoryTrendsResultView](t, cliOut), remarshalInto[categoryTrendsResultView](t, httpData)
+			},
+		},
+		{
+			name:       "category-trends-week",
+			metric:     "category-trends",
+			extraArgs:  []string{"--granularity", "week"},
+			extraQuery: "&granularity=week",
+			decode: func(t *testing.T, cliOut string, httpData map[string]any) (any, any) {
+				return decodeCLIEnvelope[categoryTrendsResultView](t, cliOut), remarshalInto[categoryTrendsResultView](t, httpData)
 			},
 		},
 	}
