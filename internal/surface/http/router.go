@@ -423,23 +423,23 @@ var routeTable = []route{
 		Method: http.MethodGet, Pattern: "/api/v1/analytics/cash-flow",
 		Handler: func(h *handlers) http.HandlerFunc { return h.getCashFlow },
 
-		OperationID: "getCashFlow", Summary: "Inflow vs. outflow, by calendar month.",
-		Description:   "When the filter sets both \"from\" and \"to\", every month in that range is included, even one with no matching postings. Transfers are excluded by construction.",
-		SuccessStatus: http.StatusOK, SuccessDescription: "One point per calendar month, ascending.",
+		OperationID: "getCashFlow", Summary: "Inflow vs. outflow, bucketed by period.",
+		Description:   "When the filter sets both \"from\" and \"to\", every period in that range is included, even one with no matching postings. \"granularity\" selects the bucket size - week, month (the default), year, or custom (the whole \"from\"..\"to\" range as one bucket, which then requires both). Transfers are excluded by construction.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "One point per period, ascending.",
 		Response: cashFlowView{},
 		Errors:   []int{http.StatusUnprocessableEntity},
-		Query:    reportQueryParams,
+		Query:    append(append([]queryParam{}, reportQueryParams...), granularityQueryParam),
 	},
 	{
 		Method: http.MethodGet, Pattern: "/api/v1/analytics/trends",
 		Handler: func(h *handlers) http.HandlerFunc { return h.getTrends },
 
-		OperationID: "getTrends", Summary: "This calendar month vs. the previous one.",
-		Description:   "\"from\"/\"to\" are ignored - this always compares the current calendar month against the previous one, in the actor's own timezone. Every other filter dimension still applies to both periods identically.",
-		SuccessStatus: http.StatusOK, SuccessDescription: "The current and previous month's totals, plus each one's percentage change.",
+		OperationID: "getTrends", Summary: "The current period vs. the immediately preceding one.",
+		Description:   "\"granularity\" selects the comparison period - week, month (the default), year, or custom. For week/month/year, \"from\"/\"to\" are ignored: this compares the current period against the previous one, in the actor's own timezone. For custom, \"from\"/\"to\" (both required) name the current period, compared against the immediately preceding period of the same length. Every other filter dimension still applies to both periods identically.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The current and previous period's totals, plus each one's percentage change.",
 		Response: trendsView{},
 		Errors:   []int{http.StatusUnprocessableEntity},
-		Query:    reportQueryParams,
+		Query:    append(append([]queryParam{}, reportQueryParams...), granularityQueryParam),
 	},
 	{
 		Method: http.MethodGet, Pattern: "/api/v1/analytics/savings-rate",
@@ -484,8 +484,8 @@ var reportQueryParams = []queryParam{
 	{Name: "account", Description: "An account's ID or unique name.", Type: "string"},
 	{Name: "category", Description: "A category's ID or unique name; its whole subtree is included.", Type: "string"},
 	{Name: "type", Description: `One of "outflow", "inflow", or "transfer" - a transfer never contributes to an analytics result (transfers are excluded by construction), so filtering to "transfer" alone always returns an empty result.`, Type: "string", Enum: []string{"outflow", "inflow", "transfer"}},
-	{Name: "from", Description: "The inclusive start of a booked-date range. Ignored by /trends.", Type: "string", Format: "date"},
-	{Name: "to", Description: "The inclusive end of a booked-date range. Ignored by /trends.", Type: "string", Format: "date"},
+	{Name: "from", Description: "The inclusive start of a booked-date range. Ignored by /trends except when its own granularity is \"custom\".", Type: "string", Format: "date"},
+	{Name: "to", Description: "The inclusive end of a booked-date range. Ignored by /trends except when its own granularity is \"custom\".", Type: "string", Format: "date"},
 	{Name: "filter_currency", Description: "Only include this transaction currency (repeatable).", Type: "string"},
 	{Name: "amount_min", Description: "Only include transactions at or above this amount (absolute value).", Type: "string"},
 	{Name: "amount_max", Description: "Only include transactions at or below this amount (absolute value).", Type: "string"},
@@ -495,6 +495,15 @@ var reportQueryParams = []queryParam{
 	{Name: "currency", Description: "Convert every figure in the result into this currency (required).", Type: "string"},
 	{Name: "policy", Description: "Which conversion policy to use (required).", Type: "string", Enum: []string{"transaction_date", "current", "pinned"}},
 	{Name: "pinned_date", Description: "The pinned date to convert at (required when \"policy\" is \"pinned\").", Type: "string", Format: "date"},
+}
+
+// granularityQueryParam is /cash-flow and /trends' own extra query
+// parameter (issue #194) - not part of reportQueryParams since
+// /category-breakdown and /savings-rate don't bucket or compare periods
+// at all.
+var granularityQueryParam = queryParam{
+	Name: "granularity", Description: "How to bucket/compare periods. Defaults to \"month\".", Type: "string",
+	Enum: []string{"week", "month", "year", "custom"},
 }
 
 // NewMux builds bodger's REST API as a stdlib *http.ServeMux, wiring

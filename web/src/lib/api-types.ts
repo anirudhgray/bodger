@@ -55,8 +55,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Inflow vs. outflow, by calendar month.
-         * @description When the filter sets both "from" and "to", every month in that range is included, even one with no matching postings. Transfers are excluded by construction.
+         * Inflow vs. outflow, bucketed by period.
+         * @description When the filter sets both "from" and "to", every period in that range is included, even one with no matching postings. "granularity" selects the bucket size - week, month (the default), year, or custom (the whole "from".."to" range as one bucket, which then requires both). Transfers are excluded by construction.
          */
         get: operations["getCashFlow"];
         put?: never;
@@ -115,8 +115,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * This calendar month vs. the previous one.
-         * @description "from"/"to" are ignored - this always compares the current calendar month against the previous one, in the actor's own timezone. Every other filter dimension still applies to both periods identically.
+         * The current period vs. the immediately preceding one.
+         * @description "granularity" selects the comparison period - week, month (the default), year, or custom. For week/month/year, "from"/"to" are ignored: this compares the current period against the previous one, in the actor's own timezone. For custom, "from"/"to" (both required) name the current period, compared against the immediately preceding period of the same length. Every other filter dimension still applies to both periods identically.
          */
         get: operations["getTrends"];
         put?: never;
@@ -603,13 +603,13 @@ export interface components {
             data: components["schemas"]["CashFlow"];
         };
         CashFlowPoint: {
+            /** Format: date */
+            from: string;
             /**
              * Format: money
              * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
              */
             inflow: string;
-            /** @description A calendar month, YYYY-MM. */
-            month: string;
             /**
              * Format: money
              * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
@@ -620,6 +620,8 @@ export interface components {
              * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
              */
             outflow: string;
+            /** Format: date */
+            to: string;
         };
         Category: {
             archived: boolean;
@@ -1225,9 +1227,9 @@ export interface operations {
                 category?: string;
                 /** @description One of "outflow", "inflow", or "transfer" - a transfer never contributes to an analytics result (transfers are excluded by construction), so filtering to "transfer" alone always returns an empty result. */
                 type?: "outflow" | "inflow" | "transfer";
-                /** @description The inclusive start of a booked-date range. Ignored by /trends. */
+                /** @description The inclusive start of a booked-date range. Ignored by /trends except when its own granularity is "custom". */
                 from?: string;
-                /** @description The inclusive end of a booked-date range. Ignored by /trends. */
+                /** @description The inclusive end of a booked-date range. Ignored by /trends except when its own granularity is "custom". */
                 to?: string;
                 /** @description Only include this transaction currency (repeatable). */
                 filter_currency?: string;
@@ -1247,6 +1249,8 @@ export interface operations {
                 policy?: "transaction_date" | "current" | "pinned";
                 /** @description The pinned date to convert at (required when "policy" is "pinned"). */
                 pinned_date?: string;
+                /** @description How to bucket/compare periods. Defaults to "month". */
+                granularity?: "week" | "month" | "year" | "custom";
             };
             header?: never;
             path?: never;
@@ -1254,7 +1258,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description One point per calendar month, ascending. */
+            /** @description One point per period, ascending. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1275,9 +1279,9 @@ export interface operations {
                 category?: string;
                 /** @description One of "outflow", "inflow", or "transfer" - a transfer never contributes to an analytics result (transfers are excluded by construction), so filtering to "transfer" alone always returns an empty result. */
                 type?: "outflow" | "inflow" | "transfer";
-                /** @description The inclusive start of a booked-date range. Ignored by /trends. */
+                /** @description The inclusive start of a booked-date range. Ignored by /trends except when its own granularity is "custom". */
                 from?: string;
-                /** @description The inclusive end of a booked-date range. Ignored by /trends. */
+                /** @description The inclusive end of a booked-date range. Ignored by /trends except when its own granularity is "custom". */
                 to?: string;
                 /** @description Only include this transaction currency (repeatable). */
                 filter_currency?: string;
@@ -1325,9 +1329,9 @@ export interface operations {
                 category?: string;
                 /** @description One of "outflow", "inflow", or "transfer" - a transfer never contributes to an analytics result (transfers are excluded by construction), so filtering to "transfer" alone always returns an empty result. */
                 type?: "outflow" | "inflow" | "transfer";
-                /** @description The inclusive start of a booked-date range. Ignored by /trends. */
+                /** @description The inclusive start of a booked-date range. Ignored by /trends except when its own granularity is "custom". */
                 from?: string;
-                /** @description The inclusive end of a booked-date range. Ignored by /trends. */
+                /** @description The inclusive end of a booked-date range. Ignored by /trends except when its own granularity is "custom". */
                 to?: string;
                 /** @description Only include this transaction currency (repeatable). */
                 filter_currency?: string;
@@ -1375,9 +1379,9 @@ export interface operations {
                 category?: string;
                 /** @description One of "outflow", "inflow", or "transfer" - a transfer never contributes to an analytics result (transfers are excluded by construction), so filtering to "transfer" alone always returns an empty result. */
                 type?: "outflow" | "inflow" | "transfer";
-                /** @description The inclusive start of a booked-date range. Ignored by /trends. */
+                /** @description The inclusive start of a booked-date range. Ignored by /trends except when its own granularity is "custom". */
                 from?: string;
-                /** @description The inclusive end of a booked-date range. Ignored by /trends. */
+                /** @description The inclusive end of a booked-date range. Ignored by /trends except when its own granularity is "custom". */
                 to?: string;
                 /** @description Only include this transaction currency (repeatable). */
                 filter_currency?: string;
@@ -1397,6 +1401,8 @@ export interface operations {
                 policy?: "transaction_date" | "current" | "pinned";
                 /** @description The pinned date to convert at (required when "policy" is "pinned"). */
                 pinned_date?: string;
+                /** @description How to bucket/compare periods. Defaults to "month". */
+                granularity?: "week" | "month" | "year" | "custom";
             };
             header?: never;
             path?: never;
@@ -1404,7 +1410,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The current and previous month's totals, plus each one's percentage change. */
+            /** @description The current and previous period's totals, plus each one's percentage change. */
             200: {
                 headers: {
                     [name: string]: unknown;

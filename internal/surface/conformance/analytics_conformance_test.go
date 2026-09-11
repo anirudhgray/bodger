@@ -40,7 +40,8 @@ type categoryBreakdownResultView struct {
 }
 
 type cashFlowPointView struct {
-	Month   string `json:"month"`
+	From    string `json:"from"`
+	To      string `json:"to"`
 	Inflow  string `json:"inflow"`
 	Outflow string `json:"outflow"`
 	Net     string `json:"net"`
@@ -147,8 +148,66 @@ func TestAnalyticsConformance(t *testing.T) {
 			},
 		},
 		{
+			// Granularity coverage (issue #194): week and year bucketing,
+			// plus the custom single-bucket mode, prove the CLI and REST
+			// surfaces agree on the new field/param exactly the same way
+			// the default-month case above already does.
+			name:       "cash-flow-week",
+			metric:     "cash-flow",
+			extraArgs:  []string{"--from", "2026-07-01", "--to", "2026-08-31", "--granularity", "week"},
+			extraQuery: "&from=2026-07-01&to=2026-08-31&granularity=week",
+			decode: func(t *testing.T, cliOut string, httpData map[string]any) (any, any) {
+				return decodeCLIEnvelope[cashFlowResultView](t, cliOut), remarshalInto[cashFlowResultView](t, httpData)
+			},
+		},
+		{
+			name:       "cash-flow-year",
+			metric:     "cash-flow",
+			extraArgs:  []string{"--from", "2026-07-01", "--to", "2026-08-31", "--granularity", "year"},
+			extraQuery: "&from=2026-07-01&to=2026-08-31&granularity=year",
+			decode: func(t *testing.T, cliOut string, httpData map[string]any) (any, any) {
+				return decodeCLIEnvelope[cashFlowResultView](t, cliOut), remarshalInto[cashFlowResultView](t, httpData)
+			},
+		},
+		{
+			name:       "cash-flow-custom",
+			metric:     "cash-flow",
+			extraArgs:  []string{"--from", "2026-07-01", "--to", "2026-08-31", "--granularity", "custom"},
+			extraQuery: "&from=2026-07-01&to=2026-08-31&granularity=custom",
+			decode: func(t *testing.T, cliOut string, httpData map[string]any) (any, any) {
+				return decodeCLIEnvelope[cashFlowResultView](t, cliOut), remarshalInto[cashFlowResultView](t, httpData)
+			},
+		},
+		{
 			name:   "trends",
 			metric: "trends",
+			decode: func(t *testing.T, cliOut string, httpData map[string]any) (any, any) {
+				return decodeCLIEnvelope[trendsResultView](t, cliOut), remarshalInto[trendsResultView](t, httpData)
+			},
+		},
+		{
+			name:       "trends-week",
+			metric:     "trends",
+			extraArgs:  []string{"--granularity", "week"},
+			extraQuery: "&granularity=week",
+			decode: func(t *testing.T, cliOut string, httpData map[string]any) (any, any) {
+				return decodeCLIEnvelope[trendsResultView](t, cliOut), remarshalInto[trendsResultView](t, httpData)
+			},
+		},
+		{
+			name:       "trends-year",
+			metric:     "trends",
+			extraArgs:  []string{"--granularity", "year"},
+			extraQuery: "&granularity=year",
+			decode: func(t *testing.T, cliOut string, httpData map[string]any) (any, any) {
+				return decodeCLIEnvelope[trendsResultView](t, cliOut), remarshalInto[trendsResultView](t, httpData)
+			},
+		},
+		{
+			name:       "trends-custom",
+			metric:     "trends",
+			extraArgs:  []string{"--from", "2026-08-01", "--to", "2026-08-20", "--granularity", "custom"},
+			extraQuery: "&from=2026-08-01&to=2026-08-20&granularity=custom",
 			decode: func(t *testing.T, cliOut string, httpData map[string]any) (any, any) {
 				return decodeCLIEnvelope[trendsResultView](t, cliOut), remarshalInto[trendsResultView](t, httpData)
 			},

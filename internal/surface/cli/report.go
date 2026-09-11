@@ -46,19 +46,25 @@ func (f *reportFilterFlags) input() app.TransactionFilterInput {
 
 // bindReportFilterFlags registers ADR-0009's filter dimensions on cmd,
 // shared verbatim across every `report` subcommand. includeDateRange is
-// false only for `report trends`, which defines its own two comparison
-// periods and ignores from/to entirely (app.TrendsQuery's own doc
-// comment) - omitting the flags there, rather than silently accepting
-// and ignoring them, avoids a flag that looks like it does something but
-// doesn't.
-func bindReportFilterFlags(cmd *cobra.Command, includeDateRange bool) *reportFilterFlags {
+// false only for `report trends` with its default granularity, which
+// defines its own two comparison periods and ignores from/to entirely
+// (app.TrendsQuery's own doc comment) - omitting the flags there, rather
+// than silently accepting and ignoring them, avoids a flag that looks
+// like it does something but doesn't. `report trends` still binds them
+// (with dateRangeHelp overridden) since --granularity custom needs them
+// (issue #194).
+func bindReportFilterFlags(cmd *cobra.Command, includeDateRange bool, dateRangeHelp ...string) *reportFilterFlags {
 	f := &reportFilterFlags{}
 	cmd.Flags().StringVar(&f.account, "account", "", "only include this account")
 	cmd.Flags().StringVar(&f.category, "category", "", "only include this category (and its subtree)")
 	cmd.Flags().StringVar(&f.txnType, "type", "", `only include this type: "outflow" or "inflow"`)
 	if includeDateRange {
-		cmd.Flags().StringVar(&f.from, "from", "", "the inclusive start of a booked-date range")
-		cmd.Flags().StringVar(&f.to, "to", "", "the inclusive end of a booked-date range")
+		fromHelp, toHelp := "the inclusive start of a booked-date range", "the inclusive end of a booked-date range"
+		if len(dateRangeHelp) == 2 {
+			fromHelp, toHelp = dateRangeHelp[0], dateRangeHelp[1]
+		}
+		cmd.Flags().StringVar(&f.from, "from", "", fromHelp)
+		cmd.Flags().StringVar(&f.to, "to", "", toHelp)
 	}
 	cmd.Flags().StringArrayVar(&f.filterCurrency, "filter-currency", nil, "only include this transaction currency (repeatable)")
 	cmd.Flags().StringVar(&f.amountMin, "amount-min", "", "only include transactions at or above this amount")
@@ -100,6 +106,16 @@ func bindReportOptionsFlags(cmd *cobra.Command) *reportOptionsFlags {
 	cmd.Flags().StringVar(&f.policy, "policy", "", "which conversion policy to use: transaction_date, current, or pinned (required)")
 	cmd.Flags().StringVar(&f.pinnedDate, "pinned-date", "", "the pinned date to convert at (required with --policy pinned)")
 	return f
+}
+
+// bindGranularityFlag registers --granularity (issue #194), shared by
+// `report cash-flow` and `report trends` only - `report
+// category-breakdown`/`report savings-rate` already take an arbitrary
+// date range and have no period to bucket or compare.
+func bindGranularityFlag(cmd *cobra.Command) *string {
+	var granularity string
+	cmd.Flags().StringVar(&granularity, "granularity", "", `how to bucket/compare periods: "week", "month" (default), "year", or "custom"`)
+	return &granularity
 }
 
 // unconvertedPostingView names one posting an analytics query's requested
@@ -217,8 +233,13 @@ func newReportCategoryBreakdownCmd(factory ServiceFactory) *cobra.Command {
 
 // ---- cash-flow ----
 
+// cashFlowPointView is one period's totals, its bounds named From/To
+// (issue #194) - granularity-agnostic, since a week/year/custom bucket
+// doesn't fit a single calendar month the way the original month-only
+// bucketing did.
 type cashFlowPointView struct {
-	Month   string `json:"month"`
+	From    string `json:"from"`
+	To      string `json:"to"`
 	Inflow  string `json:"inflow"`
 	Outflow string `json:"outflow"`
 	Net     string `json:"net"`
@@ -234,7 +255,8 @@ func cashFlowViewFrom(r app.CashFlowResult) cashFlowView {
 	v := cashFlowView{Currency: r.Options.ReportingCurrency, Unconverted: unconvertedPostingViewsFrom(r.Unconverted)}
 	for _, p := range r.Points {
 		v.Points = append(v.Points, cashFlowPointView{
-			Month:   fmt.Sprintf("%04d-%02d", p.Year, int(p.Month)),
+			From:    p.From.String(),
+			To:      p.To.String(),
 			Inflow:  p.Inflow.AmountString(),
 			Outflow: p.Outflow.AmountString(),
 			Net:     p.Net.AmountString(),
@@ -249,9 +271,9 @@ func printCashFlow(w io.Writer, v cashFlowView) {
 		return
 	}
 	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
-	_, _ = fmt.Fprintf(tw, "MONTH\tINFLOW\tOUTFLOW\tNET\n")
+	_, _ = fmt.Fprintf(tw, "FROM\tTO\tINFLOW\tOUTFLOW\tNET\n")
 	for _, p := range v.Points {
-		_, _ = fmt.Fprintf(tw, "%s\t%s %s\t%s %s\t%s %s\n", p.Month, p.Inflow, v.Currency, p.Outflow, v.Currency, p.Net, v.Currency)
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s %s\t%s %s\t%s %s\n", p.From, p.To, p.Inflow, v.Currency, p.Outflow, v.Currency, p.Net, v.Currency)
 	}
 	_ = tw.Flush()
 	printUnconverted(w, v.Unconverted)
@@ -260,9 +282,10 @@ func printCashFlow(w io.Writer, v cashFlowView) {
 func newReportCashFlowCmd(factory ServiceFactory) *cobra.Command {
 	var filter *reportFilterFlags
 	var opts *reportOptionsFlags
+	var granularity *string
 	cmd := &cobra.Command{
 		Use:   "cash-flow",
-		Short: "Inflow vs. outflow, by calendar month",
+		Short: "Inflow vs. outflow, bucketed by period",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
@@ -273,9 +296,10 @@ func newReportCashFlowCmd(factory ServiceFactory) *cobra.Command {
 			defer closeQuietly(cmd, closeDB)
 
 			result, err := svc.CashFlow(ctx, app.CashFlowQuery{
-				ActorID: ports.SeededUserID,
-				Filter:  filter.input(),
-				Options: opts.options(),
+				ActorID:     ports.SeededUserID,
+				Filter:      filter.input(),
+				Options:     opts.options(),
+				Granularity: app.Granularity(*granularity),
 			})
 			if err != nil {
 				return err
@@ -286,6 +310,7 @@ func newReportCashFlowCmd(factory ServiceFactory) *cobra.Command {
 	}
 	filter = bindReportFilterFlags(cmd, true)
 	opts = bindReportOptionsFlags(cmd)
+	granularity = bindGranularityFlag(cmd)
 	return cmd
 }
 
@@ -352,9 +377,10 @@ func printTrends(w io.Writer, v trendsView) {
 func newReportTrendsCmd(factory ServiceFactory) *cobra.Command {
 	var filter *reportFilterFlags
 	var opts *reportOptionsFlags
+	var granularity *string
 	cmd := &cobra.Command{
 		Use:   "trends",
-		Short: "This calendar month vs. the previous one",
+		Short: "The current period vs. the immediately preceding one",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
@@ -365,9 +391,10 @@ func newReportTrendsCmd(factory ServiceFactory) *cobra.Command {
 			defer closeQuietly(cmd, closeDB)
 
 			result, err := svc.Trends(ctx, app.TrendsQuery{
-				ActorID: ports.SeededUserID,
-				Filter:  filter.input(),
-				Options: opts.options(),
+				ActorID:     ports.SeededUserID,
+				Filter:      filter.input(),
+				Options:     opts.options(),
+				Granularity: app.Granularity(*granularity),
 			})
 			if err != nil {
 				return err
@@ -376,8 +403,11 @@ func newReportTrendsCmd(factory ServiceFactory) *cobra.Command {
 			return render(cmd, view, func(w io.Writer) { printTrends(w, view) })
 		},
 	}
-	filter = bindReportFilterFlags(cmd, false)
+	filter = bindReportFilterFlags(cmd, true,
+		`the inclusive start of the current period (required, and only used, with --granularity custom)`,
+		`the inclusive end of the current period (required, and only used, with --granularity custom)`)
 	opts = bindReportOptionsFlags(cmd)
+	granularity = bindGranularityFlag(cmd)
 	return cmd
 }
 

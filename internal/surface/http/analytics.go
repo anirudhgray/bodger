@@ -1,7 +1,6 @@
 package http
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 
@@ -42,6 +41,14 @@ func parseReportOptionsQuery(q url.Values) app.AnalyticsOptions {
 		Policy:            app.ConversionPolicy(q.Get("policy")),
 		PinnedDate:        q.Get("pinned_date"),
 	}
+}
+
+// parseGranularityQuery decodes "granularity" (issue #194) - a separate
+// function from parseReportOptionsQuery/parseReportFilterQuery, read
+// only by /cash-flow and /trends, since /category-breakdown and
+// /savings-rate don't bucket or compare periods at all.
+func parseGranularityQuery(q url.Values) app.Granularity {
+	return app.Granularity(q.Get("granularity"))
 }
 
 // unconvertedPostingView names one posting an analytics query's requested
@@ -121,11 +128,13 @@ func (h *handlers) getCategoryBreakdown(w http.ResponseWriter, r *http.Request) 
 	respond(w, http.StatusOK, categoryBreakdownViewFrom(result))
 }
 
-// cashFlowPointView is one calendar month's totals. Month is "YYYY-MM",
-// domain.Date's own month-precision convention (see e.g. fx.go's
-// rate-date formatting) applied to a point that has no day component.
+// cashFlowPointView is one period's totals, its bounds named From/To
+// (issue #194) rather than a single calendar month - granularity-
+// agnostic, since a week/year/custom bucket doesn't fit a single
+// (year, month) pair the way a monthly one did.
 type cashFlowPointView struct {
-	Month   string `json:"month" doc:"A calendar month, YYYY-MM."`
+	From    string `json:"from" format:"date"`
+	To      string `json:"to" format:"date"`
 	Inflow  string `json:"inflow" format:"money"`
 	Outflow string `json:"outflow" format:"money"`
 	Net     string `json:"net" format:"money"`
@@ -145,7 +154,8 @@ func cashFlowViewFrom(r app.CashFlowResult) cashFlowView {
 	}
 	for _, p := range r.Points {
 		v.Points = append(v.Points, cashFlowPointView{
-			Month:   fmt.Sprintf("%04d-%02d", p.Year, int(p.Month)),
+			From:    p.From.String(),
+			To:      p.To.String(),
 			Inflow:  p.Inflow.AmountString(),
 			Outflow: p.Outflow.AmountString(),
 			Net:     p.Net.AmountString(),
@@ -157,9 +167,10 @@ func cashFlowViewFrom(r app.CashFlowResult) cashFlowView {
 func (h *handlers) getCashFlow(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	result, err := h.svc.CashFlow(r.Context(), app.CashFlowQuery{
-		ActorID: actorID(r),
-		Filter:  parseReportFilterQuery(q),
-		Options: parseReportOptionsQuery(q),
+		ActorID:     actorID(r),
+		Filter:      parseReportFilterQuery(q),
+		Options:     parseReportOptionsQuery(q),
+		Granularity: parseGranularityQuery(q),
 	})
 	if err != nil {
 		h.respondError(w, r, err)
@@ -216,9 +227,10 @@ func trendsViewFrom(r app.TrendsResult) trendsView {
 func (h *handlers) getTrends(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	result, err := h.svc.Trends(r.Context(), app.TrendsQuery{
-		ActorID: actorID(r),
-		Filter:  parseReportFilterQuery(q),
-		Options: parseReportOptionsQuery(q),
+		ActorID:     actorID(r),
+		Filter:      parseReportFilterQuery(q),
+		Options:     parseReportOptionsQuery(q),
+		Granularity: parseGranularityQuery(q),
 	})
 	if err != nil {
 		h.respondError(w, r, err)
