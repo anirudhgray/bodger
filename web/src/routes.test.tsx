@@ -42,7 +42,8 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import { checkSession } from '@/lib/session'
 import { ThemeProvider } from './hooks/use-theme'
-import { routes, RouteError } from './routes'
+import { RouteError } from './RouteError'
+import { routes } from './routes'
 
 const mockedCheckSession = vi.mocked(checkSession)
 

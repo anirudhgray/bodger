@@ -447,6 +447,9 @@ export function AnalyticsPage() {
   }, [currency, from, to])
 
   useEffect(() => {
+    // load() fetches from the analytics API (an external system) whenever
+    // currency/from/to change — not a value derivable during render.
+    // oxlint-disable-next-line react/set-state-in-effect
     load()
   }, [load])
 

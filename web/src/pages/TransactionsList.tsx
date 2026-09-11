@@ -292,6 +292,9 @@ export function TransactionsList() {
         setReportingCurrency(result.effectiveCurrency)
       })
       .catch(() => {})
+    // See the "Runs once on mount only" rationale below for why this is a
+    // deliberate fetch-on-mount, not a value to derive during render.
+    // oxlint-disable-next-line react/set-state-in-effect
     load(initialFilter ?? {}, false)
     // Runs once on mount only (load's own useCallback has an empty
     // dependency array, so it's stable) — applyFilters/clearFilters below
@@ -358,6 +361,9 @@ export function TransactionsList() {
     const targets = transactions.filter(
       (t) => needsConversion(t, reportingCurrency) && !conversions.has(t.id),
     )
+    // Fetches FX rates for newly-visible rows, per the "Runs whenever"
+    // rationale above; not a value derivable during render.
+    // oxlint-disable-next-line react/set-state-in-effect
     loadRowConversions(targets, reportingCurrency)
   }, [transactions, reportingCurrency, conversions, loadRowConversions])
 

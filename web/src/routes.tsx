@@ -5,11 +5,9 @@
 // docs/architecture.md §3 ("What the web UI may not do").
 import {
   createBrowserRouter,
-  isRouteErrorResponse,
   Navigate,
   redirect,
   type RouteObject,
-  useRouteError,
 } from 'react-router-dom'
 
 import { AppLayout } from '@/App'
@@ -25,27 +23,7 @@ import { PasswordSettings } from '@/pages/settings/Password'
 import { SettingsLayout } from '@/pages/settings/SettingsLayout'
 import { TransactionsList } from '@/pages/TransactionsList'
 import { checkSession } from '@/lib/session'
-
-// RouteError is exported only so routes.test.tsx can mount it directly
-// against a route that deliberately throws — the real route tree below
-// never needs to reach for it by name, since every route that wants it
-// just writes errorElement: <RouteError />.
-//
-// RouteError is react-router-dom's errorElement for the whole tree: it
-// replaces the library's own default crash screen (which cites its own
-// internals — "provide your own ErrorBoundary or errorElement prop", not
-// something a bodger user should ever see) with the same Placeholder
-// styling every other screen in this file uses. isRouteErrorResponse
-// distinguishes a thrown Response (a route the router itself couldn't
-// resolve — a raw fetch or navigation failure, not a real path in
-// routes.tsx) from an actual thrown error in a component.
-export function RouteError() {
-  const error = useRouteError()
-  const description = isRouteErrorResponse(error)
-    ? `${error.status} ${error.statusText}`
-    : 'Reload the page, or try again in a moment.'
-  return <Placeholder title="Something went wrong" description={description} />
-}
+import { RouteError } from './RouteError'
 
 // redirectIfAuthenticated is /login's loader (issue #59): visiting the
 // login page with a still-valid session cookie sends you straight past

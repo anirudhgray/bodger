@@ -121,7 +121,14 @@ cd web && npx shadcn@latest add <component> --overwrite  # refresh an existing o
 ```
 
 — never by hand-writing or hand-editing a primitive's own file to match
-what shadcn's site shows. `--overwrite` replaces the file outright, which
+what shadcn's site shows. Because of that, `web/.oxlintrc.json` carries an
+`overrides` entry turning off `react/only-export-components` for
+`src/components/ui/**`: the registry's own file shape routinely mixes a
+component export with a constant/hook/variant-fn export (e.g. `button.tsx`'s
+`buttonVariants`, `sidebar.tsx`'s `useSidebar`), and restructuring a pulled
+file to satisfy that rule would just be undone by the next `--overwrite`. A
+newly-added primitive under that path inherits the override automatically —
+nothing to configure per-component. `--overwrite` replaces the file outright, which
 also **discards any local fix layered onto that primitive** (PR #105's
 button `cursor-pointer` fix was lost this way while investigating #88's
 sidebar work, and had to be caught by diffing before committing) — always
