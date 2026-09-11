@@ -51,6 +51,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   )
 }
 
+// useTheme is this context's own accessor, not a component; splitting it
+// into a second file would just add indirection for shadcn's own
+// recommended co-located provider+hook pattern cited above.
+// oxlint-disable-next-line react/only-export-components
 export function useTheme(): ThemeContextValue {
   const context = useContext(ThemeContext)
   if (context === null) {
