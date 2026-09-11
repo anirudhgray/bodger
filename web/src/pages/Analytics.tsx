@@ -241,12 +241,29 @@ function CategoryDonut({
               )}
             />
           </Pie>
-          <ChartLegend
-            content={<ChartLegendContent nameKey="category" />}
-            className="flex-wrap"
-          />
         </PieChart>
       </ChartContainer>
+      {/* A recharts <ChartLegend> as a PieChart child (the shadcn default)
+          makes recharts reserve internal bottom margin for it, which
+          shrinks/re-centers the Pie — but the viewBox recharts hands to
+          the <Label content> render prop above stays the *unadjusted*
+          container center, not the Pie's own shifted one. That desync
+          rendered the center icon visibly off the true circle's center.
+          Rendering the legend as a plain list here instead, straight from
+          the same `slices` the Pie already draws, keeps the Pie filling
+          its full container (nothing to leave room for) so the two
+          centers coincide. */}
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-4">
+        {slices.map((s) => (
+          <div key={s.category} className="flex items-center gap-1.5">
+            <div
+              className="h-2 w-2 shrink-0 rounded-[2px]"
+              style={{ backgroundColor: s.fill }}
+            />
+            {s.category}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
