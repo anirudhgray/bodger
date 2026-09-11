@@ -346,7 +346,7 @@ export function BalancesPage() {
                     setExpandedAccountId(open ? b.account_id : null)
                   }
                 >
-                  <div className="hover:bg-accent/50 flex w-full items-center justify-between gap-3 px-4 py-3 transition-colors">
+                  <div className="hover:bg-accent/50 flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 transition-colors">
                     <button
                       type="button"
                       onClick={() =>
@@ -358,7 +358,7 @@ export function BalancesPage() {
                     >
                       {b.account}
                     </button>
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex items-center gap-2">
                       {b.converted && (
                         <RateAmountTrigger stale={b.converted.stale}>
                           ≈ {b.converted.amount} {b.converted.currency}
