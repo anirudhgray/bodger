@@ -10,7 +10,8 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { getReportingCurrency, setReportingCurrency } from '@/lib/settings'
+import { getReportingCurrency } from '@/lib/api'
+import { setReportingCurrency } from '@/lib/settings'
 import { errorMessage } from './shared'
 
 export function CurrencySettings() {

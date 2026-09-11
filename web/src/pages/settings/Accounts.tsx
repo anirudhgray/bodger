@@ -16,13 +16,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
-import { type Account, type AccountKind } from '@/lib/api'
-import {
-  archiveAccount,
-  createAccount,
-  listAccounts,
-  renameAccount,
-} from '@/lib/settings'
+import { listAccounts, type Account, type AccountKind } from '@/lib/api'
+import { archiveAccount, createAccount, renameAccount } from '@/lib/settings'
 import { errorMessage } from './shared'
 
 // accountKindLabel mirrors TransactionsList.tsx's kindLabel: the wire

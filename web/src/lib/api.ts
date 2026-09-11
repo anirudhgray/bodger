@@ -386,8 +386,23 @@ export function fetchFxRates(
   })
 }
 
+// ReportingCurrency mirrors GET /api/v1/reporting-currency's response
+// (internal/surface/http/config.go's reportingCurrencyView): is_set
+// distinguishes "never configured" (currency is "") from an actual
+// choice, since the instance default currency isn't itself exposed over
+// this API (only the CLI, which runs server-side, can name it — see
+// internal/surface/cli/config.go's printReportingCurrency).
+// effectiveCurrency (issue #170) is always populated — the actor-set
+// value when is_set, otherwise the resolved instance default — so a UI
+// can always show something rather than gating on is_set itself.
 export type ReportingCurrency = components['schemas']['ReportingCurrency']
 
 export function getReportingCurrency(): Promise<ReportingCurrency> {
   return apiFetch<ReportingCurrency>('/api/v1/reporting-currency')
 }
+
+// setReportingCurrency lives in lib/settings.ts, alongside the rest of
+// the settings screen's write calls — this file's get/set split for
+// reporting currency mirrors listAccounts/listCategories (read, used by
+// several screens) living here while their own create/archive calls stay
+// in lib/settings.ts.

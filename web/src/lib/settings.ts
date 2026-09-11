@@ -19,18 +19,8 @@ export async function changePassword(newPassword: string): Promise<void> {
   })
 }
 
-// ReportingCurrency mirrors GET /api/v1/reporting-currency's response
-// (internal/surface/http/config.go's reportingCurrencyView): is_set
-// distinguishes "never configured" (currency is "") from an actual
-// choice, since the instance default currency isn't itself exposed over
-// this API (only the CLI, which runs server-side, can name it — see
-// internal/surface/cli/config.go's printReportingCurrency).
-export type ReportingCurrency = components['schemas']['ReportingCurrency']
-
-export async function getReportingCurrency(): Promise<ReportingCurrency> {
-  return apiFetch<ReportingCurrency>('/api/v1/reporting-currency')
-}
-
+// getReportingCurrency/ReportingCurrency live in lib/api.ts (issue
+// #183) — this file only adds the write side.
 export async function setReportingCurrency(currency: string): Promise<void> {
   await apiFetch('/api/v1/reporting-currency', {
     method: 'POST',
@@ -74,23 +64,25 @@ export async function revokeApiToken(id: string): Promise<void> {
 // pages/settings/Accounts.tsx) import it straight from '@/lib/api'
 // rather than through a re-export here.
 
-// listAccounts/listCategories/listApiTokens (below) still fetch and
-// render every row in one shot — no `cursor`/`limit`, unlike
-// listTransactions's real next_cursor-based paging (web/src/lib/api.ts,
-// internal/surface/http/transactions.go). issue #107 considered adding
-// that here too, alongside splitting Settings.tsx into its own subpages
-// per section, but decided against it for now: a household's account and
-// category lists are bounded by how many distinct accounts/categories
-// they bother to create by hand (nothing generates these in bulk, unlike
-// transactions), and each now has a full page to itself rather than
-// sharing scroll space with three other sections. Real pagination is
-// still the right fix if that stops being true — a category tree (#106)
-// or a household with dozens of accounts could get there — but adding it
-// now, before any section actually needs it, would be speculative.
-export async function listAccounts(): Promise<Account[]> {
-  return apiFetch<Account[]>('/api/v1/accounts')
-}
-
+// listAccounts/listCategories (issue #183) live in lib/api.ts — several
+// non-settings screens (TransactionsList, TransactionDialog, Balances)
+// need the same read, so this file only adds the create/rename/archive
+// calls below. listApiTokens has no such reader outside Settings, so it
+// stays here in full.
+//
+// Neither listAccounts/listCategories nor listApiTokens paginate — no
+// `cursor`/`limit`, unlike listTransactions's real next_cursor-based
+// paging (web/src/lib/api.ts, internal/surface/http/transactions.go).
+// issue #107 considered adding that here too, alongside splitting
+// Settings.tsx into its own subpages per section, but decided against it
+// for now: a household's account and category lists are bounded by how
+// many distinct accounts/categories they bother to create by hand
+// (nothing generates these in bulk, unlike transactions), and each now
+// has a full page to itself rather than sharing scroll space with three
+// other sections. Real pagination is still the right fix if that stops
+// being true — a category tree (#106) or a household with dozens of
+// accounts could get there — but adding it now, before any section
+// actually needs it, would be speculative.
 export async function createAccount(input: {
   name: string
   type: string
@@ -119,10 +111,6 @@ export async function archiveAccount(id: string): Promise<Account> {
 // Category: see the Account comment above — same reasoning, and
 // CategoryKind is likewise imported straight from '@/lib/api' by callers
 // that need it.
-
-export async function listCategories(): Promise<Category[]> {
-  return apiFetch<Category[]>('/api/v1/categories')
-}
 
 export async function createCategory(input: {
   name: string

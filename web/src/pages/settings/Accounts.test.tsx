@@ -1,5 +1,6 @@
 // Component tests for the Accounts settings subpage (issue #107, split
-// out of the old Settings.test.tsx). web/src/lib/settings is mocked here
+// out of the old Settings.test.tsx). web/src/lib/settings and
+// web/src/lib/api (listAccounts lives there — issue #183) are mocked here
 // so these exercise only the page's own logic against a controlled fake
 // API.
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -7,11 +8,18 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/settings', () => ({
-  listAccounts: vi.fn(),
   createAccount: vi.fn(),
   renameAccount: vi.fn(),
   archiveAccount: vi.fn(),
 }))
+
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>()
+  return {
+    ...actual,
+    listAccounts: vi.fn(),
+  }
+})
 
 // Create/rename/archive are user-triggered actions, so their failures
 // now report via a toast rather than inline (docs/design-system.md's
@@ -25,8 +33,8 @@ vi.mock('sonner', () => ({
   },
 }))
 
-import { ApiError } from '@/lib/api'
-import { archiveAccount, createAccount, listAccounts } from '@/lib/settings'
+import { ApiError, listAccounts } from '@/lib/api'
+import { archiveAccount, createAccount } from '@/lib/settings'
 import { AccountsSettings } from './Accounts'
 import { toast } from 'sonner'
 

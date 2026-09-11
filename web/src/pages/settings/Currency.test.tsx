@@ -1,14 +1,22 @@
 // Component tests for the Currency settings subpage (issue #140).
-// web/src/lib/settings is mocked here so these exercise only the page's
-// own logic against a controlled fake API, the same pattern
-// Password.test.tsx uses.
+// web/src/lib/settings (setReportingCurrency) and web/src/lib/api
+// (getReportingCurrency lives there — issue #183) are mocked here so
+// these exercise only the page's own logic against a controlled fake
+// API, the same pattern Password.test.tsx uses.
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/settings', () => ({
-  getReportingCurrency: vi.fn(),
   setReportingCurrency: vi.fn(),
 }))
+
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>()
+  return {
+    ...actual,
+    getReportingCurrency: vi.fn(),
+  }
+})
 
 // Saving the reporting currency is a user-triggered action, so its
 // failure now reports via a toast rather than inline
@@ -23,8 +31,8 @@ vi.mock('sonner', () => ({
   },
 }))
 
-import { ApiError } from '@/lib/api'
-import { getReportingCurrency, setReportingCurrency } from '@/lib/settings'
+import { ApiError, getReportingCurrency } from '@/lib/api'
+import { setReportingCurrency } from '@/lib/settings'
 import { CurrencySettings } from './Currency'
 import { toast } from 'sonner'
 
