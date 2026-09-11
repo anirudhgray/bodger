@@ -563,8 +563,11 @@ client-side maths — every number rendered is exactly what the app-layer
 method returned. Three follow-ups surfaced while scoping the finished
 screen and were filed rather than folded in:
 [#194](https://github.com/anirudhgray/bodger/issues/194) (a
-period-granularity selector — week/month/year/custom — since `Trends` is
-currently fixed to a calendar-month comparison),
+period-granularity selector — landed: `Granularity` (week/month/year/custom)
+on `CashFlowQuery`/`TrendsQuery`, a granularity-aware `periodKey` replacing
+`CashFlow`'s month-only bucketing, `Trends`' current-vs-previous pair
+generalized to week/month/year/custom, `granularity`/`--granularity` on the
+REST and CLI surfaces, and a Granularity selector on the Analytics screen),
 [#195](https://github.com/anirudhgray/bodger/issues/195) (a Balances-screen
 totals overview — landed: `Service.BalanceTotals`, `GET
 /api/v1/balances/totals`, `bodger balance totals`, and a totals section on
