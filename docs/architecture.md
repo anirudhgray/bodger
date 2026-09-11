@@ -293,7 +293,11 @@ to), [#171](https://github.com/anirudhgray/bodger/issues/171) (no currency
 field on the Accounts settings' new-account form, despite the API already
 supporting one), and [#172](https://github.com/anirudhgray/bodger/issues/172)
 (Balances' "Refresh rates" fetching against the wrong currency). All three
-are tracked under the M4 milestone as backlog.
+are now fixed: `GET /api/v1/reporting-currency` gained an
+`effectiveCurrency` field (the actor-set value, or the resolved instance
+default when unset) that `TransactionsList.tsx`, `Balances.tsx`, and
+`TransactionDialog.tsx` read unconditionally instead of gating on
+`is_set`, closing #170.
 [ADR-0012](decisions/0012-fx-rate-provider.md) picked Frankfurter as the FX
 rate provider; the `fx_rates` schema, transfer rate columns, and the
 `users.reporting_currency` column landed as schema-only groundwork; and the

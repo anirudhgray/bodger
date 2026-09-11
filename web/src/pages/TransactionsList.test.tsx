@@ -804,6 +804,35 @@ describe('TransactionsList', () => {
       currency: 'INR',
     }
 
+    // Issue #170: no actor-set reporting currency must still resolve to
+    // the instance default rather than leaving the conversion UI hidden
+    // — the whole point of `effectiveCurrency` is that it's populated
+    // even when `is_set` is false.
+    it('shows the reporting-currency equivalent even when no reporting currency is explicitly set', async () => {
+      mockedGetReportingCurrency.mockResolvedValue({
+        currency: '',
+        is_set: false,
+        effectiveCurrency: 'USD',
+      })
+      mockedListTransactions.mockResolvedValue({ data: [souvenir] })
+      mockedGetFxRate.mockResolvedValue({
+        from: 'INR',
+        to: 'USD',
+        rate: '0.012',
+        rate_date: '2026-01-10',
+        rate_source: 'frankfurter',
+        stale: false,
+        policy: 'transaction_date',
+        amount: '4200.00',
+        converted: '50.40 USD',
+      })
+
+      renderPage()
+      await screen.findByText('Souvenir')
+
+      expect(await screen.findByText('≈ 50.40 USD')).toBeInTheDocument()
+    })
+
     it("shows a foreign-currency transaction's reporting-currency equivalent, expandable to its provenance", async () => {
       const user = userEvent.setup()
       mockedGetReportingCurrency.mockResolvedValue({

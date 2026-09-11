@@ -143,13 +143,11 @@ describe('TransactionDialog (create)', () => {
     // hint (issue #138) stays hidden unless a test deliberately sets a
     // different reporting currency, matching "no behavior change for a
     // single-currency user."
-    mockedGetReportingCurrency
-      .mockReset()
-      .mockResolvedValue({
-        currency: 'INR',
-        is_set: true,
-        effectiveCurrency: 'INR',
-      })
+    mockedGetReportingCurrency.mockReset().mockResolvedValue({
+      currency: 'INR',
+      is_set: true,
+      effectiveCurrency: 'INR',
+    })
     mockedGetFxRate.mockReset()
     mockedFetchFxRates.mockReset()
     mockedToastError.mockReset()
