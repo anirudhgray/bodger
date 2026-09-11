@@ -43,6 +43,123 @@ func descFor(i int) string {
 	return []string{"before", "first", "middle", "last", "after"}[i]
 }
 
+func TestListTransactions_CurrencyFilter(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	usd := mustAccountFixture(t, svc, "USD Cash", "cash", "USD")
+	inr := mustAccountFixture(t, svc, "INR Cash", "cash", "INR")
+
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{ActorID: testActorID, AccountRef: usd.Account.ID(), Amount: "10", Description: "usd spend"}); err != nil {
+		t.Fatalf("RecordOutflow(USD): %v", err)
+	}
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{ActorID: testActorID, AccountRef: inr.Account.ID(), Amount: "10", Description: "inr spend"}); err != nil {
+		t.Fatalf("RecordOutflow(INR): %v", err)
+	}
+
+	result, err := svc.ListTransactions(ctx, app.ListTransactionsQuery{ActorID: testActorID, Currencies: []string{"INR"}})
+	if err != nil {
+		t.Fatalf("ListTransactions: %v", err)
+	}
+	if len(result.Transactions) != 1 || result.Transactions[0].Description() != "inr spend" {
+		t.Errorf("Transactions = %+v, want only the INR transaction", result.Transactions)
+	}
+
+	if _, err := svc.ListTransactions(ctx, app.ListTransactionsQuery{ActorID: testActorID, Currencies: []string{"XXX"}}); err == nil {
+		t.Error("ListTransactions(Currencies=[XXX]) = nil error, want InvalidInput for an unknown currency")
+	}
+}
+
+func TestListTransactions_AmountRangeFilter(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "Cash", "cash", "USD")
+
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{ActorID: testActorID, AccountRef: acc.Account.ID(), Amount: "5", Description: "small"}); err != nil {
+		t.Fatalf("RecordOutflow(small): %v", err)
+	}
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{ActorID: testActorID, AccountRef: acc.Account.ID(), Amount: "500", Description: "large"}); err != nil {
+		t.Fatalf("RecordOutflow(large): %v", err)
+	}
+
+	result, err := svc.ListTransactions(ctx, app.ListTransactionsQuery{ActorID: testActorID, AmountMin: "100"})
+	if err != nil {
+		t.Fatalf("ListTransactions: %v", err)
+	}
+	if len(result.Transactions) != 1 || result.Transactions[0].Description() != "large" {
+		t.Errorf("Transactions = %+v, want only the large transaction", result.Transactions)
+	}
+
+	if _, err := svc.ListTransactions(ctx, app.ListTransactionsQuery{ActorID: testActorID, AmountMin: "-5"}); err == nil {
+		t.Error("ListTransactions(AmountMin=-5) = nil error, want InvalidInput for a negative bound")
+	}
+	if _, err := svc.ListTransactions(ctx, app.ListTransactionsQuery{ActorID: testActorID, AmountMin: "500", AmountMax: "100"}); err == nil {
+		t.Error("ListTransactions(AmountMin=500, AmountMax=100) = nil error, want InvalidInput for min > max")
+	}
+}
+
+func TestListTransactions_DescriptionFilter(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "Cash", "cash", "USD")
+
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{ActorID: testActorID, AccountRef: acc.Account.ID(), Amount: "10", Description: "Whole Foods Groceries"}); err != nil {
+		t.Fatalf("RecordOutflow(groceries): %v", err)
+	}
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{ActorID: testActorID, AccountRef: acc.Account.ID(), Amount: "10", Description: "Monthly Rent"}); err != nil {
+		t.Fatalf("RecordOutflow(rent): %v", err)
+	}
+
+	result, err := svc.ListTransactions(ctx, app.ListTransactionsQuery{ActorID: testActorID, Description: "GROCERIES"})
+	if err != nil {
+		t.Fatalf("ListTransactions: %v", err)
+	}
+	if len(result.Transactions) != 1 || result.Transactions[0].Description() != "Whole Foods Groceries" {
+		t.Errorf("Transactions = %+v, want only the groceries transaction (case-insensitive substring)", result.Transactions)
+	}
+}
+
+func TestListTransactions_TagsFilter(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "Cash", "cash", "USD")
+
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), Amount: "10", Description: "both", Tags: []string{"vacation", "food"},
+	}); err != nil {
+		t.Fatalf("RecordOutflow(both): %v", err)
+	}
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), Amount: "10", Description: "vacation only", Tags: []string{"vacation"},
+	}); err != nil {
+		t.Fatalf("RecordOutflow(vacation): %v", err)
+	}
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), Amount: "10", Description: "untagged",
+	}); err != nil {
+		t.Fatalf("RecordOutflow(untagged): %v", err)
+	}
+
+	any, err := svc.ListTransactions(ctx, app.ListTransactionsQuery{ActorID: testActorID, Tags: []string{"vacation", "food"}})
+	if err != nil {
+		t.Fatalf("ListTransactions(TagMode default): %v", err)
+	}
+	if len(any.Transactions) != 2 {
+		t.Errorf("Transactions = %+v, want 2 (default TagMode is any)", any.Transactions)
+	}
+
+	all, err := svc.ListTransactions(ctx, app.ListTransactionsQuery{ActorID: testActorID, Tags: []string{"vacation", "food"}, TagMode: "all"})
+	if err != nil {
+		t.Fatalf("ListTransactions(TagMode=all): %v", err)
+	}
+	if len(all.Transactions) != 1 || all.Transactions[0].Description() != "both" {
+		t.Errorf("Transactions = %+v, want only the transaction with both tags", all.Transactions)
+	}
+
+	if _, err := svc.ListTransactions(ctx, app.ListTransactionsQuery{ActorID: testActorID, Tags: []string{"vacation"}, TagMode: "bogus"}); err == nil {
+		t.Error("ListTransactions(TagMode=bogus) = nil error, want InvalidInput")
+	}
+}
+
 // TestListTransactions_AugustIdenticalUnderUTCAndKolkata is issue #6's
 // "done when": "'August 2026' returns identical ListTransactions results
 // under TZ=UTC and TZ=Asia/Kolkata." DateFrom/DateTo resolve through

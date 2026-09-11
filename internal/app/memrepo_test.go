@@ -3,11 +3,15 @@ package app_test
 import (
 	"context"
 	"sort"
+	"strings"
 	"time"
+
+	"github.com/shopspring/decimal"
 
 	"github.com/anirudhgray/bodger/internal/domain"
 	"github.com/anirudhgray/bodger/internal/domain/fx"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
+	"github.com/anirudhgray/bodger/internal/domain/money"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
 )
@@ -230,6 +234,20 @@ func (m *memTransactions) List(_ context.Context, actorID string, filter ports.T
 		if filter.CategoryID != "" && !hasPostingInCategorySet(rec.txn, m.categorySubtreeIDs(filter.CategoryID)) {
 			continue
 		}
+		if len(filter.Currencies) > 0 && !hasPostingInCurrencySet(rec.txn, filter.Currencies) {
+			continue
+		}
+		if (filter.AmountMin != "" || filter.AmountMax != "") &&
+			!hasPostingInAmountRange(rec.txn, filter.AmountMin, filter.AmountMax) {
+			continue
+		}
+		if filter.Description != "" &&
+			!strings.Contains(strings.ToLower(rec.txn.Description()), strings.ToLower(filter.Description)) {
+			continue
+		}
+		if len(filter.Tags) > 0 && !matchesTagFilter(rec.tags, filter.Tags, filter.TagMode) {
+			continue
+		}
 		matches = append(matches, rec)
 	}
 
@@ -288,6 +306,79 @@ func hasPostingOnAccount(txn ledger.Transaction, accountID string) bool {
 func hasPostingInCategorySet(txn ledger.Transaction, categoryIDs map[string]bool) bool {
 	for _, p := range txn.Postings() {
 		if id, ok := p.CategoryID(); ok && categoryIDs[id] {
+			return true
+		}
+	}
+	return false
+}
+
+// hasPostingInCurrencySet mirrors the SQLite adapter's Currencies filter:
+// a transaction matches if at least one posting is in one of currencies
+// (ADR-0009: OR within a dimension).
+func hasPostingInCurrencySet(txn ledger.Transaction, currencies []string) bool {
+	for _, p := range txn.Postings() {
+		for _, c := range currencies {
+			if p.Currency() == c {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hasPostingInAmountRange mirrors the SQLite adapter's amountRangeClause:
+// a transaction matches if at least one posting's absolute amount falls
+// within [minRaw, maxRaw] (either may be empty, meaning unbounded on that
+// side), compared in that posting's own currency's minor units
+// (ADR-0009: amounts compare on absolute value).
+func hasPostingInAmountRange(txn ledger.Transaction, minRaw, maxRaw string) bool {
+	for _, p := range txn.Postings() {
+		cur, ok := money.LookupCurrency(p.Currency())
+		if !ok {
+			continue
+		}
+		abs := p.Amount().Abs().AmountMinor()
+		if minRaw != "" {
+			d, err := decimal.NewFromString(minRaw)
+			if err != nil {
+				continue
+			}
+			if abs < d.Shift(int32(cur.MinorUnitExponent)).Round(0).IntPart() {
+				continue
+			}
+		}
+		if maxRaw != "" {
+			d, err := decimal.NewFromString(maxRaw)
+			if err != nil {
+				continue
+			}
+			if abs > d.Shift(int32(cur.MinorUnitExponent)).Round(0).IntPart() {
+				continue
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// matchesTagFilter mirrors the SQLite adapter's tagFilterClause: "any"
+// (the default) matches if tags contains at least one of wanted, "all"
+// only if it contains every one of them (ADR-0009's TagMode).
+func matchesTagFilter(tags []ledger.Tag, wanted []string, tagMode string) bool {
+	have := make(map[string]bool, len(tags))
+	for _, t := range tags {
+		have[t.String()] = true
+	}
+	if tagMode == "all" {
+		for _, w := range wanted {
+			if !have[w] {
+				return false
+			}
+		}
+		return true
+	}
+	for _, w := range wanted {
+		if have[w] {
 			return true
 		}
 	}
