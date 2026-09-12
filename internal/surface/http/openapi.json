@@ -3574,6 +3574,147 @@
         "summary": "Rename a category, or move it to a new parent."
       }
     },
+    "/api/v1/export/csv": {
+      "get": {
+        "description": "Flat and lossy by design: a split transaction's postings become separate rows sharing the same transaction-level fields, and this format can't represent a split unambiguously enough to import back in. Optionally scoped by the same filter dimensions as /api/v1/analytics/*; omitting every filter parameter exports every transaction. Not wrapped in the usual {\"data\": ...} envelope.",
+        "operationId": "exportCSV",
+        "parameters": [
+          {
+            "description": "An account's ID or unique name.",
+            "in": "query",
+            "name": "account",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "A category's ID or unique name; its whole subtree is included.",
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "One of \"outflow\", \"inflow\", or \"transfer\".",
+            "in": "query",
+            "name": "type",
+            "schema": {
+              "enum": [
+                "outflow",
+                "inflow",
+                "transfer"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The inclusive start of a booked-date range.",
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The inclusive end of a booked-date range.",
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only include this transaction currency (repeatable).",
+            "in": "query",
+            "name": "filter_currency",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only include transactions at or above this amount (absolute value).",
+            "in": "query",
+            "name": "amount_min",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only include transactions at or below this amount (absolute value).",
+            "in": "query",
+            "name": "amount_max",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only include transactions whose description contains this text.",
+            "in": "query",
+            "name": "description",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only include transactions carrying this tag (repeatable).",
+            "in": "query",
+            "name": "tag",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "How multiple \"tag\" values combine.",
+            "in": "query",
+            "name": "tag_mode",
+            "schema": {
+              "enum": [
+                "any",
+                "all"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "format": "byte",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The CSV export."
+          }
+        },
+        "summary": "Download transactions as CSV, one row per posting."
+      }
+    },
+    "/api/v1/export/json": {
+      "get": {
+        "description": "Every account, category, and transaction the actor owns, unfiltered - independent of the database schema and deterministic across repeated calls with the same underlying data, so it's safe to use as a backup. Unlike every other route in this API, the response body is the export document itself, not wrapped in the usual {\"data\": ...} envelope.",
+        "operationId": "exportJSON",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "format": "byte",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The canonical JSON export document."
+          }
+        },
+        "summary": "Download a complete backup as canonical JSON."
+      }
+    },
     "/api/v1/fx/rates": {
       "get": {
         "description": "A pure read over already-stored rates - this never calls out to the configured FX provider (use POST /api/v1/fx/rates/fetch for that). Setting \"amount\" also returns the converted figure.",

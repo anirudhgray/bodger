@@ -56,7 +56,17 @@ type route struct {
 	// Response is the zero value of the success response body type this
 	// route's handler encodes as dataEnvelope.Data (e.g. accountView{},
 	// or []accountView{} for a list) — likewise only ever reflected over.
+	// Ignored when RawResponseContentType is set.
 	Response any
+
+	// RawResponseContentType marks a route whose success response is a
+	// raw byte stream — a file download — rather than the usual
+	// {"data": ...} JSON envelope every other route in this table uses:
+	// "application/json" for the canonical export document, "text/csv"
+	// for the CSV export. Response is unused for such a route; the
+	// generated OpenAPI document describes the response body as an opaque
+	// binary blob at this content type instead of reflecting a Go type.
+	RawResponseContentType string
 
 	// Errors are the additional, non-success status codes this route can
 	// answer with, beyond the one every route implicitly documents via
@@ -522,6 +532,26 @@ var routeTable = []route{
 		Request: setReportingCurrencyRequest{}, Response: okView{},
 		Errors: []int{http.StatusUnprocessableEntity},
 	},
+
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/export/json",
+		Handler: func(h *handlers) http.HandlerFunc { return h.exportJSON },
+
+		OperationID: "exportJSON", Summary: "Download a complete backup as canonical JSON.",
+		Description:   "Every account, category, and transaction the actor owns, unfiltered - independent of the database schema and deterministic across repeated calls with the same underlying data, so it's safe to use as a backup. Unlike every other route in this API, the response body is the export document itself, not wrapped in the usual {\"data\": ...} envelope.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The canonical JSON export document.",
+		RawResponseContentType: "application/json",
+	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/export/csv",
+		Handler: func(h *handlers) http.HandlerFunc { return h.exportCSV },
+
+		OperationID: "exportCSV", Summary: "Download transactions as CSV, one row per posting.",
+		Description:   "Flat and lossy by design: a split transaction's postings become separate rows sharing the same transaction-level fields, and this format can't represent a split unambiguously enough to import back in. Optionally scoped by the same filter dimensions as /api/v1/analytics/*; omitting every filter parameter exports every transaction. Not wrapped in the usual {\"data\": ...} envelope.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The CSV export.",
+		RawResponseContentType: "text/csv",
+		Query:                  exportCSVQueryParams,
+	},
 }
 
 func intPtr(n int) *int { return &n }
@@ -547,6 +577,28 @@ var reportQueryParams = []queryParam{
 	{Name: "currency", Description: "Convert every figure in the result into this currency (required).", Type: "string"},
 	{Name: "policy", Description: "Which conversion policy to use (required).", Type: "string", Enum: []string{"transaction_date", "current", "pinned"}},
 	{Name: "pinned_date", Description: "The pinned date to convert at (required when \"policy\" is \"pinned\").", Type: "string", Format: "date"},
+}
+
+// exportCSVQueryParams is /api/v1/export/csv's own query string:
+// reportQueryParams' filter dimensions (account through tag_mode) only —
+// not its trailing currency/policy/pinned_date conversion options, which
+// don't apply here: the CSV export never converts an amount, it writes
+// each posting's own currency and amount unchanged (ADR-0008's "flat and
+// lossy by design"). Kept as its own explicit list rather than a slice of
+// reportQueryParams, so a future reordering of that list can't silently
+// change which of its entries this route inherits.
+var exportCSVQueryParams = []queryParam{
+	{Name: "account", Description: "An account's ID or unique name.", Type: "string"},
+	{Name: "category", Description: "A category's ID or unique name; its whole subtree is included.", Type: "string"},
+	{Name: "type", Description: `One of "outflow", "inflow", or "transfer".`, Type: "string", Enum: []string{"outflow", "inflow", "transfer"}},
+	{Name: "from", Description: "The inclusive start of a booked-date range.", Type: "string", Format: "date"},
+	{Name: "to", Description: "The inclusive end of a booked-date range.", Type: "string", Format: "date"},
+	{Name: "filter_currency", Description: "Only include this transaction currency (repeatable).", Type: "string"},
+	{Name: "amount_min", Description: "Only include transactions at or above this amount (absolute value).", Type: "string"},
+	{Name: "amount_max", Description: "Only include transactions at or below this amount (absolute value).", Type: "string"},
+	{Name: "description", Description: "Only include transactions whose description contains this text.", Type: "string"},
+	{Name: "tag", Description: "Only include transactions carrying this tag (repeatable).", Type: "string"},
+	{Name: "tag_mode", Description: `How multiple "tag" values combine.`, Type: "string", Enum: []string{"any", "all"}},
 }
 
 // granularityQueryParam is /cash-flow and /trends' own extra query

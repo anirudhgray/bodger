@@ -44,6 +44,20 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeDownload writes data as a file download: contentType (with its own
+// charset, when it has one) and a Content-Disposition naming filename, so
+// a browser hitting the route directly saves it rather than rendering it
+// inline. Used only by the two /api/v1/export/* routes — every other
+// success response in this package goes through respond/writeJSON's
+// {"data": ...} envelope instead, which a byte-identical export document
+// (ADR-0008) cannot be wrapped in without breaking that byte-identity.
+func writeDownload(w http.ResponseWriter, contentType, filename string, data []byte) {
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
 // respond writes data inside dataEnvelope with the given status code —
 // every handler's success path funnels through this, the same way
 // internal/surface/cli's render funnels every command's success path
