@@ -1,6 +1,6 @@
 // Component tests for Combobox (issue #106, building on #104's Radix
 // Popover groundwork): the same real-interaction convention as
-// date-picker.test.tsx — cmdk's Command list needs actual pointer-event
+// date-picker-impl.test.tsx — cmdk's Command list needs actual pointer-event
 // sequences, not plain fireEvent, and jsdom's hasPointerCapture/
 // scrollIntoView polyfills (test/setup.ts) are what make that possible
 // here without extra per-test setup.
