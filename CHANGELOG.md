@@ -9,6 +9,23 @@ sync with each GitHub Release.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-12
+
+### Added
+
+* [1364f052](https://github.com/anirudhgray/bodger/commit/1364f052): feat(api,cli): analytics surfaces — REST endpoints, bodger report, and conformance (#193) (@anirudhgray)
+* [705e319e](https://github.com/anirudhgray/bodger/commit/705e319e): feat(app): analytics methods — category breakdown, cash flow, trends, savings rate (#192) (@anirudhgray)
+* [cb9357f5](https://github.com/anirudhgray/bodger/commit/cb9357f5): feat(app): extend TransactionFilter to ADR-0009's full shape (#191) (@anirudhgray)
+* [31ff677b](https://github.com/anirudhgray/bodger/commit/31ff677b): feat(app,api,cli,web): additional analytics — net worth, top transactions, average size, category trends (#206) (@anirudhgray)
+* [5492aa17](https://github.com/anirudhgray/bodger/commit/5492aa17): feat(app,api,cli,web): analytics period-granularity selector (#205) (@anirudhgray)
+* [5f0a0d67](https://github.com/anirudhgray/bodger/commit/5f0a0d67): feat(app,api,cli,web): balances screen totals overview (#204) (@anirudhgray)
+* [d8c61227](https://github.com/anirudhgray/bodger/commit/d8c61227): feat(web): analytics and charts screen (#197) (@anirudhgray)
+
+### Fixed
+
+* [0bb4ba1f](https://github.com/anirudhgray/bodger/commit/0bb4ba1f): fix(app,api,cli): resolve reporting currency via ADR-0004's ladder in analytics queries (#201) (@anirudhgray)
+* [549259a6](https://github.com/anirudhgray/bodger/commit/549259a6): fix(web): fix or suppress oxlint warnings, document the convention (#202) (@anirudhgray)
+
 ## [0.4.0] - 2026-09-11
 
 ### Added
@@ -112,7 +129,8 @@ sync with each GitHub Release.
 * 5ae7d547: fix(infra): make lint fail loudly on an incompatible golangci-lint (#23)
 * c76bd7e7: fix(infra): pre-push hook executable bit, worktree hygiene (#14)
 
-[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/anirudhgray/bodger/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/anirudhgray/bodger/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/anirudhgray/bodger/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/anirudhgray/bodger/compare/v0.1.0...v0.2.0
