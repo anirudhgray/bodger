@@ -16,15 +16,8 @@ describe('DatePicker (lazy wrapper)', () => {
       screen.queryByRole('button', { name: 'Pick a date' }),
     ).not.toBeInTheDocument()
 
-    // A generous timeout: this is the one test that pays the cold cost of
-    // dynamically importing react-day-picker's whole module graph, which
-    // can run past the default 1000ms under CI-level parallel load.
     expect(
-      await screen.findByRole(
-        'button',
-        { name: 'Pick a date' },
-        { timeout: 5000 },
-      ),
+      await screen.findByRole('button', { name: 'Pick a date' }),
     ).toBeInTheDocument()
   })
 })
