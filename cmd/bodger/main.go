@@ -160,6 +160,8 @@ func bootstrap(ctx context.Context) (*app.Service, func() error, error) {
 		sqlite.NewAPITokenRepository(db),
 		sqlite.NewFxRateRepository(db),
 		fxprovider.New(cfg.FxProviderBaseURL, nil),
+		sqlite.NewImportBatchRepository(db),
+		sqlite.NewImportRecordRepository(db),
 	)
 	if err != nil {
 		_ = db.Close()

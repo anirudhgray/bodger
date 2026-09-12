@@ -47,6 +47,7 @@ func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
 	svc, err := app.NewService(
 		clk, cfg, idgen.New(), accounts, categories, transactions, newMemTags(),
 		users, newMemSessions(), newMemAPITokens(), newMemFxRates(accounts, transactions), newMemFxProvider(),
+		fakeImportBatches{}, fakeImportRecords{},
 	)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)

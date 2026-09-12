@@ -583,6 +583,21 @@ recomputing independently, with matching REST routes, CLI subcommands,
 and web sections on the Balances and Analytics screens). #196 was M5's
 last open issue — the milestone is now complete.
 
+**M6 · Fangorn is in progress** — see the
+[M6 milestone](https://github.com/anirudhgray/bodger/milestone/6) for its
+issues. [#208](https://github.com/anirudhgray/bodger/issues/208) lands the
+staged import pipeline's only state (ADR-0008): `internal/domain/importing`
+(`ImportBatch`'s staged -> reviewed -> committed -> rolled_back state
+machine, `ImportRecord`'s pending -> ready/excluded -> committed state
+machine, and `DuplicateMatch` for the two-tier exact/suspected_duplicate
+result plus the user's resolution decision), migration
+`00012_add_import_tables.sql` (`import_batch`/`import_record`, next
+sequential prefix per ADR-0007), and `ImportBatchRepository`/
+`ImportRecordRepository` in `internal/ports`/`internal/adapters/sqlite`.
+Parsing/mapping/duplicate-detection (#210) and commit/rollback (#211) are
+separate, later issues that write to this foundation; export (#209)
+proceeded in parallel, per both issues' own dependency notes.
+
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
@@ -591,7 +606,7 @@ last open issue — the milestone is now complete.
 | M3 · Rivendell — UI polish and design system | ✅ Complete |
 | M4 · The Grey Havens — Multi-currency and FX | ✅ Complete |
 | M5 · Orthanc — Analytics and charts | ✅ Complete |
-| M6 · Fangorn — Import and export | ⬜ Not started |
+| M6 · Fangorn — Import and export | 🚧 In progress |
 | M7 — Budgets | ⬜ Not started |
 | M8 — MCP server | ⬜ Not started |
 | M9 — Recurring transactions | ⬜ Not started |
