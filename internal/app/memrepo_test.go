@@ -10,6 +10,7 @@ import (
 
 	"github.com/anirudhgray/bodger/internal/domain"
 	"github.com/anirudhgray/bodger/internal/domain/fx"
+	"github.com/anirudhgray/bodger/internal/domain/importing"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/domain/money"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
@@ -244,6 +245,12 @@ func (m *memTransactions) List(_ context.Context, actorID string, filter ports.T
 		if filter.Description != "" &&
 			!strings.Contains(strings.ToLower(rec.txn.Description()), strings.ToLower(filter.Description)) {
 			continue
+		}
+		if filter.ExternalID != "" {
+			extID, ok := rec.txn.ExternalID()
+			if !ok || extID != filter.ExternalID {
+				continue
+			}
 		}
 		if len(filter.Tags) > 0 && !matchesTagFilter(rec.tags, filter.Tags, filter.TagMode) {
 			continue
@@ -782,3 +789,126 @@ func (m *memFxProvider) FetchRange(_ context.Context, base, quote string, from, 
 func (m *memFxProvider) Name() string { return "mem-provider" }
 
 var _ ports.FxRateProvider = (*memFxProvider)(nil)
+
+// memImportBatches and memImportRecords are in-memory
+// ports.ImportBatchRepository/ports.ImportRecordRepository
+// implementations for issue #210's use-case tests, enforcing the same
+// actor-scoping contract (ADR-0006) every other mem* fixture above does.
+// These replace fakeImportBatches/fakeImportRecords (service_test.go) in
+// newTestService, which are enough for NewService's own wiring tests but
+// return zero values for everything — not enough to exercise real
+// staging/mapping/duplicate-detection behaviour.
+
+type memImportBatches struct {
+	byID map[string]importing.ImportBatch
+	seq  map[string]int
+	next int
+}
+
+func newMemImportBatches() *memImportBatches {
+	return &memImportBatches{byID: map[string]importing.ImportBatch{}, seq: map[string]int{}}
+}
+
+func (m *memImportBatches) Create(_ context.Context, actorID string, b importing.ImportBatch) error {
+	if b.UserID() != actorID {
+		return errs.New(errs.NotAllowed)
+	}
+	m.next++
+	m.byID[b.ID()] = b
+	m.seq[b.ID()] = m.next
+	return nil
+}
+
+func (m *memImportBatches) Get(_ context.Context, actorID, id string) (importing.ImportBatch, error) {
+	b, ok := m.byID[id]
+	if !ok || b.UserID() != actorID {
+		return importing.ImportBatch{}, errs.New(errs.NotFound).Explain("No import batch with ID %q.", id).Field("id")
+	}
+	return b, nil
+}
+
+// List returns actorID's own batches, most recently created first —
+// mirroring the real adapter's ORDER BY created_at DESC using insertion
+// sequence, since this fixture has no created_at column to sort by.
+func (m *memImportBatches) List(_ context.Context, actorID string) ([]importing.ImportBatch, error) {
+	var out []importing.ImportBatch
+	for _, b := range m.byID {
+		if b.UserID() == actorID {
+			out = append(out, b)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return m.seq[out[i].ID()] > m.seq[out[j].ID()] })
+	return out, nil
+}
+
+func (m *memImportBatches) Update(_ context.Context, actorID string, b importing.ImportBatch) error {
+	existing, ok := m.byID[b.ID()]
+	if !ok || existing.UserID() != actorID {
+		return errs.New(errs.NotFound).Explain("No import batch with ID %q.", b.ID()).Field("id")
+	}
+	if b.UserID() != actorID {
+		return errs.New(errs.NotAllowed)
+	}
+	m.byID[b.ID()] = b
+	return nil
+}
+
+var _ ports.ImportBatchRepository = (*memImportBatches)(nil)
+
+type memImportRecords struct {
+	byID map[string]importing.ImportRecord
+}
+
+func newMemImportRecords() *memImportRecords {
+	return &memImportRecords{byID: map[string]importing.ImportRecord{}}
+}
+
+func (m *memImportRecords) CreateBatch(_ context.Context, actorID string, records []importing.ImportRecord) error {
+	for _, r := range records {
+		if r.UserID() != actorID {
+			return errs.New(errs.NotAllowed)
+		}
+	}
+	for _, r := range records {
+		m.byID[r.ID()] = r
+	}
+	return nil
+}
+
+func (m *memImportRecords) Get(_ context.Context, actorID, id string) (importing.ImportRecord, error) {
+	r, ok := m.byID[id]
+	if !ok || r.UserID() != actorID {
+		return importing.ImportRecord{}, errs.New(errs.NotFound).Explain("No import record with ID %q.", id).Field("id")
+	}
+	return r, nil
+}
+
+func (m *memImportRecords) ListByImportBatch(_ context.Context, actorID, importBatchID string) ([]importing.ImportRecord, error) {
+	var out []importing.ImportRecord
+	for _, r := range m.byID {
+		if r.UserID() == actorID && r.ImportBatchID() == importBatchID {
+			out = append(out, r)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].SortOrder() != out[j].SortOrder() {
+			return out[i].SortOrder() < out[j].SortOrder()
+		}
+		return out[i].ID() < out[j].ID()
+	})
+	return out, nil
+}
+
+func (m *memImportRecords) Update(_ context.Context, actorID string, r importing.ImportRecord) error {
+	existing, ok := m.byID[r.ID()]
+	if !ok || existing.UserID() != actorID {
+		return errs.New(errs.NotFound).Explain("No import record with ID %q.", r.ID()).Field("id")
+	}
+	if r.UserID() != actorID {
+		return errs.New(errs.NotAllowed)
+	}
+	m.byID[r.ID()] = r
+	return nil
+}
+
+var _ ports.ImportRecordRepository = (*memImportRecords)(nil)
