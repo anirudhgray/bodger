@@ -122,6 +122,47 @@ func TestImportRecordRepository_CreateBatchGet_RoundTripsEveryField(t *testing.T
 	}
 }
 
+// TestImportRecordRepository_TransferCandidateRoundTrips exercises the
+// advisory transfer_candidate_record_id column (issue #210): it must
+// survive a write/read round trip independently of any DuplicateMatch, and
+// is nullable — records rarely have one.
+func TestImportRecordRepository_TransferCandidateRoundTrips(t *testing.T) {
+	db, _ := newTestDB(t)
+	ctx := context.Background()
+	batch := seedImportBatch(t, db, ports.SeededUserID, "batch-1", "acc-1")
+	repo := NewImportRecordRepository(db)
+
+	// The referenced record must exist first: transfer_candidate_record_id
+	// is a foreign key, and this database runs with foreign_keys=1.
+	other := mustImportRecord(t, "record-other", ports.SeededUserID, batch.ID(), 0)
+	if err := repo.CreateBatch(ctx, ports.SeededUserID, []importing.ImportRecord{other}); err != nil {
+		t.Fatalf("CreateBatch(record-other): %v", err)
+	}
+
+	record := mustImportRecord(t, "record-1", ports.SeededUserID, batch.ID(), 1,
+		importing.WithTransferCandidate("record-other"),
+	)
+	if err := repo.CreateBatch(ctx, ports.SeededUserID, []importing.ImportRecord{record}); err != nil {
+		t.Fatalf("CreateBatch(record-1): %v", err)
+	}
+
+	got, err := repo.Get(ctx, ports.SeededUserID, "record-1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if v, ok := got.TransferCandidateRecordID(); !ok || v != "record-other" {
+		t.Errorf("TransferCandidateRecordID() = (%q, %v), want (%q, true)", v, ok, "record-other")
+	}
+
+	gotOther, err := repo.Get(ctx, ports.SeededUserID, "record-other")
+	if err != nil {
+		t.Fatalf("Get(record-other): %v", err)
+	}
+	if _, ok := gotOther.TransferCandidateRecordID(); ok {
+		t.Error("TransferCandidateRecordID() ok = true for record-other, want false (never set)")
+	}
+}
+
 func TestImportRecordRepository_CreateBatch_RejectsMismatchedActor(t *testing.T) {
 	db, _ := newTestDB(t)
 	ctx := context.Background()

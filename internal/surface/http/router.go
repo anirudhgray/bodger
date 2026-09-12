@@ -68,6 +68,14 @@ type route struct {
 	// binary blob at this content type instead of reflecting a Go type.
 	RawResponseContentType string
 
+	// RawRequestContentType marks a route whose request body is a raw
+	// byte stream — a file upload — rather than the usual JSON body a
+	// Request DTO describes: "text/csv" for POST /api/v1/imports, the
+	// only such route today. Request is unused for such a route; the
+	// generated OpenAPI document describes the request body as an opaque
+	// binary blob at this content type instead of reflecting a Go type.
+	RawRequestContentType string
+
 	// Errors are the additional, non-success status codes this route can
 	// answer with, beyond the one every route implicitly documents via
 	// errorResponses' fallback (see openapi_gen.go): 404 for "no such
@@ -563,6 +571,98 @@ var routeTable = []route{
 		Request: restoreSnapshotRequest{}, Response: restoreSnapshotView{},
 		Errors: []int{http.StatusUnprocessableEntity},
 	},
+	{
+		Method: http.MethodPost, Pattern: "/api/v1/imports",
+		Handler: func(h *handlers) http.HandlerFunc { return h.createImportBatch },
+
+		OperationID: "createImportBatch", Summary: "Upload a file and stage it for import.",
+		Description: "The request body is the file's own raw bytes - not wrapped in the usual {\"data\": ...} envelope or JSON. " +
+			"account, filename, and the column mapping are given as query parameters rather than in the body, since the body " +
+			"is already spoken for by the file itself. Nothing is written to your accounts, categories, or transactions by " +
+			"this call: every row is only staged for review (see GET /api/v1/imports/{id}/records), and stays that way " +
+			"until you commit it.",
+		SuccessStatus: http.StatusCreated, SuccessDescription: "The staged import and every record it staged.",
+		RawRequestContentType: "text/csv",
+		Response:              importBatchWithRecordsView{},
+		Errors:                []int{http.StatusUnprocessableEntity},
+		Query:                 importUploadQueryParams,
+	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/imports",
+		Handler: func(h *handlers) http.HandlerFunc { return h.listImportBatches },
+
+		OperationID: "listImportBatches", Summary: "List every import, most recently created first.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "Every import.",
+		Response: []importBatchView{},
+	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/imports/{id}",
+		Handler: func(h *handlers) http.HandlerFunc { return h.getImportBatch },
+
+		OperationID: "getImportBatch", Summary: "Look up one import's status.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The import.",
+		Response: importBatchView{},
+		Errors:   []int{http.StatusNotFound},
+	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/imports/{id}/records",
+		Handler: func(h *handlers) http.HandlerFunc { return h.listImportRecords },
+
+		OperationID: "listImportRecords", Summary: "List an import's staged records, with their duplicate/transfer flags.",
+		Description:   "Every row from the uploaded file, in its own original order - including a row already excluded as an exact duplicate, and one still awaiting your decision on a suspected duplicate (see POST /api/v1/import-records/{id}/resolve).",
+		SuccessStatus: http.StatusOK, SuccessDescription: "Every staged record.",
+		Response: []importRecordView{},
+		Errors:   []int{http.StatusNotFound},
+	},
+	{
+		Method: http.MethodPost, Pattern: "/api/v1/imports/{id}/commit",
+		Handler: func(h *handlers) http.HandlerFunc { return h.commitImportBatch },
+
+		OperationID: "commitImportBatch", Summary: "Commit a staged import: write its cleared records as real transactions.",
+		Description:   "Refused if any staged record is still awaiting a decision on a suspected duplicate. Every record is written in one all-or-nothing step.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The committed import and the transactions it created.",
+		Response: importCommitView{},
+		Errors:   []int{http.StatusNotFound, http.StatusPreconditionFailed},
+	},
+	{
+		Method: http.MethodPost, Pattern: "/api/v1/imports/{id}/rollback",
+		Handler: func(h *handlers) http.HandlerFunc { return h.rollbackImportBatch },
+
+		OperationID: "rollbackImportBatch", Summary: "Undo a committed import: delete the transactions it created.",
+		Description:   "Only a currently committed import can be rolled back. The deleted transactions keep their history, the same as deleting any other transaction.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The rolled-back import and the IDs of the deleted transactions.",
+		Response: importRollbackView{},
+		Errors:   []int{http.StatusNotFound, http.StatusPreconditionFailed},
+	},
+	{
+		Method: http.MethodPost, Pattern: "/api/v1/import-records/{id}/resolve",
+		Handler: func(h *handlers) http.HandlerFunc { return h.resolveImportRecord },
+
+		OperationID: "resolveImportRecord", Summary: "Record your decision on a staged record's suspected duplicate.",
+		Description:   `"confirmed_duplicate" excludes the record from commit; "not_duplicate" clears it for commit. Refused for a record with no suspected duplicate to resolve, or one already resolved.`,
+		SuccessStatus: http.StatusOK, SuccessDescription: "The updated record.",
+		Request: resolveImportRecordRequest{}, Response: importRecordView{},
+		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity, http.StatusPreconditionFailed},
+	},
+}
+
+// importUploadQueryParams is POST /api/v1/imports' own query string: the
+// target account and file metadata, since the request body itself is the
+// uploaded file's raw bytes rather than a JSON object these could live
+// in. date_column/description_column/amount_column are required for the
+// only supported format today ("csv"); the rest are optional per-column
+// hints the same CSV parser (internal/app/importparse) uses when present.
+var importUploadQueryParams = []queryParam{
+	{Name: "account", Description: "The account new transactions from this import will post against, by ID or unique name (required).", Type: "string"},
+	{Name: "filename", Description: "The uploaded file's own name, for display and history (required).", Type: "string"},
+	{Name: "format", Description: `The uploaded file's format. Only "csv" is supported today; omit this to use it.`, Type: "string", Enum: []string{"csv"}},
+	{Name: "date_column", Description: "The column holding each row's booked date (required for csv).", Type: "string"},
+	{Name: "description_column", Description: "The column holding each row's description (required for csv).", Type: "string"},
+	{Name: "amount_column", Description: "The column holding each row's signed amount (required for csv).", Type: "string"},
+	{Name: "posted_date_column", Description: "The column holding each row's posted date, when the file distinguishes it from the booked date.", Type: "string"},
+	{Name: "currency_column", Description: "The column holding each row's currency, when the file has more than one. Omit to use the account's own currency for every row.", Type: "string"},
+	{Name: "external_id_column", Description: "The column holding each row's own ID from the source, used to detect an exact duplicate on a re-import.", Type: "string"},
+	{Name: "category_column", Description: "The column holding a hint for each row's category, matched against your existing category names.", Type: "string"},
 }
 
 func intPtr(n int) *int { return &n }

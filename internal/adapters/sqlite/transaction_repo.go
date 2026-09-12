@@ -178,6 +178,10 @@ func (r *TransactionRepository) List(ctx context.Context, actorID string, filter
 		where = append(where, "LOWER(t.description) LIKE ? ESCAPE '\\'")
 		whereArgs = append(whereArgs, "%"+escapeLike(strings.ToLower(filter.Description))+"%")
 	}
+	if filter.ExternalID != "" {
+		where = append(where, "t.external_id = ?")
+		whereArgs = append(whereArgs, filter.ExternalID)
+	}
 	if len(filter.Tags) > 0 {
 		clause, tagArgs := tagFilterClause(actorID, filter.Tags, filter.TagMode)
 		where = append(where, clause)

@@ -151,6 +151,7 @@ func newTestServiceWithFxProvider(t *testing.T, frozenAt time.Time, tz string, p
 		provider,
 		sqlite.NewImportBatchRepository(db),
 		sqlite.NewImportRecordRepository(db),
+		sqlite.NewImportCommitRepository(db),
 		sqlite.NewSnapshotRepository(db),
 	)
 	if err != nil {
