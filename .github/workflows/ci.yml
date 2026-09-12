@@ -1,17 +1,22 @@
 name: CI
 
-# Deliberately no `push: branches: [main]` trigger. This repo never commits
-# directly to main (CLAUDE.md) and every PR is brought up to date with main
-# before it's called ready (see .claude/skills/orchestrate), so a squash-merge
-# lands a tree this same workflow already validated on the PR - a push-
-# triggered rerun would just repeat that same suite (full Go tests, npm
-# checks, and a Chromium e2e install/run) against effectively the same code
-# for no new signal, on every single merge. Branch protection - which would
-# otherwise be the reason to keep a post-merge check as a backstop - isn't
-# available on this plan for a private repo, so there's no gate this trigger
-# was actually reinforcing.
+# `push: branches: [main]` runs a separate, lightweight `build-main` job
+# below (setup + `make build`, no lint/test) rather than the full
+# check-go/check-web suite: every PR is brought up to date with main and
+# re-checked before it's called ready (see .claude/skills/orchestrate), so a
+# squash-merge lands a tree the full suite already validated on the PR -
+# rerunning it wholesale (full Go tests, npm checks, a Chromium e2e
+# install/run) would repeat that same signal on every single merge for no
+# new information. There's also no branch protection available on this plan
+# (private repo, free tier) to make that rerun a real gate. What a PR's own
+# checks *can't* rule out is a merge that only looks clean in git (no
+# textual conflict) but doesn't actually compile once combined with
+# whatever else landed on main first - build-main exists to catch that one
+# remaining case cheaply.
 on:
   pull_request:
+    branches: [main]
+  push:
     branches: [main]
 
 # Reports are defined by calendar boundaries in the user's timezone, resolved
@@ -26,23 +31,28 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# There is deliberately no standalone `make build` job. check-go's `go
-# vet`/`go test ./...` already compiles cmd/bodger (an empty embedded
-# dist/ — just .gitkeep — doesn't stop that from succeeding), and
-# whenever check-web runs, its e2e smoke test already does a real
-# `npm run build` + `go build` of the production binary and starts it
-# against actual HTTP requests (web/e2e/global-setup.ts) — a stronger
-# proof than a bare, unrun `make build` compile. Adding a third job that
-# repeats both toolchains' setup for coverage already provided by the
-# other two isn't worth the extra Actions minutes.
+# On a pull_request, there is deliberately no standalone `make build` job
+# alongside check-go/check-web. check-go's `go vet`/`go test ./...` already
+# compiles cmd/bodger (an empty embedded dist/ — just .gitkeep — doesn't
+# stop that from succeeding), and whenever check-web runs, its e2e smoke
+# test already does a real `npm run build` + `go build` of the production
+# binary and starts it against actual HTTP requests (web/e2e/global-setup.ts)
+# — a stronger proof than a bare, unrun `make build` compile. Adding a third
+# job that repeats both toolchains' setup for coverage already provided by
+# the other two isn't worth the extra Actions minutes. (`build-main`, below,
+# is a different job for a different event — see the `on:` comment above.)
 jobs:
   # A commit that only touches one side (e.g. web/ only, or internal/... only)
   # shouldn't pay for the other side's job at all. `internal/surface/http/**`
   # is listed under both filters: it's what generates openapi.json, which
   # web/src/lib/api-types.ts is checked against (npm run check:api-types, part
   # of `make check-web`) — a Go-only change there can make that file stale.
+  #
+  # pull_request-only: build-main (below) handles push to main on its own,
+  # without needing this filter first.
   changes:
     name: detect changes
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     # dorny/paths-filter lists the PR's changed files via the GitHub API on
     # pull_request events, which needs pull-requests: read explicitly — the
@@ -79,7 +89,7 @@ jobs:
   check-go:
     name: check (go)
     needs: changes
-    if: needs.changes.outputs.go == 'true'
+    if: github.event_name == 'pull_request' && needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -109,7 +119,7 @@ jobs:
   check-web:
     name: check (web)
     needs: changes
-    if: needs.changes.outputs.web == 'true'
+    if: github.event_name == 'pull_request' && needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -154,3 +164,39 @@ jobs:
       # identical command.
       - name: make check-web
         run: make check-web
+
+  # Push-only (see the `on:` comment above for why this doesn't just rerun
+  # check-go/check-web): both toolchains, `make build`, nothing else - no
+  # lint, no `go test`, no vitest, no Playwright/Chromium. Existing to catch
+  # the one thing a PR's own green check can't: a squash-merge that applies
+  # cleanly in git but doesn't actually compile once combined with whatever
+  # else landed on main first.
+  build-main:
+    name: build (main)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read toolchain versions
+        id: tools
+        run: |
+          echo "go=$(awk '/^golang /{print $2}' .tool-versions)" >> "$GITHUB_OUTPUT"
+          echo "node=$(awk '/^nodejs /{print $2}' .tool-versions)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ steps.tools.outputs.go }}
+          cache: true
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ steps.tools.outputs.node }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: cd web && npm ci
+
+      - name: make build
+        run: make build
