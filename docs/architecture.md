@@ -722,6 +722,66 @@ state compared against each other — proving the two surfaces install
 identical data, not just that each happens to work alone. #214's web
 restore flow remains the only open piece of this scope addition.
 
+[#214](https://github.com/anirudhgray/bodger/issues/214) lands the web
+UI on top of #212/#213/#227's existing REST surface — no backend or
+domain changes, purely `web/src/pages/data/` (`Import.tsx`,
+`Export.tsx`, `Restore.tsx`) plus their `lib/api.ts` client functions.
+Import is a hand-rolled step wizard (upload → map columns → review →
+commit) rather than a generic stepper primitive — shadcn/ui's own
+registry has nothing that fits a wizard whose later steps don't exist
+until an earlier step's server round-trip returns, and whose review
+step is a data table with per-row actions, not a fixed set of
+questions. A shared `FileDropzone` component (`web/src/components/`)
+covers both the import upload step and the restore file picker, since
+shadcn has no dropzone/file-upload primitive either. The restore flow
+gates its request behind typing an exact confirmation phrase in a
+dialog, not a single click, per the issue's own requirement. "Import &
+export" mirrors Settings' own two-way navigation exactly: a collapsible
+sidebar submenu (App.tsx's `AppSidebar`) and, once on one of its pages,
+`ImportExportLayout`'s own tab strip (`web/src/pages/data/
+ImportExportLayout.tsx`, structurally identical to `SettingsLayout.tsx`)
+— each of Import/Export/Restore is its own route under
+`/import-export/*`.
+
+**Manual verification against the real REST surface surfaced two
+restore defects neither #226's SQLite round-trip test nor #227's
+conformance test exercises, both real bugs in already-merged backend
+code, not anything #214 introduces.** First:
+`SnapshotRepository.Replace`'s `wipeActorLedger`
+(`internal/adapters/sqlite/snapshot_repo.go`) hard-deletes `transactions`
+and `accounts` without first clearing `import_record.transaction_id` or
+`import_batch.target_account_id` — both plain foreign keys with no
+cascade — so a restore fails with a FOREIGN KEY constraint violation for
+any actor who has ever committed an import, even one later rolled back
+(rollback only soft-deletes the transaction; `import_record.transaction_id`
+still points at it). The function's own doc comment anticipates only a
+"staged-but-uncommitted" batch blocking this; the real failure mode is
+broader. Second: `internal/app/restore.go`'s `restoreCategories` inserts
+categories in the canonical document's own order, which
+`internal/app/export.go`'s `ExportSnapshot` sorts by category **ID** (a
+random UUID) for determinism, not by parent-before-child topology — so a
+child category whose ID happens to sort before its parent's fails the
+same way, on `categories.parent_id`. Neither existing test catches
+either: #226's own round-trip fixture uses two flat, unparented
+categories, and no test combines a restore with prior import activity.
+Reproduced live against `scripts/seed-dev.sh`'s own fixture (a 10-parent/
+10-child category tree, and a separate run with a committed-then-rolled-
+back import) — both failed with `constraint failed: FOREIGN KEY
+constraint failed`. Filed as
+[#236](https://github.com/anirudhgray/bodger/issues/236) and
+[#237](https://github.com/anirudhgray/bodger/issues/237) rather than
+fixed here, per this issue's own scope (web UI only, no backend
+changes) — until they land, restoring a backup from an actor with any
+import history, or any nested category tree unlucky enough in its ID
+ordering, does not actually work.
+
+#214 was the last issue open in the M6 milestone (#215 closed earlier,
+per its own dependency note above) — but #236 and #237 mean the
+milestone's status below stays "in progress" rather than flipping to
+complete: a restore that fails on realistic data isn't the working,
+useful state §8's own definition of a finished milestone asks for, even
+though every planned issue is now closed.
+
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
