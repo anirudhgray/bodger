@@ -286,4 +286,86 @@ describe('AppLayout', () => {
       expect(await screen.findByText('Categories content')).toBeInTheDocument()
     })
   })
+
+  describe('Import & export sidebar submenu', () => {
+    // Issue #214's own nav entry — the same collapsible-group shape as
+    // Settings above, and the only way to reach import/export/restore
+    // (there's no in-page tab strip duplicating this nav).
+    function renderAt(path: string) {
+      render(
+        <ThemeProvider>
+          <MemoryRouter initialEntries={[path]}>
+            <Routes>
+              <Route path="/" element={<AppLayout />}>
+                <Route
+                  path="transactions"
+                  element={<div>Transactions content</div>}
+                />
+                <Route
+                  path="import-export/import"
+                  element={<div>Import content</div>}
+                />
+                <Route
+                  path="import-export/export"
+                  element={<div>Export content</div>}
+                />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>,
+      )
+    }
+
+    it('starts collapsed on a non-import-export route', () => {
+      renderAt('/transactions')
+
+      expect(
+        screen.getByRole('button', { name: /Import & export/ }),
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByRole('link', { name: 'Import' }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('expands to show every section on click, and collapses again', () => {
+      renderAt('/transactions')
+
+      const trigger = screen.getByRole('button', { name: /Import & export/ })
+      fireEvent.click(trigger)
+
+      for (const [name, slug] of [
+        ['Import', 'import'],
+        ['Export', 'export'],
+        ['Restore', 'restore'],
+      ]) {
+        expect(screen.getByRole('link', { name })).toHaveAttribute(
+          'href',
+          `/import-export/${slug}`,
+        )
+      }
+
+      fireEvent.click(trigger)
+      expect(
+        screen.queryByRole('link', { name: 'Import' }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('starts expanded when already on an import-export route, with that section current', () => {
+      renderAt('/import-export/export')
+
+      const exportLink = screen.getByRole('link', { name: 'Export' })
+      expect(exportLink).toHaveAttribute('aria-current', 'page')
+      expect(screen.getByRole('link', { name: 'Import' })).not.toHaveAttribute(
+        'aria-current',
+      )
+    })
+
+    it('navigates when a section link is clicked', async () => {
+      renderAt('/import-export/export')
+
+      fireEvent.click(screen.getByRole('link', { name: 'Import' }))
+
+      expect(await screen.findByText('Import content')).toBeInTheDocument()
+    })
+  })
 })

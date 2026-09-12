@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import {
+  ArrowLeftRight,
   BarChart3,
   ChevronRight,
   Moon,
@@ -37,14 +38,15 @@ import { TransactionDialogProvider } from '@/components/TransactionDialog'
 import { useTransactionDialog } from '@/hooks/use-transaction-dialog'
 import { useTheme } from '@/hooks/use-theme'
 import { logout } from '@/lib/session'
+import { IMPORT_EXPORT_SECTIONS } from '@/pages/data/shared'
 import { SETTINGS_SECTIONS } from '@/pages/settings/shared'
 
 // Each item's icon matches the one its own screen already uses for its
 // empty state (TransactionsList.tsx's Receipt, Balances.tsx's Wallet,
 // Analytics.tsx's BarChart3) — reusing that vocabulary rather than
-// picking new icons for the same concept. Settings is rendered separately
-// below, as a collapsible group rather than a plain link — see
-// AppSidebar's comment for why.
+// picking new icons for the same concept. Import & export and Settings
+// are both rendered separately below, as collapsible groups rather than
+// plain links — see AppSidebar's comment for why.
 const navItems = [
   { to: '/transactions', label: 'Transactions', icon: Receipt },
   { to: '/balances', label: 'Balances', icon: Wallet },
@@ -82,6 +84,7 @@ function AppSidebar() {
   }
 
   const isSettingsActive = location.pathname.startsWith('/settings')
+  const isImportExportActive = location.pathname.startsWith('/import-export')
 
   return (
     <Sidebar>
@@ -111,6 +114,53 @@ function AppSidebar() {
                   </SidebarMenuItem>
                 )
               })}
+              {/* Import & export (issue #214) is a collapsible group, the
+                  same shape as Settings just below: its three flows
+                  (import/export/restore) are also reachable from
+                  ImportExportLayout's own tab strip once you're already on
+                  one of its pages — this is the second, collapsed way in,
+                  matching how Settings offers both. Collapsed by default
+                  so it doesn't crowd the top-level nav, opened by default
+                  only when one of its own routes is already active. */}
+              <Collapsible
+                defaultOpen={isImportExportActive}
+                className="group/import-export-collapsible"
+              >
+                <SidebarMenuItem>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton isActive={isImportExportActive}>
+                      <ArrowLeftRight />
+                      Import & export
+                      <ChevronRight className="ml-auto transition-transform group-data-[state=open]/import-export-collapsible:rotate-90" />
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      {IMPORT_EXPORT_SECTIONS.map((section) => {
+                        const isSectionActive = location.pathname === section.to
+                        return (
+                          <SidebarMenuSubItem key={section.to}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={isSectionActive}
+                            >
+                              <Link
+                                to={section.to}
+                                onClick={closeMobileSidebar}
+                                aria-current={
+                                  isSectionActive ? 'page' : undefined
+                                }
+                              >
+                                {section.label}
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        )
+                      })}
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
               {/* Settings is a collapsible group rather than a plain link:
                   its four subpages (issue #107's SettingsLayout tab strip)
                   are also reachable straight from the sidebar, collapsed

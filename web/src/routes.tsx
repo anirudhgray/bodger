@@ -13,6 +13,10 @@ import {
 import { AppLayout } from '@/App'
 import { AnalyticsPage } from '@/pages/Analytics'
 import { BalancesPage } from '@/pages/Balances'
+import { ExportPage } from '@/pages/data/Export'
+import { ImportExportLayout } from '@/pages/data/ImportExportLayout'
+import { ImportPage } from '@/pages/data/Import'
+import { RestorePage } from '@/pages/data/Restore'
 import { Login } from '@/pages/Login'
 import { Placeholder } from '@/pages/Placeholder'
 import { AccountsSettings } from '@/pages/settings/Accounts'
@@ -87,6 +91,21 @@ export const routes: RouteObject[] = [
         // issue #189 — analytics and charts screen
         path: 'analytics',
         element: <AnalyticsPage />,
+      },
+      {
+        // issue #214 — import wizard, export/backup, and restore-from-
+        // backup flows. Mirrors 'settings' below exactly: ImportExportLayout
+        // provides the shared heading and tab-strip sub-nav, and App.tsx's
+        // AppSidebar additionally offers the same three sections as a
+        // collapsible submenu — the same two ways in Settings already has.
+        path: 'import-export',
+        element: <ImportExportLayout />,
+        children: [
+          { index: true, element: <Navigate to="import" replace /> },
+          { path: 'import', element: <ImportPage /> },
+          { path: 'export', element: <ExportPage /> },
+          { path: 'restore', element: <RestorePage /> },
+        ],
       },
       {
         path: 'settings',
