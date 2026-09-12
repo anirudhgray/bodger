@@ -607,6 +607,22 @@ Both responses are raw bytes rather than the REST API's usual `{"data":
 byte-identical for the same underlying data. Import-side wiring (#212)
 and the web UI (#214) are separate, later issues.
 
+**Scope addition: restoring a canonical JSON backup.** The original M6
+issue set (#208-215) never actually scoped a way to load a canonical
+JSON export back in — #215's round-trip test (`export -> import ->
+export`) depended only on #211 and #213, neither of which builds
+anything capable of reading `bodger.export/v1` back into the ledger.
+Restoring an export is not the staged CSV pipeline (#210-212): the
+document is already fully-resolved domain data, so there's nothing to
+map, dedupe, or review — it's a single atomic full-state **replace**,
+regenerating surrogate IDs as it loads (consistent with the round-trip
+guarantee's own "surrogate IDs may be consistently remapped" clause).
+[#226](https://github.com/anirudhgray/bodger/issues/226) adds the
+app-layer restore use case, [#227](https://github.com/anirudhgray/bodger/issues/227)
+wires it onto REST/CLI behind an explicit confirmation step, #214's
+scope now includes a restore-from-backup flow in the web UI, and #215
+now depends on #226 as well.
+
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
