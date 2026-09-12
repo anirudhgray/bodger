@@ -74,7 +74,7 @@ func newSQLiteTestService(t *testing.T, frozenAt time.Time, tz string) (svc *app
 		sqlite.NewTransactionRepository(db), sqlite.NewTagRepository(db),
 		sqlite.NewUserRepository(db), sqlite.NewSessionRepository(db), sqlite.NewAPITokenRepository(db),
 		sqlite.NewFxRateRepository(db), newMemFxProvider(),
-		sqlite.NewImportBatchRepository(db), sqlite.NewImportRecordRepository(db),
+		sqlite.NewImportBatchRepository(db), sqlite.NewImportRecordRepository(db), sqlite.NewImportCommitRepository(db),
 	)
 	if err != nil {
 		t.Fatalf("app.NewService: %v", err)
@@ -290,6 +290,90 @@ func TestListTransactions_SortIsDeterministicAgainstRealSQLite(t *testing.T) {
 		if txn.ID() != want {
 			t.Errorf("result[%d].ID() = %q, want %q (reverse creation order under a tied booked_date)", i, txn.ID(), want)
 		}
+	}
+}
+
+// TestCommitImportBatch_WritesImportRecordIDColumn is the real-adapter
+// counterpart to the in-memory-fixture commit tests: it confirms
+// ADR-0008's "every created transaction carries import_record_id" holds
+// against the actual transactions table, not just the in-memory fake's own
+// bookkeeping.
+func TestCommitImportBatch_WritesImportRecordIDColumn(t *testing.T) {
+	svc, _, verify := newSQLiteTestService(t, time.Date(2026, time.August, 20, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	acc := mustAccountFixtureAs(t, svc, sqliteActorID, "Checking", "bank", "USD")
+	staged, err := svc.StageImport(ctx, app.StageImportCommand{
+		ActorID: sqliteActorID, AccountRef: acc.Account.ID(), Filename: "statement.csv", SourceFormat: "csv",
+		FileContent:   []byte("Date,Description,Amount\n2026-08-01,Coffee Shop,-4.50\n"),
+		ColumnMapping: basicCSVMapping(),
+	})
+	if err != nil {
+		t.Fatalf("StageImport: %v", err)
+	}
+
+	result, err := svc.CommitImportBatch(ctx, app.CommitImportBatchCommand{ActorID: sqliteActorID, ImportBatchRef: staged.Batch.ID()})
+	if err != nil {
+		t.Fatalf("CommitImportBatch: %v", err)
+	}
+	if len(result.Transactions) != 1 {
+		t.Fatalf("len(Transactions) = %d, want 1", len(result.Transactions))
+	}
+
+	var importRecordID sql.NullString
+	if err := verify.QueryRowContext(ctx, `SELECT import_record_id FROM transactions WHERE id = ?`, result.Transactions[0].ID()).Scan(&importRecordID); err != nil {
+		t.Fatalf("query transactions.import_record_id: %v", err)
+	}
+	if !importRecordID.Valid || importRecordID.String != staged.Records[0].ID() {
+		t.Errorf("transactions.import_record_id = %v, want %q", importRecordID, staged.Records[0].ID())
+	}
+}
+
+// TestRollbackImportBatch_SoftDeletesRowButKeepsIt is
+// TestDeleteTransaction_GoneFromGetButPresentInDB's rollback counterpart:
+// ADR-0002's soft-delete model applies to a rolled-back import's
+// transactions exactly the same way it does to a manually deleted one —
+// gone from Get, still a physical row, deleted_at set.
+func TestRollbackImportBatch_SoftDeletesRowButKeepsIt(t *testing.T) {
+	svc, _, verify := newSQLiteTestService(t, time.Date(2026, time.August, 20, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	acc := mustAccountFixtureAs(t, svc, sqliteActorID, "Checking", "bank", "USD")
+	staged, err := svc.StageImport(ctx, app.StageImportCommand{
+		ActorID: sqliteActorID, AccountRef: acc.Account.ID(), Filename: "statement.csv", SourceFormat: "csv",
+		FileContent:   []byte("Date,Description,Amount\n2026-08-01,Coffee Shop,-4.50\n"),
+		ColumnMapping: basicCSVMapping(),
+	})
+	if err != nil {
+		t.Fatalf("StageImport: %v", err)
+	}
+	committed, err := svc.CommitImportBatch(ctx, app.CommitImportBatchCommand{ActorID: sqliteActorID, ImportBatchRef: staged.Batch.ID()})
+	if err != nil {
+		t.Fatalf("CommitImportBatch: %v", err)
+	}
+	txnID := committed.Transactions[0].ID()
+
+	if _, err := svc.RollbackImportBatch(ctx, app.RollbackImportBatchCommand{ActorID: sqliteActorID, ImportBatchRef: staged.Batch.ID()}); err != nil {
+		t.Fatalf("RollbackImportBatch: %v", err)
+	}
+
+	if _, _, err := svc.Transactions.Get(ctx, sqliteActorID, txnID); err == nil {
+		t.Error("Get after rollback: want an error (soft-deleted), got nil")
+	}
+
+	var count int
+	if err := verify.QueryRowContext(ctx, `SELECT count(*) FROM transactions WHERE id = ?`, txnID).Scan(&count); err != nil {
+		t.Fatalf("query transactions: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("row count for rolled-back transaction = %d, want 1 (still present, soft-deleted)", count)
+	}
+	var deletedAt *string
+	if err := verify.QueryRowContext(ctx, `SELECT deleted_at FROM transactions WHERE id = ?`, txnID).Scan(&deletedAt); err != nil {
+		t.Fatalf("query deleted_at: %v", err)
+	}
+	if deletedAt == nil {
+		t.Error("deleted_at is NULL, want it set")
 	}
 }
 

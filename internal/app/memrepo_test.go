@@ -912,3 +912,59 @@ func (m *memImportRecords) Update(_ context.Context, actorID string, r importing
 }
 
 var _ ports.ImportRecordRepository = (*memImportRecords)(nil)
+
+// memImportCommits is the in-memory ports.ImportCommitRepository fixture
+// for CommitImportBatch/RollbackImportBatch use-case tests. It composes
+// the same in-memory transaction/record/batch repositories a test's
+// Service already holds, and simply calls their own Create/Update methods
+// in sequence — this fixture has no need to prove the real adapter's
+// all-in-one-database-transaction atomicity (import_commit_repo_test.go's
+// sqlite-backed tests do that); it only needs to leave the in-memory
+// fixtures in the state a real commit or rollback would.
+type memImportCommits struct {
+	batches      ports.ImportBatchRepository
+	records      ports.ImportRecordRepository
+	transactions ports.TransactionRepository
+}
+
+func newMemImportCommits(batches ports.ImportBatchRepository, records ports.ImportRecordRepository, transactions ports.TransactionRepository) *memImportCommits {
+	return &memImportCommits{batches: batches, records: records, transactions: transactions}
+}
+
+func (m *memImportCommits) Commit(ctx context.Context, actorID string, batch importing.ImportBatch, records []importing.ImportRecord, txns []ledger.Transaction) error {
+	if batch.UserID() != actorID {
+		return errs.New(errs.NotAllowed)
+	}
+	for _, txn := range txns {
+		if err := m.transactions.Create(ctx, actorID, txn, nil); err != nil {
+			return err
+		}
+	}
+	for _, rec := range records {
+		if err := m.records.Update(ctx, actorID, rec); err != nil {
+			return err
+		}
+	}
+	return m.batches.Update(ctx, actorID, batch)
+}
+
+func (m *memImportCommits) Rollback(ctx context.Context, actorID string, batch importing.ImportBatch, transactionIDs []string, at time.Time) error {
+	if batch.UserID() != actorID {
+		return errs.New(errs.NotAllowed)
+	}
+	for _, id := range transactionIDs {
+		txn, tags, err := m.transactions.Get(ctx, actorID, id)
+		if err != nil {
+			// Already soft-deleted (a repeated rollback) or not this
+			// actor's — a no-op, the same idempotent behaviour the real
+			// adapter's WHERE deleted_at IS NULL guard produces.
+			continue
+		}
+		if err := m.transactions.Update(ctx, actorID, txn.Delete(at), tags); err != nil {
+			return err
+		}
+	}
+	return m.batches.Update(ctx, actorID, batch)
+}
+
+var _ ports.ImportCommitRepository = (*memImportCommits)(nil)

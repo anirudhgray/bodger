@@ -126,6 +126,7 @@ func newHarnessWithFxProvider(t *testing.T, provider ports.FxRateProvider) *harn
 		provider,
 		sqlite.NewImportBatchRepository(db),
 		sqlite.NewImportRecordRepository(db),
+		sqlite.NewImportCommitRepository(db),
 	)
 	if err != nil {
 		t.Fatalf("app.NewService: %v", err)
