@@ -1,9 +1,17 @@
 name: CI
 
+# Deliberately no `push: branches: [main]` trigger. This repo never commits
+# directly to main (CLAUDE.md) and every PR is brought up to date with main
+# before it's called ready (see .claude/skills/orchestrate), so a squash-merge
+# lands a tree this same workflow already validated on the PR - a push-
+# triggered rerun would just repeat that same suite (full Go tests, npm
+# checks, and a Chromium e2e install/run) against effectively the same code
+# for no new signal, on every single merge. Branch protection - which would
+# otherwise be the reason to keep a post-merge check as a backstop - isn't
+# available on this plan for a private repo, so there's no gate this trigger
+# was actually reinforcing.
 on:
   pull_request:
-    branches: [main]
-  push:
     branches: [main]
 
 # Reports are defined by calendar boundaries in the user's timezone, resolved
