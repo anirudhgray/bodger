@@ -294,6 +294,77 @@ func (m *memTransactions) Update(_ context.Context, actorID string, txn ledger.T
 
 var _ ports.TransactionRepository = (*memTransactions)(nil)
 
+// memSnapshots is an in-memory ports.SnapshotRepository (issue #226) that
+// wipes and reloads the same *memAccounts/*memCategories/*memTransactions
+// newTestService wires everywhere else, directly against their byID maps
+// rather than through their own Create methods — the same "bulk write,
+// bypassing per-row checks that a whole-tree replace has already made
+// obsolete" shape internal/adapters/sqlite.SnapshotRepository.Replace uses
+// against the real schema. It doesn't demonstrate real transactional
+// rollback (a bare map has none to demonstrate) — that guarantee is
+// exercised against the real adapter instead
+// (internal/adapters/sqlite/snapshot_repo_test.go); this fake exists so
+// RestoreSnapshot's own app-layer behaviour (ID regeneration, reference
+// remapping, envelope-version rejection) can be tested with the same fast
+// in-memory fixtures every other use-case test in this package uses.
+type memSnapshots struct {
+	accounts     *memAccounts
+	categories   *memCategories
+	transactions *memTransactions
+}
+
+func newMemSnapshots(accounts *memAccounts, categories *memCategories, transactions *memTransactions) *memSnapshots {
+	return &memSnapshots{accounts: accounts, categories: categories, transactions: transactions}
+}
+
+func (m *memSnapshots) Replace(_ context.Context, actorID string, snapshot ports.Snapshot) error {
+	for _, a := range snapshot.Accounts {
+		if a.UserID() != actorID {
+			return errs.New(errs.NotAllowed)
+		}
+	}
+	for _, c := range snapshot.Categories {
+		if c.UserID() != actorID {
+			return errs.New(errs.NotAllowed)
+		}
+	}
+	for _, st := range snapshot.Transactions {
+		if st.Transaction.UserID() != actorID {
+			return errs.New(errs.NotAllowed)
+		}
+	}
+
+	for id, a := range m.accounts.byID {
+		if a.UserID() == actorID {
+			delete(m.accounts.byID, id)
+		}
+	}
+	for id, c := range m.categories.byID {
+		if c.UserID() == actorID {
+			delete(m.categories.byID, id)
+		}
+	}
+	for id, rec := range m.transactions.byID {
+		if rec.txn.UserID() == actorID {
+			delete(m.transactions.byID, id)
+		}
+	}
+
+	for _, a := range snapshot.Accounts {
+		m.accounts.byID[a.ID()] = a
+	}
+	for _, c := range snapshot.Categories {
+		m.categories.byID[c.ID()] = c
+	}
+	for _, st := range snapshot.Transactions {
+		m.transactions.next++
+		m.transactions.byID[st.Transaction.ID()] = memTransactionRecord{txn: st.Transaction, tags: st.Tags, seq: m.transactions.next}
+	}
+	return nil
+}
+
+var _ ports.SnapshotRepository = (*memSnapshots)(nil)
+
 func hasPostingOnAccount(txn ledger.Transaction, accountID string) bool {
 	for _, p := range txn.Postings() {
 		if p.AccountID() == accountID {

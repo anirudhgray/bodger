@@ -91,6 +91,13 @@ type Service struct {
 	// its own first use-case method.
 	ImportBatches ports.ImportBatchRepository
 	ImportRecords ports.ImportRecordRepository
+
+	// Snapshots is issue #226's repository port: replacing an actor's
+	// entire ledger in one atomic transaction from a restored
+	// bodger.export/v1 document (RestoreSnapshot, restore.go). Unlike
+	// ImportBatches/ImportRecords above, this one is wired in with its
+	// first use-case method already using it, not ahead of one.
+	Snapshots ports.SnapshotRepository
 }
 
 // NewService constructs a Service from its dependencies, rejecting a nil
@@ -112,6 +119,7 @@ func NewService(
 	fxProvider ports.FxRateProvider,
 	importBatches ports.ImportBatchRepository,
 	importRecords ports.ImportRecordRepository,
+	snapshots ports.SnapshotRepository,
 ) (*Service, error) {
 	switch {
 	case clk == nil:
@@ -140,6 +148,8 @@ func NewService(
 		return nil, missingDependency("import batch repository")
 	case importRecords == nil:
 		return nil, missingDependency("import record repository")
+	case snapshots == nil:
+		return nil, missingDependency("snapshot repository")
 	}
 
 	return &Service{
@@ -157,6 +167,7 @@ func NewService(
 		FxProvider:    fxProvider,
 		ImportBatches: importBatches,
 		ImportRecords: importRecords,
+		Snapshots:     snapshots,
 	}, nil
 }
 
