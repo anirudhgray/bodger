@@ -149,6 +149,8 @@ func newTestServiceWithFxProvider(t *testing.T, frozenAt time.Time, tz string, p
 		sqlite.NewUserRepository(db), sqlite.NewSessionRepository(db), sqlite.NewAPITokenRepository(db),
 		sqlite.NewFxRateRepository(db),
 		provider,
+		sqlite.NewImportBatchRepository(db),
+		sqlite.NewImportRecordRepository(db),
 	)
 	if err != nil {
 		t.Fatalf("app.NewService: %v", err)

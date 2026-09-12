@@ -80,6 +80,17 @@ type Service struct {
 	// FxRates, never this, so the application stays fully usable with no
 	// network per ADR-0004.
 	FxProvider ports.FxRateProvider
+
+	// ImportBatches and ImportRecords are issue #208's repository ports
+	// over import_batch/import_record (ADR-0008): the staged import
+	// pipeline's only state. No use-case methods read or write through
+	// them yet — parsing/mapping/duplicate-detection (#210) and
+	// commit/rollback (#211) are separate, later issues — so these are
+	// wired in now purely so the container carries every repository the
+	// persistence layer defines, the same way FxRates was wired ahead of
+	// its own first use-case method.
+	ImportBatches ports.ImportBatchRepository
+	ImportRecords ports.ImportRecordRepository
 }
 
 // NewService constructs a Service from its dependencies, rejecting a nil
@@ -99,6 +110,8 @@ func NewService(
 	apiTokens ports.APITokenRepository,
 	fxRates ports.FxRateRepository,
 	fxProvider ports.FxRateProvider,
+	importBatches ports.ImportBatchRepository,
+	importRecords ports.ImportRecordRepository,
 ) (*Service, error) {
 	switch {
 	case clk == nil:
@@ -123,21 +136,27 @@ func NewService(
 		return nil, missingDependency("FX rate repository")
 	case fxProvider == nil:
 		return nil, missingDependency("FX rate provider")
+	case importBatches == nil:
+		return nil, missingDependency("import batch repository")
+	case importRecords == nil:
+		return nil, missingDependency("import record repository")
 	}
 
 	return &Service{
-		Clock:        clk,
-		Config:       cfg,
-		IDs:          ids,
-		Accounts:     accounts,
-		Categories:   categories,
-		Transactions: transactions,
-		Tags:         tags,
-		Users:        users,
-		Sessions:     sessions,
-		APITokens:    apiTokens,
-		FxRates:      fxRates,
-		FxProvider:   fxProvider,
+		Clock:         clk,
+		Config:        cfg,
+		IDs:           ids,
+		Accounts:      accounts,
+		Categories:    categories,
+		Transactions:  transactions,
+		Tags:          tags,
+		Users:         users,
+		Sessions:      sessions,
+		APITokens:     apiTokens,
+		FxRates:       fxRates,
+		FxProvider:    fxProvider,
+		ImportBatches: importBatches,
+		ImportRecords: importRecords,
 	}, nil
 }
 

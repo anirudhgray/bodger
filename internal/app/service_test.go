@@ -12,6 +12,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/app"
 	"github.com/anirudhgray/bodger/internal/domain"
 	"github.com/anirudhgray/bodger/internal/domain/fx"
+	"github.com/anirudhgray/bodger/internal/domain/importing"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/clock"
 	"github.com/anirudhgray/bodger/internal/platform/config"
@@ -110,6 +111,30 @@ func (fakeFxProvider) FetchRange(context.Context, string, string, domain.Date, d
 }
 func (fakeFxProvider) Name() string { return "fake" }
 
+type fakeImportBatches struct{}
+
+func (fakeImportBatches) Create(context.Context, string, importing.ImportBatch) error { return nil }
+func (fakeImportBatches) Get(context.Context, string, string) (importing.ImportBatch, error) {
+	return importing.ImportBatch{}, nil
+}
+func (fakeImportBatches) List(context.Context, string) ([]importing.ImportBatch, error) {
+	return nil, nil
+}
+func (fakeImportBatches) Update(context.Context, string, importing.ImportBatch) error { return nil }
+
+type fakeImportRecords struct{}
+
+func (fakeImportRecords) CreateBatch(context.Context, string, []importing.ImportRecord) error {
+	return nil
+}
+func (fakeImportRecords) Get(context.Context, string, string) (importing.ImportRecord, error) {
+	return importing.ImportRecord{}, nil
+}
+func (fakeImportRecords) ListByImportBatch(context.Context, string, string) ([]importing.ImportRecord, error) {
+	return nil, nil
+}
+func (fakeImportRecords) Update(context.Context, string, importing.ImportRecord) error { return nil }
+
 // TestNewService_RejectsMissingDependencies checks both halves of
 // ADR-0011's safe/internal split for a mis-wired container: the caller gets
 // an *errs.Error coded Internal (so a surface has an exit code and a
@@ -123,184 +148,242 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 	ids := idgen.NewSequence("test")
 
 	tests := []struct {
-		name         string
-		clk          clock.Clock
-		ids          idgen.Generator
-		accounts     ports.AccountRepository
-		categories   ports.CategoryRepository
-		transactions ports.TransactionRepository
-		tags         ports.TagRepository
-		users        ports.UserRepository
-		sessions     ports.SessionRepository
-		apiTokens    ports.APITokenRepository
-		fxRates      ports.FxRateRepository
-		fxProvider   ports.FxRateProvider
-		wantCause    string
+		name          string
+		clk           clock.Clock
+		ids           idgen.Generator
+		accounts      ports.AccountRepository
+		categories    ports.CategoryRepository
+		transactions  ports.TransactionRepository
+		tags          ports.TagRepository
+		users         ports.UserRepository
+		sessions      ports.SessionRepository
+		apiTokens     ports.APITokenRepository
+		fxRates       ports.FxRateRepository
+		fxProvider    ports.FxRateProvider
+		importBatches ports.ImportBatchRepository
+		importRecords ports.ImportRecordRepository
+		wantCause     string
 	}{
 		{
-			name:         "nil clock",
-			clk:          nil,
-			ids:          ids,
-			accounts:     fakeAccounts{},
-			categories:   fakeCategories{},
-			transactions: fakeTransactions{},
-			tags:         fakeTags{},
-			users:        fakeUsers{},
-			sessions:     fakeSessions{},
-			apiTokens:    fakeAPITokens{},
-			fxRates:      fakeFxRates{},
-			fxProvider:   fakeFxProvider{},
-			wantCause:    "clock",
+			name:          "nil clock",
+			clk:           nil,
+			ids:           ids,
+			accounts:      fakeAccounts{},
+			categories:    fakeCategories{},
+			transactions:  fakeTransactions{},
+			tags:          fakeTags{},
+			users:         fakeUsers{},
+			sessions:      fakeSessions{},
+			apiTokens:     fakeAPITokens{},
+			fxRates:       fakeFxRates{},
+			fxProvider:    fakeFxProvider{},
+			importBatches: fakeImportBatches{},
+			importRecords: fakeImportRecords{},
+			wantCause:     "clock",
 		},
 		{
-			name:         "nil id generator",
-			clk:          clk,
-			ids:          nil,
-			accounts:     fakeAccounts{},
-			categories:   fakeCategories{},
-			transactions: fakeTransactions{},
-			tags:         fakeTags{},
-			users:        fakeUsers{},
-			sessions:     fakeSessions{},
-			apiTokens:    fakeAPITokens{},
-			fxRates:      fakeFxRates{},
-			fxProvider:   fakeFxProvider{},
-			wantCause:    "id generator",
+			name:          "nil id generator",
+			clk:           clk,
+			ids:           nil,
+			accounts:      fakeAccounts{},
+			categories:    fakeCategories{},
+			transactions:  fakeTransactions{},
+			tags:          fakeTags{},
+			users:         fakeUsers{},
+			sessions:      fakeSessions{},
+			apiTokens:     fakeAPITokens{},
+			fxRates:       fakeFxRates{},
+			fxProvider:    fakeFxProvider{},
+			importBatches: fakeImportBatches{},
+			importRecords: fakeImportRecords{},
+			wantCause:     "id generator",
 		},
 		{
-			name:         "nil account repository",
-			clk:          clk,
-			ids:          ids,
-			accounts:     nil,
-			categories:   fakeCategories{},
-			transactions: fakeTransactions{},
-			tags:         fakeTags{},
-			users:        fakeUsers{},
-			sessions:     fakeSessions{},
-			apiTokens:    fakeAPITokens{},
-			fxRates:      fakeFxRates{},
-			fxProvider:   fakeFxProvider{},
-			wantCause:    "account repository",
+			name:          "nil account repository",
+			clk:           clk,
+			ids:           ids,
+			accounts:      nil,
+			categories:    fakeCategories{},
+			transactions:  fakeTransactions{},
+			tags:          fakeTags{},
+			users:         fakeUsers{},
+			sessions:      fakeSessions{},
+			apiTokens:     fakeAPITokens{},
+			fxRates:       fakeFxRates{},
+			fxProvider:    fakeFxProvider{},
+			importBatches: fakeImportBatches{},
+			importRecords: fakeImportRecords{},
+			wantCause:     "account repository",
 		},
 		{
-			name:         "nil category repository",
-			clk:          clk,
-			ids:          ids,
-			accounts:     fakeAccounts{},
-			categories:   nil,
-			transactions: fakeTransactions{},
-			tags:         fakeTags{},
-			users:        fakeUsers{},
-			sessions:     fakeSessions{},
-			apiTokens:    fakeAPITokens{},
-			fxRates:      fakeFxRates{},
-			fxProvider:   fakeFxProvider{},
-			wantCause:    "category repository",
+			name:          "nil category repository",
+			clk:           clk,
+			ids:           ids,
+			accounts:      fakeAccounts{},
+			categories:    nil,
+			transactions:  fakeTransactions{},
+			tags:          fakeTags{},
+			users:         fakeUsers{},
+			sessions:      fakeSessions{},
+			apiTokens:     fakeAPITokens{},
+			fxRates:       fakeFxRates{},
+			fxProvider:    fakeFxProvider{},
+			importBatches: fakeImportBatches{},
+			importRecords: fakeImportRecords{},
+			wantCause:     "category repository",
 		},
 		{
-			name:         "nil transaction repository",
-			clk:          clk,
-			ids:          ids,
-			accounts:     fakeAccounts{},
-			categories:   fakeCategories{},
-			transactions: nil,
-			tags:         fakeTags{},
-			users:        fakeUsers{},
-			sessions:     fakeSessions{},
-			apiTokens:    fakeAPITokens{},
-			fxRates:      fakeFxRates{},
-			fxProvider:   fakeFxProvider{},
-			wantCause:    "transaction repository",
+			name:          "nil transaction repository",
+			clk:           clk,
+			ids:           ids,
+			accounts:      fakeAccounts{},
+			categories:    fakeCategories{},
+			transactions:  nil,
+			tags:          fakeTags{},
+			users:         fakeUsers{},
+			sessions:      fakeSessions{},
+			apiTokens:     fakeAPITokens{},
+			fxRates:       fakeFxRates{},
+			fxProvider:    fakeFxProvider{},
+			importBatches: fakeImportBatches{},
+			importRecords: fakeImportRecords{},
+			wantCause:     "transaction repository",
 		},
 		{
-			name:         "nil tag repository",
-			clk:          clk,
-			ids:          ids,
-			accounts:     fakeAccounts{},
-			categories:   fakeCategories{},
-			transactions: fakeTransactions{},
-			tags:         nil,
-			users:        fakeUsers{},
-			sessions:     fakeSessions{},
-			apiTokens:    fakeAPITokens{},
-			fxRates:      fakeFxRates{},
-			fxProvider:   fakeFxProvider{},
-			wantCause:    "tag repository",
+			name:          "nil tag repository",
+			clk:           clk,
+			ids:           ids,
+			accounts:      fakeAccounts{},
+			categories:    fakeCategories{},
+			transactions:  fakeTransactions{},
+			tags:          nil,
+			users:         fakeUsers{},
+			sessions:      fakeSessions{},
+			apiTokens:     fakeAPITokens{},
+			fxRates:       fakeFxRates{},
+			fxProvider:    fakeFxProvider{},
+			importBatches: fakeImportBatches{},
+			importRecords: fakeImportRecords{},
+			wantCause:     "tag repository",
 		},
 		{
-			name:         "nil user repository",
-			clk:          clk,
-			ids:          ids,
-			accounts:     fakeAccounts{},
-			categories:   fakeCategories{},
-			transactions: fakeTransactions{},
-			tags:         fakeTags{},
-			users:        nil,
-			sessions:     fakeSessions{},
-			apiTokens:    fakeAPITokens{},
-			fxRates:      fakeFxRates{},
-			fxProvider:   fakeFxProvider{},
-			wantCause:    "user repository",
+			name:          "nil user repository",
+			clk:           clk,
+			ids:           ids,
+			accounts:      fakeAccounts{},
+			categories:    fakeCategories{},
+			transactions:  fakeTransactions{},
+			tags:          fakeTags{},
+			users:         nil,
+			sessions:      fakeSessions{},
+			apiTokens:     fakeAPITokens{},
+			fxRates:       fakeFxRates{},
+			fxProvider:    fakeFxProvider{},
+			importBatches: fakeImportBatches{},
+			importRecords: fakeImportRecords{},
+			wantCause:     "user repository",
 		},
 		{
-			name:         "nil session repository",
-			clk:          clk,
-			ids:          ids,
-			accounts:     fakeAccounts{},
-			categories:   fakeCategories{},
-			transactions: fakeTransactions{},
-			tags:         fakeTags{},
-			users:        fakeUsers{},
-			sessions:     nil,
-			apiTokens:    fakeAPITokens{},
-			fxRates:      fakeFxRates{},
-			fxProvider:   fakeFxProvider{},
-			wantCause:    "session repository",
+			name:          "nil session repository",
+			clk:           clk,
+			ids:           ids,
+			accounts:      fakeAccounts{},
+			categories:    fakeCategories{},
+			transactions:  fakeTransactions{},
+			tags:          fakeTags{},
+			users:         fakeUsers{},
+			sessions:      nil,
+			apiTokens:     fakeAPITokens{},
+			fxRates:       fakeFxRates{},
+			fxProvider:    fakeFxProvider{},
+			importBatches: fakeImportBatches{},
+			importRecords: fakeImportRecords{},
+			wantCause:     "session repository",
 		},
 		{
-			name:         "nil API token repository",
-			clk:          clk,
-			ids:          ids,
-			accounts:     fakeAccounts{},
-			categories:   fakeCategories{},
-			transactions: fakeTransactions{},
-			tags:         fakeTags{},
-			users:        fakeUsers{},
-			sessions:     fakeSessions{},
-			apiTokens:    nil,
-			fxRates:      fakeFxRates{},
-			fxProvider:   fakeFxProvider{},
-			wantCause:    "API token repository",
+			name:          "nil API token repository",
+			clk:           clk,
+			ids:           ids,
+			accounts:      fakeAccounts{},
+			categories:    fakeCategories{},
+			transactions:  fakeTransactions{},
+			tags:          fakeTags{},
+			users:         fakeUsers{},
+			sessions:      fakeSessions{},
+			apiTokens:     nil,
+			fxRates:       fakeFxRates{},
+			fxProvider:    fakeFxProvider{},
+			importBatches: fakeImportBatches{},
+			importRecords: fakeImportRecords{},
+			wantCause:     "API token repository",
 		},
 		{
-			name:         "nil FX rate repository",
-			clk:          clk,
-			ids:          ids,
-			accounts:     fakeAccounts{},
-			categories:   fakeCategories{},
-			transactions: fakeTransactions{},
-			tags:         fakeTags{},
-			users:        fakeUsers{},
-			sessions:     fakeSessions{},
-			apiTokens:    fakeAPITokens{},
-			fxRates:      nil,
-			fxProvider:   fakeFxProvider{},
-			wantCause:    "FX rate repository",
+			name:          "nil FX rate repository",
+			clk:           clk,
+			ids:           ids,
+			accounts:      fakeAccounts{},
+			categories:    fakeCategories{},
+			transactions:  fakeTransactions{},
+			tags:          fakeTags{},
+			users:         fakeUsers{},
+			sessions:      fakeSessions{},
+			apiTokens:     fakeAPITokens{},
+			fxRates:       nil,
+			fxProvider:    fakeFxProvider{},
+			importBatches: fakeImportBatches{},
+			importRecords: fakeImportRecords{},
+			wantCause:     "FX rate repository",
 		},
 		{
-			name:         "nil FX rate provider",
-			clk:          clk,
-			ids:          ids,
-			accounts:     fakeAccounts{},
-			categories:   fakeCategories{},
-			transactions: fakeTransactions{},
-			tags:         fakeTags{},
-			users:        fakeUsers{},
-			sessions:     fakeSessions{},
-			apiTokens:    fakeAPITokens{},
-			fxRates:      fakeFxRates{},
-			fxProvider:   nil,
-			wantCause:    "FX rate provider",
+			name:          "nil FX rate provider",
+			clk:           clk,
+			ids:           ids,
+			accounts:      fakeAccounts{},
+			categories:    fakeCategories{},
+			transactions:  fakeTransactions{},
+			tags:          fakeTags{},
+			users:         fakeUsers{},
+			sessions:      fakeSessions{},
+			apiTokens:     fakeAPITokens{},
+			fxRates:       fakeFxRates{},
+			fxProvider:    nil,
+			importBatches: fakeImportBatches{},
+			importRecords: fakeImportRecords{},
+			wantCause:     "FX rate provider",
+		},
+		{
+			name:          "nil import batch repository",
+			clk:           clk,
+			ids:           ids,
+			accounts:      fakeAccounts{},
+			categories:    fakeCategories{},
+			transactions:  fakeTransactions{},
+			tags:          fakeTags{},
+			users:         fakeUsers{},
+			sessions:      fakeSessions{},
+			apiTokens:     fakeAPITokens{},
+			fxRates:       fakeFxRates{},
+			fxProvider:    fakeFxProvider{},
+			importBatches: nil,
+			importRecords: fakeImportRecords{},
+			wantCause:     "import batch repository",
+		},
+		{
+			name:          "nil import record repository",
+			clk:           clk,
+			ids:           ids,
+			accounts:      fakeAccounts{},
+			categories:    fakeCategories{},
+			transactions:  fakeTransactions{},
+			tags:          fakeTags{},
+			users:         fakeUsers{},
+			sessions:      fakeSessions{},
+			apiTokens:     fakeAPITokens{},
+			fxRates:       fakeFxRates{},
+			fxProvider:    fakeFxProvider{},
+			importBatches: fakeImportBatches{},
+			importRecords: nil,
+			wantCause:     "import record repository",
 		},
 	}
 
@@ -309,6 +392,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			_, err := app.NewService(
 				tt.clk, cfg, tt.ids, tt.accounts, tt.categories, tt.transactions, tt.tags,
 				tt.users, tt.sessions, tt.apiTokens, tt.fxRates, tt.fxProvider,
+				tt.importBatches, tt.importRecords,
 			)
 			if err == nil {
 				t.Fatalf("NewService(...) returned no error, want one caused by a nil %s", tt.wantCause)
@@ -342,6 +426,7 @@ func TestNewService_BuildsWithEveryDependency(t *testing.T) {
 	svc, err := app.NewService(
 		clk, cfg, ids, fakeAccounts{}, fakeCategories{}, fakeTransactions{}, fakeTags{},
 		fakeUsers{}, fakeSessions{}, fakeAPITokens{}, fakeFxRates{}, fakeFxProvider{},
+		fakeImportBatches{}, fakeImportRecords{},
 	)
 	if err != nil {
 		t.Fatalf("NewService(...) unexpected error: %v", err)
@@ -364,6 +449,9 @@ func TestNewService_BuildsWithEveryDependency(t *testing.T) {
 	if svc.FxRates == nil {
 		t.Error("Service.FxRates should be non-nil after a successful NewService call")
 	}
+	if svc.ImportBatches == nil || svc.ImportRecords == nil {
+		t.Error("Service.ImportBatches and Service.ImportRecords should be non-nil after a successful NewService call")
+	}
 }
 
 // TestService_UsesInjectedClockNotWallClock is a light guard that Service
@@ -378,6 +466,7 @@ func TestService_UsesInjectedClockNotWallClock(t *testing.T) {
 	svc, err := app.NewService(
 		clk, config.Defaults, idgen.NewSequence("t"), fakeAccounts{}, fakeCategories{}, fakeTransactions{}, fakeTags{},
 		fakeUsers{}, fakeSessions{}, fakeAPITokens{}, fakeFxRates{}, fakeFxProvider{},
+		fakeImportBatches{}, fakeImportRecords{},
 	)
 	if err != nil {
 		t.Fatalf("NewService(...) unexpected error: %v", err)
