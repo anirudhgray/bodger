@@ -512,6 +512,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace everything with a canonical JSON backup.
+         * @description Wipes and reloads the actor's entire ledger - every account, category, and transaction - from "document", a canonical JSON backup exactly as produced by GET /api/v1/export/json. This can't be undone and has no preview step: the request must set "confirm": true, or it's rejected before anything is touched.
+         */
+        post: operations["restoreSnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/transactions": {
         parameters: {
             query?: never;
@@ -1112,6 +1132,20 @@ export interface components {
         };
         ReportingCurrencyEnvelope: {
             data: components["schemas"]["ReportingCurrency"];
+        };
+        RestoreSnapshot: {
+            accounts: number;
+            categories: number;
+            transactions: number;
+        };
+        RestoreSnapshotEnvelope: {
+            data: components["schemas"]["RestoreSnapshot"];
+        };
+        RestoreSnapshotRequest: {
+            /** @description Must be true. Restoring replaces every account, category, and transaction you currently have. */
+            confirm: boolean;
+            /** @description The canonical JSON document to restore, exactly as produced by GET /api/v1/export/json. */
+            document: unknown;
         };
         SavingsRate: {
             currency: string;
@@ -2316,6 +2350,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OkEnvelope"];
+                };
+            };
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    restoreSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreSnapshotRequest"];
+            };
+        };
+        responses: {
+            /** @description The restore completed; how many accounts, categories, and transactions were installed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreSnapshotEnvelope"];
                 };
             };
             422: components["responses"]["InvalidInput"];
