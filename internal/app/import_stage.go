@@ -65,7 +65,17 @@ func (s *Service) StageImport(ctx context.Context, cmd StageImportCommand) (Stag
 		return StageImportResult{}, attachField(err, "account_ref")
 	}
 
+	// An empty format defaults to "csv" here, in the application layer,
+	// rather than a surface hardcoding that default itself (ADR-0005: no
+	// surface may "resolve any default") — today it's also the only
+	// legal value, so the two cases collapse, but the distinction still
+	// matters: a surface passes through whatever it was given, including
+	// nothing, and this method is the one place that decides what
+	// nothing means.
 	format := strings.ToLower(strings.TrimSpace(cmd.SourceFormat))
+	if format == "" {
+		format = "csv"
+	}
 	if format != "csv" {
 		return StageImportResult{}, errs.New(errs.InvalidInput).
 			Explain("%q isn't a supported import format.", cmd.SourceFormat).

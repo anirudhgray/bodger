@@ -638,6 +638,32 @@ state machine rather than reaching the database twice.
 `app.ImportBatchTransactions` and `app.TransactionImportRecord` answer
 ADR-0008's two-directional provenance query. Surface wiring (#212) is a
 separate, later issue.
+[#212](https://github.com/anirudhgray/bodger/issues/212) wires #210/#211's
+pipeline onto both surfaces: `POST /api/v1/imports`/`bodger import upload`
+(stage), `GET /api/v1/imports`/`bodger import list` and `GET
+/api/v1/imports/{id}`/`bodger import show` (history and status lookup),
+`GET /api/v1/imports/{id}/records`/`bodger import records` (staged rows
+with their duplicate/transfer flags), `POST
+/api/v1/import-records/{id}/resolve`/`bodger import resolve` (the user's
+confirm/dismiss decision), and `POST /api/v1/imports/{id}/commit`/`rollback`
+with their CLI equivalents. Two design decisions this issue had to make
+that neither #210 nor #211 settled: upload's request body is the
+uploaded file's own raw bytes, not JSON — the target account, filename,
+and CSV column mapping travel as query parameters/flags instead, mirroring
+`/api/v1/export/*`'s raw-bytes convention in reverse (`router.go` gains a
+`RawRequestContentType` field alongside its existing
+`RawResponseContentType` for this); and reviewing a record's duplicate
+proposal needed a use case neither prior issue built
+(`app.ResolveImportRecord`, `internal/app/import_review.go`, together with
+`app.ListImportBatches`/`GetImportBatch`/`ListImportRecords`) — there is no
+separate "resolve a transfer candidate" verb, since a transfer candidate
+(`WithTransferCandidate`) is advisory only and carries no resolution field
+of its own; what actually blocks a commit is always a record's
+`DuplicateMatch`, which `ResolveImportRecord` already handles. Conformance
+coverage follows `export_conformance_test.go`'s precedent (a handful of
+focused test functions, not `cases_test.go`'s single table) since an
+import operation's inputs vary too much between steps to fit one row
+shape.
 
 **Scope addition: restoring a canonical JSON backup.** The original M6
 issue set (#208-215) never actually scoped a way to load a canonical

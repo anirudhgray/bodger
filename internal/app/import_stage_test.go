@@ -441,6 +441,28 @@ func TestStageImport_CurrencyFallsBackToAccountCurrency(t *testing.T) {
 	}
 }
 
+// TestStageImport_EmptyFormatDefaultsToCSV proves the application layer,
+// not a surface, is what decides an omitted format means "csv" —
+// ADR-0005: "no surface may resolve any default." Issue #212's HTTP/CLI
+// surfaces both pass an omitted format through as "" rather than
+// hardcoding "csv" themselves.
+func TestStageImport_EmptyFormatDefaultsToCSV(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "Checking", "bank", "USD")
+
+	result, err := svc.StageImport(ctx, app.StageImportCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), Filename: "a.csv", SourceFormat: "",
+		FileContent: []byte("Date,Description,Amount\n2026-08-01,Coffee,-4.50\n"), ColumnMapping: basicCSVMapping(),
+	})
+	if err != nil {
+		t.Fatalf("StageImport: %v", err)
+	}
+	if result.Batch.SourceFormat() != "csv" {
+		t.Errorf("Batch.SourceFormat() = %q, want csv", result.Batch.SourceFormat())
+	}
+}
+
 func TestStageImport_RejectsUnsupportedFormat(t *testing.T) {
 	svc := newTestService(t, time.Date(2026, time.August, 20, 0, 0, 0, 0, time.UTC), "UTC")
 	ctx := context.Background()
