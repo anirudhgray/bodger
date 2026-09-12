@@ -644,6 +644,26 @@ domain type exists before M7, and no port method enumerates every stored
 #214's web restore flow are still open; #215's round-trip test can now
 build on #226 as its dependency note expected.
 
+**#227 wires that restore use case onto REST and CLI, both refusing to
+run without an explicit confirmation.** `POST /api/v1/restore` takes the
+backup document under a `"document"` field and only proceeds when the
+request also sets `"confirm": true`; a request that omits or falsifies
+it is rejected before `RestoreSnapshot` is ever called, not merely
+before its side effects land. `bodger restore [file] --yes` is the CLI
+mirror — reading the backup from `file`, or from standard input when no
+file is given — and, the same way, refuses outright without `--yes`
+rather than prompting interactively, since there's no terminal to
+interactively confirm against on a non-interactive invocation.
+`internal/surface/conformance/restore_conformance_test.go` extends the
+CLI/HTTP conformance suite to this operation: because a restore wipes an
+actor's *entire* ledger rather than adding to it, each surface's case
+runs against its own freshly-seeded harness (unlike the read-only export
+conformance tests, which safely share one), both restored from the same
+document built from a third, independent harness, and their resulting
+state compared against each other — proving the two surfaces install
+identical data, not just that each happens to work alone. #214's web
+restore flow remains the only open piece of this scope addition.
+
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
