@@ -1,15 +1,5 @@
 name: CI
 
-# Deliberately no `push: branches: [main]` trigger. This repo never commits
-# directly to main (CLAUDE.md) and every PR is brought up to date with main
-# before it's called ready (see .claude/skills/orchestrate), so a squash-merge
-# lands a tree this same workflow already validated on the PR - a push-
-# triggered rerun would just repeat that same suite (full Go tests, npm
-# checks, and a Chromium e2e install/run) against effectively the same code
-# for no new signal, on every single merge. Branch protection - which would
-# otherwise be the reason to keep a post-merge check as a backstop - isn't
-# available on this plan for a private repo, so there's no gate this trigger
-# was actually reinforcing.
 on:
   pull_request:
     branches: [main]
@@ -34,7 +24,8 @@ concurrency:
 # against actual HTTP requests (web/e2e/global-setup.ts) — a stronger
 # proof than a bare, unrun `make build` compile. Adding a third job that
 # repeats both toolchains' setup for coverage already provided by the
-# other two isn't worth the extra Actions minutes.
+# other two isn't worth the extra Actions minutes. (Push to main runs its
+# own separate, much lighter build-only check — see build-main.yml.)
 jobs:
   # A commit that only touches one side (e.g. web/ only, or internal/... only)
   # shouldn't pay for the other side's job at all. `internal/surface/http/**`
