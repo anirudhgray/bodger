@@ -33,10 +33,26 @@ func (r *CategoryRepository) Create(ctx context.Context, actorID string, categor
 	}
 
 	now := formatTime(r.db.clock.Now())
+	if err := insertCategoryRow(ctx, r.db.write, actorID, category, now); err != nil {
+		return err
+	}
+	return nil
+}
+
+// insertCategoryRow writes one categories row through tx. It's shared by
+// CategoryRepository.Create (a single row, its own implicit transaction,
+// preceded by this type's own checkNoCycle) and SnapshotRepository.Replace
+// (issue #226: every restored category, inside the one transaction that
+// replaces an actor's whole ledger — cycle detection there is the
+// application layer's job instead, since a restore installs an entire tree
+// at once rather than one category at a time against an already-consistent
+// stored tree) — the same INSERT either way, so the two write paths can't
+// drift on which columns get written.
+func insertCategoryRow(ctx context.Context, tx execer, actorID string, category ledger.Category, now string) *errs.Error {
 	parentID, hasParent := category.ParentID()
 	archivedAt, isArchived := category.ArchivedAt()
 
-	_, err := r.db.write.ExecContext(ctx, `
+	_, err := tx.ExecContext(ctx, `
 		INSERT INTO categories (id, user_id, parent_id, name, kind, archived_at, sort_order, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,

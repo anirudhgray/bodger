@@ -144,6 +144,10 @@ func (fakeImportCommits) Rollback(context.Context, string, importing.ImportBatch
 	return nil
 }
 
+type fakeSnapshots struct{}
+
+func (fakeSnapshots) Replace(context.Context, string, ports.Snapshot) error { return nil }
+
 // TestNewService_RejectsMissingDependencies checks both halves of
 // ADR-0011's safe/internal split for a mis-wired container: the caller gets
 // an *errs.Error coded Internal (so a surface has an exit code and a
@@ -172,6 +176,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 		importBatches ports.ImportBatchRepository
 		importRecords ports.ImportRecordRepository
 		importCommits ports.ImportCommitRepository
+		snapshots     ports.SnapshotRepository
 		wantCause     string
 	}{
 		{
@@ -190,6 +195,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importBatches: fakeImportBatches{},
 			importRecords: fakeImportRecords{},
 			importCommits: fakeImportCommits{},
+			snapshots:     fakeSnapshots{},
 			wantCause:     "clock",
 		},
 		{
@@ -208,6 +214,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importBatches: fakeImportBatches{},
 			importRecords: fakeImportRecords{},
 			importCommits: fakeImportCommits{},
+			snapshots:     fakeSnapshots{},
 			wantCause:     "id generator",
 		},
 		{
@@ -226,6 +233,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importBatches: fakeImportBatches{},
 			importRecords: fakeImportRecords{},
 			importCommits: fakeImportCommits{},
+			snapshots:     fakeSnapshots{},
 			wantCause:     "account repository",
 		},
 		{
@@ -244,6 +252,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importBatches: fakeImportBatches{},
 			importRecords: fakeImportRecords{},
 			importCommits: fakeImportCommits{},
+			snapshots:     fakeSnapshots{},
 			wantCause:     "category repository",
 		},
 		{
@@ -262,6 +271,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importBatches: fakeImportBatches{},
 			importRecords: fakeImportRecords{},
 			importCommits: fakeImportCommits{},
+			snapshots:     fakeSnapshots{},
 			wantCause:     "transaction repository",
 		},
 		{
@@ -280,6 +290,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importBatches: fakeImportBatches{},
 			importRecords: fakeImportRecords{},
 			importCommits: fakeImportCommits{},
+			snapshots:     fakeSnapshots{},
 			wantCause:     "tag repository",
 		},
 		{
@@ -298,6 +309,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importBatches: fakeImportBatches{},
 			importRecords: fakeImportRecords{},
 			importCommits: fakeImportCommits{},
+			snapshots:     fakeSnapshots{},
 			wantCause:     "user repository",
 		},
 		{
@@ -316,6 +328,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importBatches: fakeImportBatches{},
 			importRecords: fakeImportRecords{},
 			importCommits: fakeImportCommits{},
+			snapshots:     fakeSnapshots{},
 			wantCause:     "session repository",
 		},
 		{
@@ -334,6 +347,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importBatches: fakeImportBatches{},
 			importRecords: fakeImportRecords{},
 			importCommits: fakeImportCommits{},
+			snapshots:     fakeSnapshots{},
 			wantCause:     "API token repository",
 		},
 		{
@@ -352,6 +366,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importBatches: fakeImportBatches{},
 			importRecords: fakeImportRecords{},
 			importCommits: fakeImportCommits{},
+			snapshots:     fakeSnapshots{},
 			wantCause:     "FX rate repository",
 		},
 		{
@@ -370,6 +385,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importBatches: fakeImportBatches{},
 			importRecords: fakeImportRecords{},
 			importCommits: fakeImportCommits{},
+			snapshots:     fakeSnapshots{},
 			wantCause:     "FX rate provider",
 		},
 		{
@@ -388,6 +404,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importBatches: nil,
 			importRecords: fakeImportRecords{},
 			importCommits: fakeImportCommits{},
+			snapshots:     fakeSnapshots{},
 			wantCause:     "import batch repository",
 		},
 		{
@@ -406,6 +423,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importBatches: fakeImportBatches{},
 			importRecords: nil,
 			importCommits: fakeImportCommits{},
+			snapshots:     fakeSnapshots{},
 			wantCause:     "import record repository",
 		},
 		{
@@ -424,7 +442,27 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importBatches: fakeImportBatches{},
 			importRecords: fakeImportRecords{},
 			importCommits: nil,
+			snapshots:     fakeSnapshots{},
 			wantCause:     "import commit repository",
+		},
+		{
+			name:          "nil snapshot repository",
+			clk:           clk,
+			ids:           ids,
+			accounts:      fakeAccounts{},
+			categories:    fakeCategories{},
+			transactions:  fakeTransactions{},
+			tags:          fakeTags{},
+			users:         fakeUsers{},
+			sessions:      fakeSessions{},
+			apiTokens:     fakeAPITokens{},
+			fxRates:       fakeFxRates{},
+			fxProvider:    fakeFxProvider{},
+			importBatches: fakeImportBatches{},
+			importRecords: fakeImportRecords{},
+			importCommits: fakeImportCommits{},
+			snapshots:     nil,
+			wantCause:     "snapshot repository",
 		},
 	}
 
@@ -433,7 +471,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			_, err := app.NewService(
 				tt.clk, cfg, tt.ids, tt.accounts, tt.categories, tt.transactions, tt.tags,
 				tt.users, tt.sessions, tt.apiTokens, tt.fxRates, tt.fxProvider,
-				tt.importBatches, tt.importRecords, tt.importCommits,
+				tt.importBatches, tt.importRecords, tt.importCommits, tt.snapshots,
 			)
 			if err == nil {
 				t.Fatalf("NewService(...) returned no error, want one caused by a nil %s", tt.wantCause)
@@ -467,7 +505,7 @@ func TestNewService_BuildsWithEveryDependency(t *testing.T) {
 	svc, err := app.NewService(
 		clk, cfg, ids, fakeAccounts{}, fakeCategories{}, fakeTransactions{}, fakeTags{},
 		fakeUsers{}, fakeSessions{}, fakeAPITokens{}, fakeFxRates{}, fakeFxProvider{},
-		fakeImportBatches{}, fakeImportRecords{}, fakeImportCommits{},
+		fakeImportBatches{}, fakeImportRecords{}, fakeImportCommits{}, fakeSnapshots{},
 	)
 	if err != nil {
 		t.Fatalf("NewService(...) unexpected error: %v", err)
@@ -493,6 +531,9 @@ func TestNewService_BuildsWithEveryDependency(t *testing.T) {
 	if svc.ImportBatches == nil || svc.ImportRecords == nil || svc.ImportCommits == nil {
 		t.Error("Service.ImportBatches, Service.ImportRecords, and Service.ImportCommits should be non-nil after a successful NewService call")
 	}
+	if svc.Snapshots == nil {
+		t.Error("Service.Snapshots should be non-nil after a successful NewService call")
+	}
 }
 
 // TestService_UsesInjectedClockNotWallClock is a light guard that Service
@@ -507,7 +548,7 @@ func TestService_UsesInjectedClockNotWallClock(t *testing.T) {
 	svc, err := app.NewService(
 		clk, config.Defaults, idgen.NewSequence("t"), fakeAccounts{}, fakeCategories{}, fakeTransactions{}, fakeTags{},
 		fakeUsers{}, fakeSessions{}, fakeAPITokens{}, fakeFxRates{}, fakeFxProvider{},
-		fakeImportBatches{}, fakeImportRecords{}, fakeImportCommits{},
+		fakeImportBatches{}, fakeImportRecords{}, fakeImportCommits{}, fakeSnapshots{},
 	)
 	if err != nil {
 		t.Fatalf("NewService(...) unexpected error: %v", err)

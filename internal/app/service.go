@@ -94,6 +94,13 @@ type Service struct {
 	// transactions in a single database transaction, and its mirror,
 	// rolling a committed batch back.
 	ImportCommits ports.ImportCommitRepository
+
+	// Snapshots is issue #226's repository port: replacing an actor's
+	// entire ledger in one atomic transaction from a restored
+	// bodger.export/v1 document (RestoreSnapshot, restore.go). Unlike
+	// ImportBatches/ImportRecords above, this one is wired in with its
+	// first use-case method already using it, not ahead of one.
+	Snapshots ports.SnapshotRepository
 }
 
 // NewService constructs a Service from its dependencies, rejecting a nil
@@ -116,6 +123,7 @@ func NewService(
 	importBatches ports.ImportBatchRepository,
 	importRecords ports.ImportRecordRepository,
 	importCommits ports.ImportCommitRepository,
+	snapshots ports.SnapshotRepository,
 ) (*Service, error) {
 	switch {
 	case clk == nil:
@@ -146,6 +154,8 @@ func NewService(
 		return nil, missingDependency("import record repository")
 	case importCommits == nil:
 		return nil, missingDependency("import commit repository")
+	case snapshots == nil:
+		return nil, missingDependency("snapshot repository")
 	}
 
 	return &Service{
@@ -164,6 +174,7 @@ func NewService(
 		ImportBatches: importBatches,
 		ImportRecords: importRecords,
 		ImportCommits: importCommits,
+		Snapshots:     snapshots,
 	}, nil
 }
 

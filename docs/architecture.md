@@ -681,6 +681,27 @@ wires it onto REST/CLI behind an explicit confirmation step, #214's
 scope now includes a restore-from-backup flow in the web UI, and #215
 now depends on #226 as well.
 
+**#226 lands that restore use case.** `internal/ports.SnapshotRepository`
+(a new port, `Replace`) and its `internal/adapters/sqlite` implementation
+wipe an actor's existing accounts, categories, and transactions (postings
+and tags cascade with them) and reload a full replacement set, all in one
+write transaction — `internal/adapters/sqlite/account_repo.go` and
+`category_repo.go` factor `insertAccountRow`/`insertCategoryRow` out of
+`Create` so the two write paths share one `INSERT`. `internal/app/restore.go`'s
+`RestoreSnapshot` validates the document's format version exactly against
+`bodger.export/v1` — anything unknown or missing is rejected, never
+guessed at — then rebuilds every account, category, and
+transaction/posting with freshly generated IDs, remapping every internal
+reference (a posting's account/category, a category's parent, a
+transaction's related transaction) to the newly generated ones before
+handing the result to `SnapshotRepository.Replace`. Budgets/budget lines
+and FX rates are still absent from a restore for the same reason
+`ExportSnapshot` doesn't emit them yet (#209's own scope note): no budget
+domain type exists before M7, and no port method enumerates every stored
+`fx_rate` row. #227 (REST/CLI wiring behind a confirmation step) and
+#214's web restore flow are still open; #215's round-trip test can now
+build on #226 as its dependency note expected.
+
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
