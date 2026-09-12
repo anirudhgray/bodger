@@ -31,11 +31,24 @@ func (r *AccountRepository) Create(ctx context.Context, actorID string, account 
 	}
 
 	now := formatTime(r.db.clock.Now())
+	if err := insertAccountRow(ctx, r.db.write, actorID, account, now); err != nil {
+		return err
+	}
+	return nil
+}
+
+// insertAccountRow writes one accounts row through tx. It's shared by
+// AccountRepository.Create (a single row, its own implicit transaction) and
+// SnapshotRepository.Replace (issue #226: every restored account, inside
+// the one transaction that replaces an actor's whole ledger) — the same
+// INSERT either way, so the two write paths can't drift on which columns
+// get written.
+func insertAccountRow(ctx context.Context, tx execer, actorID string, account ledger.Account, now string) *errs.Error {
 	obDate, hasOBDate := account.OpeningBalanceDate()
 	institution, hasInstitution := account.Institution()
 	archivedAt, isArchived := account.ArchivedAt()
 
-	_, err := r.db.write.ExecContext(ctx, `
+	_, err := tx.ExecContext(ctx, `
 		INSERT INTO accounts (id, user_id, name, kind, currency, institution, opening_balance_minor, opening_balance_date, archived_at, sort_order, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
