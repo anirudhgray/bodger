@@ -250,6 +250,28 @@ An error comes back the same shape either way — as plain text normally, or as 
 
 ---
 
+## Exporting your data
+
+`bodger export json` downloads everything you have — every account, category, and transaction — as one JSON file. This is the format to keep as a backup: it's the only one a re-import can restore from exactly.
+
+```sh
+bodger export json -o backup.json
+```
+
+Leave off `-o` to print the file to standard output instead of writing it — useful for piping straight into another command or a script.
+
+`bodger export csv` downloads your transactions as a spreadsheet-friendly CSV, one row per transaction (a transaction split across more than one category becomes several rows sharing the same date and description). It accepts the same filter flags as `bodger report` — see the Command reference below — so you can export just one account, one category, or one date range:
+
+```sh
+bodger export csv --account "HDFC Savings" --from 2026-08-01 --to 2026-08-31 -o august.csv
+```
+
+CSV is for spreadsheets, not backups — a split transaction can't be told apart from two separate ones once it's flattened into rows. Use `bodger export json` if you ever need to restore your data.
+
+The REST API offers the same two downloads at `GET /api/v1/export/json` and `GET /api/v1/export/csv`.
+
+---
+
 ## Running the REST API
 
 `bodger serve` starts a REST API server backed by the same database and the same application logic as the command line — nothing about how a transaction is recorded or validated differs between the two.
@@ -417,7 +439,7 @@ Add `--expires <date>` to `token create` to give a token a fixed expiry instead 
 
 ## Command reference
 
-All commands default to plain-text output; add `--json` to any of them for machine-readable output instead. Every `bodger report` subcommand below also accepts the same `--account`/`--category`/`--type`/`--from`/`--to`/`--filter-currency`/`--amount-min`/`--amount-max`/`--description`/`--tag`/`--tag-mode` filter flags (shortened to `[filters]` in the table); `trends` and `category-trends` ignore `--from`/`--to` except under `--granularity custom`, per the Analytics section above.
+All commands default to plain-text output; add `--json` to any of them for machine-readable output instead. Every `bodger report` subcommand and `bodger export csv` below also accepts the same `--account`/`--category`/`--type`/`--from`/`--to`/`--filter-currency`/`--amount-min`/`--amount-max`/`--description`/`--tag`/`--tag-mode` filter flags (shortened to `[filters]` in the table); `trends` and `category-trends` ignore `--from`/`--to` except under `--granularity custom`, per the Analytics section above.
 
 | Command | What it does |
 | --- | --- |
@@ -434,6 +456,8 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | `bodger report top-transactions --policy [--currency] [--pinned-date] [--limit] [filters]` | Your largest transactions in a period, by absolute amount |
 | `bodger report average-transaction-size --policy [--currency] [--pinned-date] [filters]` | Mean transaction size, overall and by top-level category |
 | `bodger report category-trends --policy [--currency] [--pinned-date] [--granularity] [filters]` | Per-category spending/income trend deltas |
+| `bodger export json [--output]` | Download a complete backup of everything you have, as JSON |
+| `bodger export csv [--output] [filters]` | Download your transactions as CSV |
 | `bodger transactions list [--account] [--category] [--type] [--since] [--until] [--limit] [--offset]` | List what you've recorded, newest first |
 | `bodger transactions edit <id> --amount <amount> --description <text> [--account] [--category] [--currency] [--from] [--to] [--to-amount] [--on] [--tag] [--note]` | Correct a transaction — replaces every value |
 | `bodger transactions delete <id>` | Delete a transaction you recorded by mistake |
