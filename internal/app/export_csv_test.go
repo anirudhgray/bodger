@@ -196,6 +196,54 @@ func TestExportCSV_QuotesDescriptionsWithCommasAndQuotes(t *testing.T) {
 	}
 }
 
+// TestExportCSV_FilterScopesRows is issue #213's addition: ExportCSV's
+// Filter narrows which transactions produce rows, the same
+// TransactionFilterInput dimensions every other filterable query resolves
+// (ADR-0009) -- here exercised via AccountRef, since that's enough to
+// prove the filter actually reaches ExportSnapshot's underlying
+// Transactions.List call rather than being silently ignored.
+func TestExportCSV_FilterScopesRows(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	savings := mustAccountFixture(t, svc, "Savings", "bank", "INR")
+	checking := mustAccountFixture(t, svc, "Checking", "bank", "INR")
+	cat := mustCategoryFixture(t, svc, "Groceries", "expense")
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: savings.Account.ID(), Amount: "500", CategoryRef: cat.Category.ID(),
+		Date: "2026-08-14", Description: "Savings spend",
+	}); err != nil {
+		t.Fatalf("RecordOutflow(savings): %v", err)
+	}
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: checking.Account.ID(), Amount: "300", CategoryRef: cat.Category.ID(),
+		Date: "2026-08-14", Description: "Checking spend",
+	}); err != nil {
+		t.Fatalf("RecordOutflow(checking): %v", err)
+	}
+
+	out, err := svc.ExportCSV(ctx, app.ExportCSVQuery{
+		ActorID: testActorID,
+		Filter:  app.TransactionFilterInput{AccountRef: savings.Account.ID()},
+	})
+	if err != nil {
+		t.Fatalf("ExportCSV: %v", err)
+	}
+	rows := mustParseCSV(t, out)
+	if len(rows) != 2 {
+		t.Fatalf("len(rows) = %d, want 2 (header + the one Savings posting)", len(rows))
+	}
+	descCol := 0
+	for i, h := range rows[0] {
+		if h == "description" {
+			descCol = i
+		}
+	}
+	if rows[1][descCol] != "Savings spend" {
+		t.Errorf("description = %q, want %q (Checking's row should have been filtered out)", rows[1][descCol], "Savings spend")
+	}
+}
+
 // TestExportCSV_DeterministicAcrossRepeatedCalls mirrors
 // TestExportJSON_DeterministicAcrossRepeatedCalls for the CSV writer: same
 // underlying data must produce byte-identical CSV output on every call.

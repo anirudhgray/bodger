@@ -218,10 +218,11 @@ type ExportJSONQuery struct {
 }
 
 // ExportJSON implements issue #209's canonical-JSON export use case: fetch
-// the actor's full domain snapshot, then encode it as ADR-0008's
-// bodger.export/v1 document.
+// the actor's full, unfiltered domain snapshot (the JSON export is always
+// a complete backup -- ADR-0008 -- unlike ExportCSV, which accepts a
+// filter), then encode it as ADR-0008's bodger.export/v1 document.
 func (s *Service) ExportJSON(ctx context.Context, q ExportJSONQuery) ([]byte, error) {
-	snapshot, err := s.ExportSnapshot(ctx, ExportSnapshotQuery(q))
+	snapshot, err := s.ExportSnapshot(ctx, ExportSnapshotQuery{ActorID: q.ActorID})
 	if err != nil {
 		return nil, err
 	}

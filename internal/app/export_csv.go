@@ -132,16 +132,30 @@ func writeCSV(snapshot ExportSnapshot) ([]byte, error) {
 }
 
 // ExportCSVQuery is ExportCSV's query -- see ExportJSONQuery's doc comment
-// for why this isn't just ExportSnapshotQuery reused directly.
+// for why this isn't just ExportSnapshotQuery reused directly. Filter is
+// issue #213's addition: ADR-0009's shared TransactionFilterInput
+// dimensions, resolved the same way every other filterable query resolves
+// them (resolveTransactionFilter) -- its zero value matches every
+// transaction, so an unfiltered CSV export ("every transaction") needs no
+// special case here.
 type ExportCSVQuery struct {
 	ActorID string
+	Filter  TransactionFilterInput
 }
 
-// ExportCSV implements issue #209's CSV export use case: fetch the actor's
-// full domain snapshot, then encode it as ADR-0008's one-row-per-posting
-// CSV.
+// ExportCSV implements issue #209's CSV export use case, extended by issue
+// #213 to accept an optional filter: resolve q.Filter the same way every
+// other filterable query does, fetch the actor's domain snapshot narrowed
+// to it, then encode it as ADR-0008's one-row-per-posting CSV.
 func (s *Service) ExportCSV(ctx context.Context, q ExportCSVQuery) ([]byte, error) {
-	snapshot, err := s.ExportSnapshot(ctx, ExportSnapshotQuery(q))
+	if err := requireActorID(q.ActorID); err != nil {
+		return nil, err
+	}
+	filter, err := s.resolveTransactionFilter(ctx, q.ActorID, q.Filter)
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := s.ExportSnapshot(ctx, ExportSnapshotQuery{ActorID: q.ActorID, Filter: filter})
 	if err != nil {
 		return nil, err
 	}
