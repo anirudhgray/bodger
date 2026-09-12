@@ -1,0 +1,50 @@
+name: Build main
+
+# Every PR is brought up to date with main and re-checked (full check-go/
+# check-web, ci.yml) before it's called ready, so a squash-merge lands a
+# tree that suite already validated - rerunning it wholesale on every merge
+# would repeat that same signal for no new information, and there's no
+# branch protection available on this plan (private repo, free tier) to
+# make such a rerun a real gate anyway. What a PR's own checks *can't* rule
+# out is a merge that applies cleanly in git (no textual conflict) but
+# doesn't actually compile once combined with whatever else landed on main
+# first - this workflow exists to catch that one remaining case cheaply:
+# both toolchains, `make build`, nothing else. No lint, no `go test`, no
+# vitest, no Playwright/Chromium.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: build-main-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-main:
+    name: build (main)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read toolchain versions
+        id: tools
+        run: |
+          echo "go=$(awk '/^golang /{print $2}' .tool-versions)" >> "$GITHUB_OUTPUT"
+          echo "node=$(awk '/^nodejs /{print $2}' .tool-versions)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ steps.tools.outputs.go }}
+          cache: true
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ steps.tools.outputs.node }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: cd web && npm ci
+
+      - name: make build
+        run: make build
