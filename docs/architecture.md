@@ -597,6 +597,18 @@ sequential prefix per ADR-0007), and `ImportBatchRepository`/
 Parsing/mapping/duplicate-detection (#210) and commit/rollback (#211) are
 separate, later issues that write to this foundation; export (#209)
 proceeded in parallel, per both issues' own dependency notes.
+[#210](https://github.com/anirudhgray/bodger/issues/210) lands the
+staging pipeline's own logic on top of that foundation:
+`internal/app/importparse`'s `CSVParser` (column-mapping driven, reusing
+`internal/app/normalize` per ADR-0005), the mapping stage resolving
+account/category references, tier-1 exact-match duplicate detection
+(auto-excludes on `(account_id, external_id)`), tier-2 heuristic
+duplicate detection (flags `suspected_duplicate` for review, never
+auto-excludes — proven by a regression test asserting two genuinely
+separate same-day, same-amount transactions are never silently merged),
+and an advisory cross-account transfer-candidate heuristic against other
+staged records. Commit/rollback (#211) and surface wiring (#212) are
+separate, later issues.
 
 | Milestone | Status |
 | --- | --- |
