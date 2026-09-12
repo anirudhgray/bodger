@@ -270,6 +270,23 @@ CSV is for spreadsheets, not backups — a split transaction can't be told apart
 
 The REST API offers the same two downloads at `GET /api/v1/export/json` and `GET /api/v1/export/csv`.
 
+### Restoring from a backup
+
+**`bodger restore` overwrites everything you currently have.** It replaces every account, category, and transaction with whatever is in the backup file — this is not a merge, and it cannot be undone. Only run it against a file you trust, and only when you actually mean to discard your current data.
+
+```sh
+bodger restore backup.json --yes
+```
+
+`--yes` is required — without it, `bodger restore` refuses to run and doesn't touch anything. Leave off the file argument to read the backup from standard input instead. Only a JSON backup produced by `bodger export json` can be restored; a CSV export can't be, since it doesn't carry enough information to rebuild your data exactly.
+
+The REST API offers the same operation at `POST /api/v1/restore`. Its request body carries the backup document under `"document"` and must set `"confirm": true`; a request without it is rejected before anything is touched:
+
+```sh
+curl -X POST http://127.0.0.1:8080/api/v1/restore \
+  -d "{\"confirm\": true, \"document\": $(cat backup.json)}"
+```
+
 ---
 
 ## Running the REST API
@@ -458,6 +475,7 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | `bodger report category-trends --policy [--currency] [--pinned-date] [--granularity] [filters]` | Per-category spending/income trend deltas |
 | `bodger export json [--output]` | Download a complete backup of everything you have, as JSON |
 | `bodger export csv [--output] [filters]` | Download your transactions as CSV |
+| `bodger restore [file] --yes` | **Overwrites everything you have** with a JSON backup — reads from `file`, or from standard input if omitted; refuses to run without `--yes` |
 | `bodger transactions list [--account] [--category] [--type] [--since] [--until] [--limit] [--offset]` | List what you've recorded, newest first |
 | `bodger transactions edit <id> --amount <amount> --description <text> [--account] [--category] [--currency] [--from] [--to] [--to-amount] [--on] [--tag] [--note]` | Correct a transaction — replaces every value |
 | `bodger transactions delete <id>` | Delete a transaction you recorded by mistake |
