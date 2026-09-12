@@ -44,10 +44,12 @@ func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
 	// the acting user's reporting currency (issue #132).
 	users := newMemUsersSeeded()
 	users.byID[testActorID] = ports.User{ID: testActorID}
+	importBatches := newMemImportBatches()
+	importRecords := newMemImportRecords()
 	svc, err := app.NewService(
 		clk, cfg, idgen.New(), accounts, categories, transactions, newMemTags(),
 		users, newMemSessions(), newMemAPITokens(), newMemFxRates(accounts, transactions), newMemFxProvider(),
-		newMemImportBatches(), newMemImportRecords(),
+		importBatches, importRecords, newMemImportCommits(importBatches, importRecords, transactions),
 	)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)

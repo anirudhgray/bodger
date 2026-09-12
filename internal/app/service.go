@@ -83,14 +83,17 @@ type Service struct {
 
 	// ImportBatches and ImportRecords are issue #208's repository ports
 	// over import_batch/import_record (ADR-0008): the staged import
-	// pipeline's only state. No use-case methods read or write through
-	// them yet — parsing/mapping/duplicate-detection (#210) and
-	// commit/rollback (#211) are separate, later issues — so these are
-	// wired in now purely so the container carries every repository the
-	// persistence layer defines, the same way FxRates was wired ahead of
-	// its own first use-case method.
+	// pipeline's state. StageImport (#210) reads and writes both;
+	// CommitImportBatch and RollbackImportBatch (#211) additionally read
+	// them to decide what a commit or rollback affects.
 	ImportBatches ports.ImportBatchRepository
 	ImportRecords ports.ImportRecordRepository
+
+	// ImportCommits is issue #211's repository port over the one write
+	// ADR-0008 requires to be atomic: writing a batch's resolved records'
+	// transactions in a single database transaction, and its mirror,
+	// rolling a committed batch back.
+	ImportCommits ports.ImportCommitRepository
 }
 
 // NewService constructs a Service from its dependencies, rejecting a nil
@@ -112,6 +115,7 @@ func NewService(
 	fxProvider ports.FxRateProvider,
 	importBatches ports.ImportBatchRepository,
 	importRecords ports.ImportRecordRepository,
+	importCommits ports.ImportCommitRepository,
 ) (*Service, error) {
 	switch {
 	case clk == nil:
@@ -140,6 +144,8 @@ func NewService(
 		return nil, missingDependency("import batch repository")
 	case importRecords == nil:
 		return nil, missingDependency("import record repository")
+	case importCommits == nil:
+		return nil, missingDependency("import commit repository")
 	}
 
 	return &Service{
@@ -157,6 +163,7 @@ func NewService(
 		FxProvider:    fxProvider,
 		ImportBatches: importBatches,
 		ImportRecords: importRecords,
+		ImportCommits: importCommits,
 	}, nil
 }
 
