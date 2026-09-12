@@ -16,6 +16,9 @@ vi.mock('@/lib/api', async () => {
     getCashFlow: vi.fn(),
     getTrends: vi.fn(),
     getSavingsRate: vi.fn(),
+    getTopTransactions: vi.fn(),
+    getAverageTransactionSize: vi.fn(),
+    getCategoryTrends: vi.fn(),
     getReportingCurrency: vi.fn(),
     listAccounts: vi.fn(),
     fetchFxRates: vi.fn(),
@@ -24,10 +27,13 @@ vi.mock('@/lib/api', async () => {
 
 import {
   ApiError,
+  getAverageTransactionSize,
   getCashFlow,
   getCategoryBreakdown,
+  getCategoryTrends,
   getReportingCurrency,
   getSavingsRate,
+  getTopTransactions,
   getTrends,
   listAccounts,
 } from '@/lib/api'
@@ -37,8 +43,26 @@ const mockedGetCategoryBreakdown = vi.mocked(getCategoryBreakdown)
 const mockedGetCashFlow = vi.mocked(getCashFlow)
 const mockedGetTrends = vi.mocked(getTrends)
 const mockedGetSavingsRate = vi.mocked(getSavingsRate)
+const mockedGetTopTransactions = vi.mocked(getTopTransactions)
+const mockedGetAverageTransactionSize = vi.mocked(getAverageTransactionSize)
+const mockedGetCategoryTrends = vi.mocked(getCategoryTrends)
 const mockedGetReportingCurrency = vi.mocked(getReportingCurrency)
 const mockedListAccounts = vi.mocked(listAccounts)
+
+// emptyCategoryTrends/emptyAverageSize/emptyTopTransactions (issue #196):
+// shared "nothing to report" defaults for the three additional stats,
+// applied in beforeEach below so every existing test written before
+// these three existed keeps working without having to mock them
+// individually — the same role mockedGetReportingCurrency/
+// mockedListAccounts' own beforeEach defaults already play.
+const emptyCategoryTrends = {
+  currency: 'USD',
+  current_from: '2026-09-01',
+  current_to: '2026-09-30',
+  previous_from: '2026-08-01',
+  previous_to: '2026-08-31',
+  rows: [],
+}
 
 function renderPage() {
   return render(
@@ -72,6 +96,9 @@ describe('AnalyticsPage', () => {
     mockedGetCashFlow.mockReset()
     mockedGetTrends.mockReset()
     mockedGetSavingsRate.mockReset()
+    mockedGetTopTransactions.mockReset()
+    mockedGetAverageTransactionSize.mockReset()
+    mockedGetCategoryTrends.mockReset()
     mockedGetReportingCurrency.mockReset()
     mockedListAccounts.mockReset()
     mockedGetReportingCurrency.mockResolvedValue({
@@ -80,6 +107,13 @@ describe('AnalyticsPage', () => {
       effectiveCurrency: 'USD',
     })
     mockedListAccounts.mockResolvedValue([])
+    mockedGetTopTransactions.mockResolvedValue({ currency: 'USD', rows: [] })
+    mockedGetAverageTransactionSize.mockResolvedValue({
+      currency: 'USD',
+      overall: { category: 'Uncategorized', count: 0, average: '0.00' },
+      by_category: [],
+    })
+    mockedGetCategoryTrends.mockResolvedValue(emptyCategoryTrends)
   })
 
   it('renders category, cash-flow, trends, and savings-rate data from the API as-is', async () => {
@@ -148,6 +182,78 @@ describe('AnalyticsPage', () => {
     expect(screen.getByText('1850.00 USD')).toBeInTheDocument()
     expect(screen.getByText('92.5%')).toBeInTheDocument()
     expect(screen.getByText(/Inflow \+11\.1%/)).toBeInTheDocument()
+  })
+
+  // Additional stats (issue #196): top transactions, average transaction
+  // size, and per-category trend deltas.
+  it('renders top transactions, average size, and category trends from the API as-is', async () => {
+    mockedGetCategoryBreakdown.mockResolvedValue({ currency: 'USD', rows: [] })
+    mockedGetCashFlow.mockResolvedValue({ currency: 'USD', points: [] })
+    mockedGetTrends.mockResolvedValue(emptyTrends)
+    mockedGetSavingsRate.mockResolvedValue({
+      currency: 'USD',
+      income: '0.00',
+      outflow: '0.00',
+      net: '0.00',
+      rate: null,
+    })
+    mockedGetTopTransactions.mockResolvedValue({
+      currency: 'USD',
+      rows: [
+        {
+          transaction_id: 't1',
+          description: 'Rent',
+          date: '2026-09-01',
+          category: 'Housing',
+          amount: '-1200.00',
+        },
+      ],
+    })
+    mockedGetAverageTransactionSize.mockResolvedValue({
+      currency: 'USD',
+      overall: { category: 'Uncategorized', count: 4, average: '87.50' },
+      by_category: [{ category: 'Food', count: 3, average: '50.00' }],
+    })
+    mockedGetCategoryTrends.mockResolvedValue({
+      currency: 'USD',
+      current_from: '2026-09-01',
+      current_to: '2026-09-30',
+      previous_from: '2026-08-01',
+      previous_to: '2026-08-31',
+      rows: [
+        {
+          category: 'Food',
+          current: {
+            category: 'Food',
+            spending: '180.00',
+            income: '0.00',
+            net: '-180.00',
+          },
+          previous: {
+            category: 'Food',
+            spending: '150.00',
+            income: '0.00',
+            net: '-150.00',
+          },
+          spending_change_pct: 20,
+          income_change_pct: null,
+        },
+      ],
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Top transactions')).toBeInTheDocument()
+    expect(screen.getByText('Rent')).toBeInTheDocument()
+    expect(screen.getByText('-1200.00 USD')).toBeInTheDocument()
+
+    expect(screen.getByText('Average transaction size')).toBeInTheDocument()
+    expect(screen.getByText('87.50 USD')).toBeInTheDocument()
+    expect(screen.getByText('50.00 USD')).toBeInTheDocument()
+
+    expect(screen.getByText('Category trends')).toBeInTheDocument()
+    expect(screen.getByText('180.00 USD')).toBeInTheDocument()
+    expect(screen.getByText(/\+20\.0%/)).toBeInTheDocument()
   })
 
   it('shows an empty state when nothing matches the period', async () => {

@@ -591,3 +591,151 @@ func TestBalanceTotals_InvalidPolicyFailsTheWholeQuery(t *testing.T) {
 	})
 	wantErrCode(t, err, errs.InvalidInput)
 }
+
+// ---- NetWorthOverTime ----
+
+func TestNetWorthOverTime_OnePointPerMonthEndDate(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	acc, err := svc.CreateAccount(ctx, app.CreateAccountCommand{
+		ActorID: testActorID, Name: "Checking", Kind: "bank", Currency: "USD",
+		OpeningBalance: "1000", OpeningBalanceDate: "2026-01-01",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	if _, err := svc.RecordInflow(ctx, app.RecordInflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), Amount: "500", Date: "2026-07-15", Description: "Bonus",
+	}); err != nil {
+		t.Fatalf("RecordInflow: %v", err)
+	}
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), Amount: "200", Date: "2026-08-15", Description: "Rent",
+	}); err != nil {
+		t.Fatalf("RecordOutflow: %v", err)
+	}
+
+	result, err := svc.NetWorthOverTime(ctx, app.NetWorthOverTimeQuery{
+		ActorID:        testActorID,
+		Filter:         app.TransactionFilterInput{DateFrom: "2026-07-01", DateTo: "2026-08-31"},
+		TargetCurrency: "USD",
+		Policy:         app.PolicyCurrent,
+	})
+	if err != nil {
+		t.Fatalf("NetWorthOverTime: %v", err)
+	}
+	if len(result.Points) != 2 {
+		t.Fatalf("len(Points) = %d, want 2", len(result.Points))
+	}
+	if got := result.Points[0].Date.String(); got != "2026-07-31" {
+		t.Errorf("Points[0].Date = %s, want 2026-07-31", got)
+	}
+	// 1000.00 opening + 500.00 inflow (posted by end of July) = 1500.00.
+	if got := result.Points[0].Amount.AmountMinor(); got != 150000 {
+		t.Errorf("Points[0].Amount = %d, want 150000", got)
+	}
+	if got := result.Points[1].Date.String(); got != "2026-08-31" {
+		t.Errorf("Points[1].Date = %s, want 2026-08-31", got)
+	}
+	// 1500.00 - 200.00 outflow (posted by end of August) = 1300.00.
+	if got := result.Points[1].Amount.AmountMinor(); got != 130000 {
+		t.Errorf("Points[1].Amount = %d, want 130000", got)
+	}
+}
+
+func TestNetWorthOverTime_CustomGranularityIsOneBucket(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "Checking", "bank", "USD")
+	if _, err := svc.RecordInflow(ctx, app.RecordInflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), Amount: "100", Date: "2026-07-15", Description: "Deposit",
+	}); err != nil {
+		t.Fatalf("RecordInflow: %v", err)
+	}
+
+	result, err := svc.NetWorthOverTime(ctx, app.NetWorthOverTimeQuery{
+		ActorID:        testActorID,
+		Filter:         app.TransactionFilterInput{DateFrom: "2026-07-01", DateTo: "2026-08-31"},
+		TargetCurrency: "USD",
+		Policy:         app.PolicyCurrent,
+		Granularity:    app.GranularityCustom,
+	})
+	if err != nil {
+		t.Fatalf("NetWorthOverTime: %v", err)
+	}
+	if len(result.Points) != 1 {
+		t.Fatalf("len(Points) = %d, want 1 (a single custom bucket)", len(result.Points))
+	}
+	if got := result.Points[0].Date.String(); got != "2026-08-31" {
+		t.Errorf("Points[0].Date = %s, want 2026-08-31 (the range's own end)", got)
+	}
+	if got := result.Points[0].Amount.AmountMinor(); got != 10000 {
+		t.Errorf("Points[0].Amount = %d, want 10000", got)
+	}
+}
+
+func TestNetWorthOverTime_MissingRateReportedOncePerAccountNotOnce(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	inrAcc := mustAccountFixture(t, svc, "HDFC", "bank", "INR")
+	if _, err := svc.RecordInflow(ctx, app.RecordInflowCommand{
+		ActorID: testActorID, AccountRef: inrAcc.Account.ID(), Amount: "1000", Date: "2026-07-01", Description: "Salary",
+	}); err != nil {
+		t.Fatalf("RecordInflow: %v", err)
+	}
+	// No INR/USD rate seeded — every period's own conversion should fail
+	// to cover this account, but it must appear exactly once in
+	// Unconverted, not once per period.
+
+	result, err := svc.NetWorthOverTime(ctx, app.NetWorthOverTimeQuery{
+		ActorID:        testActorID,
+		Filter:         app.TransactionFilterInput{DateFrom: "2026-07-01", DateTo: "2026-08-31"},
+		TargetCurrency: "USD",
+		Policy:         app.PolicyCurrent,
+	})
+	if err != nil {
+		t.Fatalf("NetWorthOverTime: %v, want success with the shortfall reported instead", err)
+	}
+	if len(result.Points) != 2 {
+		t.Fatalf("len(Points) = %d, want 2", len(result.Points))
+	}
+	for _, p := range result.Points {
+		if got := p.Amount.AmountMinor(); got != 0 {
+			t.Errorf("Point %s Amount = %d, want 0 (the only account couldn't convert)", p.Date, got)
+		}
+	}
+	if len(result.Unconverted) != 1 {
+		t.Fatalf("len(Unconverted) = %d, want 1 (deduped across both periods), got %+v", len(result.Unconverted), result.Unconverted)
+	}
+	if result.Unconverted[0].Account.ID() != inrAcc.Account.ID() {
+		t.Errorf("Unconverted[0].Account = %s, want %s", result.Unconverted[0].Account.ID(), inrAcc.Account.ID())
+	}
+}
+
+func TestNetWorthOverTime_RequiresBothDateBounds(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	for name, filter := range map[string]app.TransactionFilterInput{
+		"neither bound": {},
+		"only DateFrom": {DateFrom: "2026-07-01"},
+		"only DateTo":   {DateTo: "2026-08-31"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := svc.NetWorthOverTime(ctx, app.NetWorthOverTimeQuery{
+				ActorID: testActorID, Filter: filter, TargetCurrency: "USD", Policy: app.PolicyCurrent,
+			})
+			wantErrCode(t, err, errs.InvalidInput)
+		})
+	}
+}
+
+func TestNetWorthOverTime_RequiresActorID(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	_, err := svc.NetWorthOverTime(context.Background(), app.NetWorthOverTimeQuery{
+		Filter: app.TransactionFilterInput{DateFrom: "2026-07-01", DateTo: "2026-08-31"},
+		Policy: app.PolicyCurrent,
+	})
+	wantErrCode(t, err, errs.InvalidInput)
+}

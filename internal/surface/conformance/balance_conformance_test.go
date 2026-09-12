@@ -272,3 +272,54 @@ func TestBalanceTotalsConformance(t *testing.T) {
 		})
 	}
 }
+
+// netWorthPointView mirrors internal/surface/cli/balance.go's and
+// internal/surface/http/net_worth.go's netWorthPointView field for field
+// (issue #196).
+type netWorthPointView struct {
+	Date   string `json:"date"`
+	Amount string `json:"amount"`
+}
+
+type netWorthOverTimeResultView struct {
+	Currency    string                 `json:"currency"`
+	Points      []netWorthPointView    `json:"points"`
+	Unconverted []unconvertedEntryView `json:"unconverted"`
+}
+
+// TestNetWorthOverTimeConformance drives `bodger balance net-worth
+// --currency --policy --json` and `GET
+// /api/v1/balances/net-worth-over-time?currency=&policy=` against the
+// same seeded accounts and stored rate the other balance conformance
+// tests use, and asserts the two surfaces agree field for field on the
+// net-worth-over-time series (issue #196).
+func TestNetWorthOverTimeConformance(t *testing.T) {
+	for _, tc := range balanceQueryCases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.seed()
+			h.seedFxRate("INR", "USD", "0.0115", mustHarnessDate(t, 2026, time.August, 1), "conformance-seed")
+
+			cliOut, cliErr := h.runCLI("balance", "net-worth", "--from", "2026-07-01", "--to", "2026-08-01", "--currency", tc.currency, "--policy", tc.policy)
+			if cliErr != nil {
+				t.Fatalf("CLI: unexpected error: %v (output: %s)", cliErr, cliOut)
+			}
+			httpStatus, httpDecoded := h.runHTTP("GET", "/api/v1/balances/net-worth-over-time?from=2026-07-01&to=2026-08-01&currency="+tc.currency+"&policy="+tc.policy, nil)
+			if httpStatus >= 300 {
+				t.Fatalf("HTTP: unexpected error status %d: %v", httpStatus, httpDecoded)
+			}
+
+			cliResult := decodeCLIEnvelope[netWorthOverTimeResultView](t, cliOut)
+			httpResult := remarshalInto[netWorthOverTimeResultView](t, h.httpData(httpDecoded))
+
+			cliJSON, _ := json.MarshalIndent(cliResult, "", "  ")
+			httpJSON, _ := json.MarshalIndent(httpResult, "", "  ")
+			if string(cliJSON) != string(httpJSON) {
+				t.Errorf("CLI and HTTP disagree on the net worth over time result:\nCLI:\n%s\nHTTP:\n%s", cliJSON, httpJSON)
+			}
+			if len(cliResult.Points) == 0 {
+				t.Fatalf("no points returned at all — the comparison above would pass vacuously")
+			}
+		})
+	}
+}

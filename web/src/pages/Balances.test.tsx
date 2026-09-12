@@ -16,6 +16,7 @@ vi.mock('@/lib/api', async () => {
     ...actual,
     getBalances: vi.fn(),
     getBalanceTotals: vi.fn(),
+    getNetWorthOverTime: vi.fn(),
     getReportingCurrency: vi.fn(),
     fetchFxRates: vi.fn(),
   }
@@ -26,12 +27,14 @@ import {
   fetchFxRates,
   getBalances,
   getBalanceTotals,
+  getNetWorthOverTime,
   getReportingCurrency,
 } from '@/lib/api'
 import { BalancesPage } from './Balances'
 
 const mockedGetBalances = vi.mocked(getBalances)
 const mockedGetBalanceTotals = vi.mocked(getBalanceTotals)
+const mockedGetNetWorthOverTime = vi.mocked(getNetWorthOverTime)
 const mockedGetReportingCurrency = vi.mocked(getReportingCurrency)
 const mockedFetchFxRates = vi.mocked(fetchFxRates)
 
@@ -76,6 +79,15 @@ describe('BalancesPage', () => {
       overall: '0.00',
       by_category: [],
       by_currency: [],
+    })
+    // Net worth over time (issue #196) never fetches until both From/To
+    // are set — every test below leaves them unset — but this default
+    // still guards against a future test that sets them without also
+    // configuring its own resolved value.
+    mockedGetNetWorthOverTime.mockReset()
+    mockedGetNetWorthOverTime.mockResolvedValue({
+      currency: 'USD',
+      points: [],
     })
     mockedFetchFxRates.mockReset()
   })
@@ -588,6 +600,32 @@ describe('BalancesPage', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent(
         'Something went wrong. Try again in a moment.',
       )
+    })
+  })
+
+  // Net worth over time (issue #196).
+  describe('net worth over time', () => {
+    it('shows a hint and never fetches until both dates are set', async () => {
+      mockedGetBalances.mockResolvedValue({
+        as_of: '2026-09-03',
+        balances: [
+          {
+            account_id: 'a1',
+            account: 'Checking',
+            amount: '1500.00',
+            currency: 'USD',
+          },
+        ],
+      })
+
+      renderPage()
+
+      expect(
+        await screen.findByText(
+          'Select both From and To to plot net worth over time.',
+        ),
+      ).toBeInTheDocument()
+      expect(mockedGetNetWorthOverTime).not.toHaveBeenCalled()
     })
   })
 })

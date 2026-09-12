@@ -3,8 +3,10 @@ package http
 import (
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/anirudhgray/bodger/internal/app"
+	"github.com/anirudhgray/bodger/internal/platform/errs"
 )
 
 // parseReportFilterQuery decodes ADR-0009's shared TransactionFilterInput
@@ -275,4 +277,210 @@ func (h *handlers) getSavingsRate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, http.StatusOK, savingsRateViewFrom(result))
+}
+
+// topTransactionsRowView is one transaction's contribution
+// (app.TopTransactionsRow). Category is "Uncategorized" for a nil
+// Category, the same convention categoryBreakdownRowView uses.
+type topTransactionsRowView struct {
+	TransactionID string `json:"transaction_id"`
+	Description   string `json:"description"`
+	Date          string `json:"date" format:"date"`
+	Category      string `json:"category"`
+	Amount        string `json:"amount" format:"money"`
+}
+
+type topTransactionsView struct {
+	Currency    string                   `json:"currency"`
+	Rows        []topTransactionsRowView `json:"rows"`
+	Unconverted []unconvertedPostingView `json:"unconverted,omitempty"`
+}
+
+func topTransactionsViewFrom(r app.TopTransactionsResult) topTransactionsView {
+	v := topTransactionsView{
+		Currency:    r.Options.ReportingCurrency,
+		Rows:        []topTransactionsRowView{},
+		Unconverted: unconvertedPostingViewsFrom(r.Unconverted),
+	}
+	for _, row := range r.Rows {
+		name := "Uncategorized"
+		if row.Category != nil {
+			name = row.Category.Name()
+		}
+		v.Rows = append(v.Rows, topTransactionsRowView{
+			TransactionID: row.TransactionID,
+			Description:   row.Description,
+			Date:          row.BookedDate.String(),
+			Category:      name,
+			Amount:        row.Amount.AmountString(),
+		})
+	}
+	return v
+}
+
+// getTopTransactions handles GET /api/v1/analytics/top-transactions:
+// issue #196's top-transactions use case. "limit" defaults to 10 and
+// rejects anything above 100 (app.TopTransactions' own contract) —
+// parsed here the same way listTransactions' own "limit" is (transactions.go).
+func (h *handlers) getTopTransactions(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+
+	limit := 0
+	if raw := q.Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			h.respondError(w, r, errs.New(errs.InvalidInput).Explain("%q isn't a valid limit.", raw).Field("limit"))
+			return
+		}
+		limit = n
+	}
+
+	result, err := h.svc.TopTransactions(r.Context(), app.TopTransactionsQuery{
+		ActorID: actorID(r),
+		Filter:  parseReportFilterQuery(q),
+		Options: parseReportOptionsQuery(q),
+		Limit:   limit,
+	})
+	if err != nil {
+		h.respondError(w, r, err)
+		return
+	}
+	respond(w, http.StatusOK, topTransactionsViewFrom(result))
+}
+
+// averageTransactionSizeRowView is one bucket's count and mean magnitude
+// (app.AverageTransactionSizeRow).
+type averageTransactionSizeRowView struct {
+	Category string `json:"category"`
+	Count    int    `json:"count"`
+	Average  string `json:"average" format:"money"`
+}
+
+// averageTransactionSizeView is GET
+// /api/v1/analytics/average-transaction-size's response shape. Overall is
+// its own field, not a row in ByCategory — app.AverageTransactionSizeResult's
+// own doc comment explains why: an "Overall" row would collide in meaning
+// with a nil-Category "Uncategorized" row.
+type averageTransactionSizeView struct {
+	Currency    string                          `json:"currency"`
+	Overall     averageTransactionSizeRowView   `json:"overall"`
+	ByCategory  []averageTransactionSizeRowView `json:"by_category"`
+	Unconverted []unconvertedPostingView        `json:"unconverted,omitempty"`
+}
+
+func averageTransactionSizeRowViewFrom(row app.AverageTransactionSizeRow) averageTransactionSizeRowView {
+	name := "Uncategorized"
+	if row.Category != nil {
+		name = row.Category.Name()
+	}
+	return averageTransactionSizeRowView{
+		Category: name,
+		Count:    row.Count,
+		Average:  row.Average.AmountString(),
+	}
+}
+
+func averageTransactionSizeViewFrom(r app.AverageTransactionSizeResult) averageTransactionSizeView {
+	v := averageTransactionSizeView{
+		Currency:    r.Options.ReportingCurrency,
+		Overall:     averageTransactionSizeRowViewFrom(r.Overall),
+		ByCategory:  []averageTransactionSizeRowView{},
+		Unconverted: unconvertedPostingViewsFrom(r.Unconverted),
+	}
+	for _, row := range r.ByCategory {
+		v.ByCategory = append(v.ByCategory, averageTransactionSizeRowViewFrom(row))
+	}
+	return v
+}
+
+func (h *handlers) getAverageTransactionSize(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	result, err := h.svc.AverageTransactionSize(r.Context(), app.AverageTransactionSizeQuery{
+		ActorID: actorID(r),
+		Filter:  parseReportFilterQuery(q),
+		Options: parseReportOptionsQuery(q),
+	})
+	if err != nil {
+		h.respondError(w, r, err)
+		return
+	}
+	respond(w, http.StatusOK, averageTransactionSizeViewFrom(result))
+}
+
+// categoryTrendDeltaView is one category's current-vs-previous comparison
+// (app.CategoryTrendDelta).
+type categoryTrendDeltaView struct {
+	Category          string                   `json:"category"`
+	Current           categoryBreakdownRowView `json:"current"`
+	Previous          categoryBreakdownRowView `json:"previous"`
+	SpendingChangePct *float64                 `json:"spending_change_pct,omitempty"`
+	IncomeChangePct   *float64                 `json:"income_change_pct,omitempty"`
+}
+
+// categoryTrendsView is GET /api/v1/analytics/category-trends' response
+// shape: the resolved current/previous period bounds (mirrors trendsView's
+// own current/previous, one level more granular) and one row per
+// top-level category present in either period.
+type categoryTrendsView struct {
+	Currency     string                   `json:"currency"`
+	CurrentFrom  string                   `json:"current_from" format:"date"`
+	CurrentTo    string                   `json:"current_to" format:"date"`
+	PreviousFrom string                   `json:"previous_from" format:"date"`
+	PreviousTo   string                   `json:"previous_to" format:"date"`
+	Rows         []categoryTrendDeltaView `json:"rows"`
+	Unconverted  []unconvertedPostingView `json:"unconverted,omitempty"`
+}
+
+func categoryBreakdownRowViewFrom(row app.CategoryBreakdownRow) categoryBreakdownRowView {
+	name := "Uncategorized"
+	if row.Category != nil {
+		name = row.Category.Name()
+	}
+	return categoryBreakdownRowView{
+		Category: name,
+		Spending: row.Spending.AmountString(),
+		Income:   row.Income.AmountString(),
+		Net:      row.Net.AmountString(),
+	}
+}
+
+func categoryTrendsViewFrom(r app.CategoryTrendsResult) categoryTrendsView {
+	v := categoryTrendsView{
+		Currency:     r.Options.ReportingCurrency,
+		CurrentFrom:  r.CurrentFrom.String(),
+		CurrentTo:    r.CurrentTo.String(),
+		PreviousFrom: r.PreviousFrom.String(),
+		PreviousTo:   r.PreviousTo.String(),
+		Rows:         []categoryTrendDeltaView{},
+		Unconverted:  unconvertedPostingViewsFrom(r.Unconverted),
+	}
+	for _, row := range r.Rows {
+		name := "Uncategorized"
+		if row.Category != nil {
+			name = row.Category.Name()
+		}
+		v.Rows = append(v.Rows, categoryTrendDeltaView{
+			Category:          name,
+			Current:           categoryBreakdownRowViewFrom(row.Current),
+			Previous:          categoryBreakdownRowViewFrom(row.Previous),
+			SpendingChangePct: row.SpendingChangePct,
+			IncomeChangePct:   row.IncomeChangePct,
+		})
+	}
+	return v
+}
+
+func (h *handlers) getCategoryTrends(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	result, err := h.svc.CategoryTrends(r.Context(), app.CategoryTrendsQuery{
+		ActorID:     actorID(r),
+		Filter:      parseReportFilterQuery(q),
+		Options:     parseReportOptionsQuery(q),
+		Granularity: parseGranularityQuery(q),
+	})
+	if err != nil {
+		h.respondError(w, r, err)
+		return
+	}
+	respond(w, http.StatusOK, categoryTrendsViewFrom(result))
 }

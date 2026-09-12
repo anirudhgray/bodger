@@ -517,3 +517,76 @@ export function getSavingsRate(
     `/api/v1/analytics/savings-rate${analyticsQuery(filter, options)}`,
   )
 }
+
+// --- Additional analytics (issue #196) -------------------------------------
+//
+// Net worth over time, top transactions, average transaction size, and
+// per-category trend deltas — extending M5's baseline four (above) and
+// #195's point-in-time BalanceTotals. Same "server computes, screen only
+// renders" contract: every figure below is a decimal string or a
+// server-computed percentage, never derived here.
+
+export type TopTransactions = components['schemas']['TopTransactions']
+
+export function getTopTransactions(
+  filter: AnalyticsFilter,
+  options: AnalyticsOptions,
+  limit?: number,
+): Promise<TopTransactions> {
+  return apiFetch<TopTransactions>(
+    `/api/v1/analytics/top-transactions${buildQuery({
+      from: filter.from,
+      to: filter.to,
+      currency: options.currency,
+      policy: options.policy,
+      pinned_date: options.pinnedDate,
+      limit: limit ? String(limit) : undefined,
+    })}`,
+  )
+}
+
+export type AverageTransactionSize =
+  components['schemas']['AverageTransactionSize']
+
+export function getAverageTransactionSize(
+  filter: AnalyticsFilter,
+  options: AnalyticsOptions,
+): Promise<AverageTransactionSize> {
+  return apiFetch<AverageTransactionSize>(
+    `/api/v1/analytics/average-transaction-size${analyticsQuery(filter, options)}`,
+  )
+}
+
+export type CategoryTrends = components['schemas']['CategoryTrends']
+
+export function getCategoryTrends(
+  filter: AnalyticsFilter,
+  options: AnalyticsOptions,
+  granularity?: Granularity,
+): Promise<CategoryTrends> {
+  return apiFetch<CategoryTrends>(
+    `/api/v1/analytics/category-trends${analyticsQuery(filter, options, granularity)}`,
+  )
+}
+
+// NetWorthOverTime (issue #196) lives on the Balances screen, not
+// Analytics — it's a time series over the whole ledger, distinct from
+// BalanceTotals' own point-in-time snapshot (getBalanceTotals above).
+export type NetWorthOverTime = components['schemas']['NetWorthOverTime']
+
+export function getNetWorthOverTime(
+  filter: { from: string; to: string },
+  policy: BalancesQuery['policy'],
+  currency?: string,
+  granularity?: Granularity,
+): Promise<NetWorthOverTime> {
+  return apiFetch<NetWorthOverTime>(
+    `/api/v1/balances/net-worth-over-time${buildQuery({
+      from: filter.from,
+      to: filter.to,
+      currency,
+      policy,
+      granularity,
+    })}`,
+  )
+}

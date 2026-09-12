@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -150,6 +151,12 @@ type convertedContribution struct {
 	BookedDate    domain.Date
 	CategoryID    string // "" for an uncategorized outflow/inflow posting
 	Amount        money.Money
+	// Description is the owning transaction's own description (issue
+	// #196's TopTransactions is the first caller to need it) — cheap to
+	// carry since the Transaction is already in hand when this is built;
+	// every other existing caller (CategoryBreakdown, CashFlow, Trends,
+	// SavingsRate) simply doesn't read it.
+	Description string
 }
 
 // convertPostings fetches every non-deleted transaction matching filter
@@ -200,6 +207,7 @@ func (s *Service) convertPostings(ctx context.Context, actorID string, filter po
 					BookedDate:    txn.BookedDate(),
 					CategoryID:    categoryID,
 					Amount:        converted.Amount,
+					Description:   txn.Description(),
 				})
 			case isNotFoundErr(err):
 				// A missing rate for this one posting's currency is the
@@ -299,6 +307,22 @@ func (s *Service) CategoryBreakdown(ctx context.Context, q CategoryBreakdownQuer
 	}
 	topLevel := topLevelCategoryIndex(categories)
 
+	rows, err := categoryBreakdownRows(contributions, topLevel, opts.ReportingCurrency)
+	if err != nil {
+		return CategoryBreakdownResult{}, err
+	}
+
+	return CategoryBreakdownResult{Options: opts, Rows: rows, Unconverted: unconverted}, nil
+}
+
+// categoryBreakdownRows buckets contributions by top-level category (via
+// topLevel, see topLevelCategoryIndex) into one CategoryBreakdownRow per
+// bucket, converted into reportingCurrency, sorted by category name
+// ascending with the uncategorized bucket last. Extracted from
+// CategoryBreakdown itself (issue #196) so CategoryTrends can compute the
+// same per-category rows for its own current/previous periods without
+// duplicating this bucketing logic.
+func categoryBreakdownRows(contributions []convertedContribution, topLevel map[string]ledger.Category, reportingCurrency string) ([]CategoryBreakdownRow, error) {
 	type bucket struct {
 		category      *ledger.Category
 		spend, income int64
@@ -329,17 +353,17 @@ func (s *Service) CategoryBreakdown(ctx context.Context, q CategoryBreakdownQuer
 
 	rows := make([]CategoryBreakdownRow, 0, len(buckets))
 	for _, b := range buckets {
-		spending, err := money.NewMoney(b.spend, opts.ReportingCurrency)
+		spending, err := money.NewMoney(b.spend, reportingCurrency)
 		if err != nil {
-			return CategoryBreakdownResult{}, errs.New(errs.Internal).Wrap(err)
+			return nil, errs.New(errs.Internal).Wrap(err)
 		}
-		income, err := money.NewMoney(b.income, opts.ReportingCurrency)
+		income, err := money.NewMoney(b.income, reportingCurrency)
 		if err != nil {
-			return CategoryBreakdownResult{}, errs.New(errs.Internal).Wrap(err)
+			return nil, errs.New(errs.Internal).Wrap(err)
 		}
-		net, err := money.NewMoney(b.income-b.spend, opts.ReportingCurrency)
+		net, err := money.NewMoney(b.income-b.spend, reportingCurrency)
 		if err != nil {
-			return CategoryBreakdownResult{}, errs.New(errs.Internal).Wrap(err)
+			return nil, errs.New(errs.Internal).Wrap(err)
 		}
 		rows = append(rows, CategoryBreakdownRow{Category: b.category, Spending: spending, Income: income, Net: net})
 	}
@@ -355,7 +379,7 @@ func (s *Service) CategoryBreakdown(ctx context.Context, q CategoryBreakdownQuer
 		return ci.Name() < cj.Name()
 	})
 
-	return CategoryBreakdownResult{Options: opts, Rows: rows, Unconverted: unconverted}, nil
+	return rows, nil
 }
 
 // topLevelCategoryIndex maps every category ID (at any depth) to a copy
@@ -1002,4 +1026,466 @@ func (s *Service) SavingsRate(ctx context.Context, q SavingsRateQuery) (SavingsR
 		Rate:        rate,
 		Unconverted: unconverted,
 	}, nil
+}
+
+// ---- TopTransactions ----
+
+const (
+	// defaultTopTransactionsLimit is TopTransactionsQuery.Limit's default
+	// when the caller leaves it unset (<= 0) — a sensible "spot the
+	// outliers at a glance" page size.
+	defaultTopTransactionsLimit = 10
+	// maxTopTransactionsLimit is the largest Limit TopTransactions
+	// accepts: an unbounded "top N" defeats the point of the feature
+	// (spotting outliers, not paginating every transaction) and risks a
+	// very large response.
+	maxTopTransactionsLimit = 100
+)
+
+// TopTransactionsQuery finds the largest N transactions (by absolute
+// converted amount) matching Filter over Options' conversion.
+type TopTransactionsQuery struct {
+	ActorID string
+	Filter  TransactionFilterInput
+	Options AnalyticsOptions
+	// Limit is the top-N count, distinct from TransactionFilterInput's
+	// own (deliberately absent) pagination: every matching posting is
+	// still fetched and converted first, and only *then* is the result
+	// truncated to the Limit largest by magnitude. Defaults to
+	// defaultTopTransactionsLimit when <= 0; rejected above
+	// maxTopTransactionsLimit.
+	Limit int
+}
+
+// TopTransactionsRow is one transaction's contribution, for spotting
+// outlier expenses/income at a glance. Amount stays signed — negative for
+// an outflow, positive for an inflow, matching convertedContribution's own
+// convention — since the sign itself is informative ("this was my biggest
+// expense" vs. "biggest inflow"); only the *sort* is by magnitude.
+// Category is nil for an uncategorized posting, resolved the same way
+// CategoryBreakdown resolves it (via topLevelCategoryIndex).
+type TopTransactionsRow struct {
+	TransactionID string
+	Description   string
+	BookedDate    domain.Date
+	Category      *ledger.Category
+	Amount        money.Money
+}
+
+// TopTransactionsResult is TopTransactions' result: the Limit largest
+// matching postings by absolute amount, descending, ties broken by
+// booked date descending and then transaction ID ascending — fully
+// deterministic, so the same query returns the same order every time
+// (needed for conformance comparison between the CLI and REST surfaces).
+type TopTransactionsResult struct {
+	Options     AnalyticsOptions
+	Rows        []TopTransactionsRow
+	Unconverted []UnconvertedPosting
+}
+
+// TopTransactions implements issue #196's top-transactions use case,
+// reusing the same convertPostings core every other M5 analytics method
+// uses rather than re-fetching or re-converting independently.
+func (s *Service) TopTransactions(ctx context.Context, q TopTransactionsQuery) (TopTransactionsResult, error) {
+	if err := requireActorID(q.ActorID); err != nil {
+		return TopTransactionsResult{}, err
+	}
+
+	limit := q.Limit
+	if limit <= 0 {
+		limit = defaultTopTransactionsLimit
+	}
+	if limit > maxTopTransactionsLimit {
+		return TopTransactionsResult{}, errs.New(errs.InvalidInput).
+			Explain("A limit of %d is too large; the maximum is %d.", q.Limit, maxTopTransactionsLimit).
+			Field("limit")
+	}
+
+	opts, err := s.resolveAnalyticsOptions(ctx, q.ActorID, q.Options)
+	if err != nil {
+		return TopTransactionsResult{}, err
+	}
+	filter, err := s.resolveTransactionFilter(ctx, q.ActorID, q.Filter)
+	if err != nil {
+		return TopTransactionsResult{}, err
+	}
+
+	contributions, unconverted, err := s.convertPostings(ctx, q.ActorID, filter, opts)
+	if err != nil {
+		return TopTransactionsResult{}, err
+	}
+
+	categories, err := s.Categories.List(ctx, q.ActorID)
+	if err != nil {
+		return TopTransactionsResult{}, err
+	}
+	topLevel := topLevelCategoryIndex(categories)
+
+	sort.Slice(contributions, func(i, j int) bool {
+		ai, aj := contributions[i].Amount.Abs().AmountMinor(), contributions[j].Amount.Abs().AmountMinor()
+		if ai != aj {
+			return ai > aj
+		}
+		if !contributions[i].BookedDate.Equal(contributions[j].BookedDate) {
+			return contributions[j].BookedDate.Before(contributions[i].BookedDate)
+		}
+		return contributions[i].TransactionID < contributions[j].TransactionID
+	})
+
+	if len(contributions) > limit {
+		contributions = contributions[:limit]
+	}
+
+	rows := make([]TopTransactionsRow, 0, len(contributions))
+	for _, c := range contributions {
+		var cat *ledger.Category
+		if c.CategoryID != "" {
+			if top, ok := topLevel[c.CategoryID]; ok {
+				t := top
+				cat = &t
+			}
+		}
+		rows = append(rows, TopTransactionsRow{
+			TransactionID: c.TransactionID,
+			Description:   c.Description,
+			BookedDate:    c.BookedDate,
+			Category:      cat,
+			Amount:        c.Amount,
+		})
+	}
+
+	return TopTransactionsResult{Options: opts, Rows: rows, Unconverted: unconverted}, nil
+}
+
+// ---- AverageTransactionSize ----
+
+// AverageTransactionSizeQuery computes the mean transaction amount,
+// overall and per top-level category, over Filter's matching
+// transactions.
+type AverageTransactionSizeQuery struct {
+	ActorID string
+	Filter  TransactionFilterInput
+	Options AnalyticsOptions
+}
+
+// AverageTransactionSizeRow is one bucket's count and mean magnitude.
+// Average is the mean of |Amount| — a magnitude, not a signed net: a
+// signed mean over an expense-only category is just its total/count with
+// the sign baked back in, which answers "what's my average net" rather
+// than the more useful "how big are my transactions", so this always
+// averages absolute values.
+type AverageTransactionSizeRow struct {
+	Category *ledger.Category
+	Count    int
+	Average  money.Money
+}
+
+// AverageTransactionSizeResult is AverageTransactionSize's result.
+// Overall's own Category is always nil, but — unlike ByCategory's nil
+// meaning "uncategorized" — here it simply has no category dimension at
+// all: Overall represents the whole query, not one bucket among many, so
+// it's its own field rather than a row that would collide in meaning with
+// an uncategorized ByCategory row.
+type AverageTransactionSizeResult struct {
+	Options     AnalyticsOptions
+	Overall     AverageTransactionSizeRow
+	ByCategory  []AverageTransactionSizeRow
+	Unconverted []UnconvertedPosting
+}
+
+// AverageTransactionSize implements issue #196's average-transaction-size
+// use case, reusing convertPostings and topLevelCategoryIndex the same
+// way CategoryBreakdown does.
+func (s *Service) AverageTransactionSize(ctx context.Context, q AverageTransactionSizeQuery) (AverageTransactionSizeResult, error) {
+	if err := requireActorID(q.ActorID); err != nil {
+		return AverageTransactionSizeResult{}, err
+	}
+	opts, err := s.resolveAnalyticsOptions(ctx, q.ActorID, q.Options)
+	if err != nil {
+		return AverageTransactionSizeResult{}, err
+	}
+	filter, err := s.resolveTransactionFilter(ctx, q.ActorID, q.Filter)
+	if err != nil {
+		return AverageTransactionSizeResult{}, err
+	}
+
+	contributions, unconverted, err := s.convertPostings(ctx, q.ActorID, filter, opts)
+	if err != nil {
+		return AverageTransactionSizeResult{}, err
+	}
+
+	categories, err := s.Categories.List(ctx, q.ActorID)
+	if err != nil {
+		return AverageTransactionSizeResult{}, err
+	}
+	topLevel := topLevelCategoryIndex(categories)
+
+	type bucket struct {
+		category *ledger.Category
+		count    int
+		sum      int64
+	}
+	buckets := make(map[string]*bucket)
+	var overallCount int
+	var overallSum int64
+
+	for _, c := range contributions {
+		magnitude := c.Amount.Abs().AmountMinor()
+		overallCount++
+		overallSum += magnitude
+
+		key := ""
+		var cat *ledger.Category
+		if c.CategoryID != "" {
+			if top, ok := topLevel[c.CategoryID]; ok {
+				t := top
+				cat = &t
+				key = top.ID()
+			}
+		}
+		b, ok := buckets[key]
+		if !ok {
+			b = &bucket{category: cat}
+			buckets[key] = b
+		}
+		b.count++
+		b.sum += magnitude
+	}
+
+	overallAvg, err := money.NewMoney(roundedAverageMinor(overallSum, overallCount), opts.ReportingCurrency)
+	if err != nil {
+		return AverageTransactionSizeResult{}, errs.New(errs.Internal).Wrap(err)
+	}
+	overall := AverageTransactionSizeRow{Count: overallCount, Average: overallAvg}
+
+	rows := make([]AverageTransactionSizeRow, 0, len(buckets))
+	for _, b := range buckets {
+		avg, err := money.NewMoney(roundedAverageMinor(b.sum, b.count), opts.ReportingCurrency)
+		if err != nil {
+			return AverageTransactionSizeResult{}, errs.New(errs.Internal).Wrap(err)
+		}
+		rows = append(rows, AverageTransactionSizeRow{Category: b.category, Count: b.count, Average: avg})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		ci, cj := rows[i].Category, rows[j].Category
+		if ci == nil {
+			return false
+		}
+		if cj == nil {
+			return true
+		}
+		return ci.Name() < cj.Name()
+	})
+
+	return AverageTransactionSizeResult{Options: opts, Overall: overall, ByCategory: rows, Unconverted: unconverted}, nil
+}
+
+// roundedAverageMinor rounds sumMinor/count to the nearest whole minor
+// unit, half away from zero — math.Round already rounds this way for
+// both positive and negative inputs, so this never silently truncates
+// (which would bias every average down). count == 0 (AverageTransactionSize's
+// Overall when literally nothing matched) returns 0 rather than dividing
+// by zero.
+func roundedAverageMinor(sumMinor int64, count int) int64 {
+	if count == 0 {
+		return 0
+	}
+	return int64(math.Round(float64(sumMinor) / float64(count)))
+}
+
+// ---- CategoryTrends ----
+
+// CategoryTrendsQuery compares each top-level category's spending and
+// income between the current and immediately preceding period, chosen by
+// Granularity — the same current/previous period resolution Trends uses
+// (trendsComparisonPeriods), applied per category rather than only in
+// aggregate.
+type CategoryTrendsQuery struct {
+	ActorID     string
+	Filter      TransactionFilterInput
+	Options     AnalyticsOptions
+	Granularity Granularity
+}
+
+// CategoryTrendDelta is one category's current-vs-previous comparison.
+// Current/Previous are each that period's own CategoryBreakdownRow for
+// this one category — zeroed (not omitted) on whichever side had no
+// matching postings at all, the same "report zero, don't drop the row"
+// convention CategoryBreakdownRow itself follows.
+// SpendingChangePct/IncomeChangePct are nil when the previous period's
+// corresponding figure is zero (changePct's own "undefined, not zero"
+// contract).
+type CategoryTrendDelta struct {
+	Category          *ledger.Category
+	Current           CategoryBreakdownRow
+	Previous          CategoryBreakdownRow
+	SpendingChangePct *float64
+	IncomeChangePct   *float64
+}
+
+// CategoryTrendsResult is CategoryTrends' result: the resolved current
+// and previous period bounds (echoed back the same way TrendsResult
+// echoes its own, so a caller can render "vs last month (Aug 1-31)" per
+// category the same way the aggregate Trends card does), one row per
+// top-level category present in either period, sorted by name ascending
+// with the uncategorized bucket last.
+type CategoryTrendsResult struct {
+	Options                                          AnalyticsOptions
+	CurrentFrom, CurrentTo, PreviousFrom, PreviousTo domain.Date
+	Rows                                             []CategoryTrendDelta
+	Unconverted                                      []UnconvertedPosting
+}
+
+// CategoryTrends implements issue #196's per-category trend-deltas use
+// case, extending Trends' aggregate-only comparison to one row per
+// top-level category — reusing trendsComparisonPeriods for the period
+// bounds and categoryBreakdownRows for each period's own per-category
+// totals, rather than recomputing either independently.
+func (s *Service) CategoryTrends(ctx context.Context, q CategoryTrendsQuery) (CategoryTrendsResult, error) {
+	if err := requireActorID(q.ActorID); err != nil {
+		return CategoryTrendsResult{}, err
+	}
+	opts, err := s.resolveAnalyticsOptions(ctx, q.ActorID, q.Options)
+	if err != nil {
+		return CategoryTrendsResult{}, err
+	}
+	granularity, err := validateGranularity(q.Granularity)
+	if err != nil {
+		return CategoryTrendsResult{}, err
+	}
+
+	curFrom, curTo, prevFrom, prevTo, err := s.trendsComparisonPeriods(ctx, q.ActorID, q.Filter, granularity)
+	if err != nil {
+		return CategoryTrendsResult{}, err
+	}
+
+	categories, err := s.Categories.List(ctx, q.ActorID)
+	if err != nil {
+		return CategoryTrendsResult{}, err
+	}
+	topLevel := topLevelCategoryIndex(categories)
+
+	curRows, unconvertedCur, err := s.categoryTrendPeriod(ctx, q.ActorID, q.Filter, curFrom, curTo, opts, topLevel)
+	if err != nil {
+		return CategoryTrendsResult{}, err
+	}
+	prevRows, unconvertedPrev, err := s.categoryTrendPeriod(ctx, q.ActorID, q.Filter, prevFrom, prevTo, opts, topLevel)
+	if err != nil {
+		return CategoryTrendsResult{}, err
+	}
+
+	type merged struct {
+		category *ledger.Category
+		current  *CategoryBreakdownRow
+		previous *CategoryBreakdownRow
+	}
+	entries := make(map[string]*merged)
+	var order []string
+	for i := range curRows {
+		key := categoryTrendKey(curRows[i].Category)
+		entries[key] = &merged{category: curRows[i].Category, current: &curRows[i]}
+		order = append(order, key)
+	}
+	for i := range prevRows {
+		key := categoryTrendKey(prevRows[i].Category)
+		if e, ok := entries[key]; ok {
+			e.previous = &prevRows[i]
+		} else {
+			entries[key] = &merged{category: prevRows[i].Category, previous: &prevRows[i]}
+			order = append(order, key)
+		}
+	}
+
+	rows := make([]CategoryTrendDelta, 0, len(entries))
+	for _, key := range order {
+		e := entries[key]
+		current, previous := e.current, e.previous
+		if current == nil {
+			zero, err := zeroCategoryBreakdownRow(e.category, opts.ReportingCurrency)
+			if err != nil {
+				return CategoryTrendsResult{}, err
+			}
+			current = &zero
+		}
+		if previous == nil {
+			zero, err := zeroCategoryBreakdownRow(e.category, opts.ReportingCurrency)
+			if err != nil {
+				return CategoryTrendsResult{}, err
+			}
+			previous = &zero
+		}
+		rows = append(rows, CategoryTrendDelta{
+			Category:          e.category,
+			Current:           *current,
+			Previous:          *previous,
+			SpendingChangePct: changePct(previous.Spending, current.Spending),
+			IncomeChangePct:   changePct(previous.Income, current.Income),
+		})
+	}
+
+	sort.Slice(rows, func(i, j int) bool {
+		ci, cj := rows[i].Category, rows[j].Category
+		if ci == nil {
+			return false
+		}
+		if cj == nil {
+			return true
+		}
+		return ci.Name() < cj.Name()
+	})
+
+	return CategoryTrendsResult{
+		Options:      opts,
+		CurrentFrom:  curFrom,
+		CurrentTo:    curTo,
+		PreviousFrom: prevFrom,
+		PreviousTo:   prevTo,
+		Rows:         rows,
+		Unconverted:  append(unconvertedCur, unconvertedPrev...),
+	}, nil
+}
+
+// categoryTrendKey keys CategoryTrends' per-period merge by category ID,
+// "" for the uncategorized bucket — mirrors categoryBreakdownRows' own
+// bucket key.
+func categoryTrendKey(cat *ledger.Category) string {
+	if cat == nil {
+		return ""
+	}
+	return cat.ID()
+}
+
+// zeroCategoryBreakdownRow builds a CategoryBreakdownRow with every money
+// field zeroed, for a category present in only one of CategoryTrends' two
+// periods — CategoryBreakdownRow's own "report zero, don't omit" rule,
+// applied to the side that had no matching postings in that period at
+// all rather than leaving that side of the comparison absent.
+func zeroCategoryBreakdownRow(cat *ledger.Category, currency string) (CategoryBreakdownRow, error) {
+	zero, err := money.NewMoney(0, currency)
+	if err != nil {
+		return CategoryBreakdownRow{}, errs.New(errs.Internal).Wrap(err)
+	}
+	return CategoryBreakdownRow{Category: cat, Spending: zero, Income: zero, Net: zero}, nil
+}
+
+// categoryTrendPeriod computes one period's per-category breakdown rows,
+// scoped by every dimension of filterIn except its own date bounds —
+// mirrors trendPeriod's own "Trends supplies from/to itself" pattern, one
+// level more granular (per category, not just the period aggregate).
+func (s *Service) categoryTrendPeriod(ctx context.Context, actorID string, filterIn TransactionFilterInput, from, to domain.Date, opts AnalyticsOptions, topLevel map[string]ledger.Category) ([]CategoryBreakdownRow, []UnconvertedPosting, error) {
+	filterIn.DateFrom = from.String()
+	filterIn.DateTo = to.String()
+	filter, err := s.resolveTransactionFilter(ctx, actorID, filterIn)
+	if err != nil {
+		return nil, nil, err
+	}
+	contributions, unconverted, err := s.convertPostings(ctx, actorID, filter, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	rows, err := categoryBreakdownRows(contributions, topLevel, opts.ReportingCurrency)
+	if err != nil {
+		return nil, nil, err
+	}
+	return rows, unconverted, nil
 }

@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -786,6 +787,435 @@ func TestAnalyticsOptions_PinnedPolicyRequiresPinnedDate(t *testing.T) {
 	_, err := svc.SavingsRate(context.Background(), app.SavingsRateQuery{
 		ActorID: testActorID,
 		Options: app.AnalyticsOptions{ReportingCurrency: "USD", Policy: app.PolicyPinned},
+	})
+	wantErrCode(t, err, errs.InvalidInput)
+}
+
+// ---- TopTransactions ----
+
+func TestTopTransactions_SortsByAbsoluteAmountDescendingSignPreserved(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "Checking", "bank", "USD")
+	food := mustCategoryFixture(t, svc, "Food", "expense")
+
+	// A small outflow, a large inflow, and a medium outflow: sorted purely
+	// by magnitude, the large inflow (200) must come first even though a
+	// signed sort would put the largest *outflow* first.
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), CategoryRef: food.Category.ID(),
+		Amount: "10", Date: "2026-08-01", Description: "Snack",
+	}); err != nil {
+		t.Fatalf("RecordOutflow(small): %v", err)
+	}
+	if _, err := svc.RecordInflow(ctx, app.RecordInflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), Amount: "200", Date: "2026-08-02", Description: "Bonus",
+	}); err != nil {
+		t.Fatalf("RecordInflow(large): %v", err)
+	}
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), CategoryRef: food.Category.ID(),
+		Amount: "80", Date: "2026-08-03", Description: "Dinner",
+	}); err != nil {
+		t.Fatalf("RecordOutflow(medium): %v", err)
+	}
+
+	result, err := svc.TopTransactions(ctx, app.TopTransactionsQuery{ActorID: testActorID, Options: defaultAnalyticsOptions()})
+	if err != nil {
+		t.Fatalf("TopTransactions: %v", err)
+	}
+	if len(result.Rows) != 3 {
+		t.Fatalf("len(Rows) = %d, want 3", len(result.Rows))
+	}
+	if got := result.Rows[0].Amount.AmountMinor(); got != 20000 {
+		t.Errorf("Rows[0].Amount = %d, want 20000 (the 200 bonus, magnitude-largest)", got)
+	}
+	if got := result.Rows[0].Description; got != "Bonus" {
+		t.Errorf("Rows[0].Description = %q, want %q", got, "Bonus")
+	}
+	if got := result.Rows[1].Amount.AmountMinor(); got != -8000 {
+		t.Errorf("Rows[1].Amount = %d, want -8000 (dinner, signed negative — still an outflow)", got)
+	}
+	if got := result.Rows[2].Amount.AmountMinor(); got != -1000 {
+		t.Errorf("Rows[2].Amount = %d, want -1000", got)
+	}
+	if result.Rows[1].Category == nil || result.Rows[1].Category.Name() != "Food" {
+		t.Errorf("Rows[1].Category = %+v, want Food", result.Rows[1].Category)
+	}
+}
+
+func TestTopTransactions_DefaultLimitIsTen(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "Checking", "bank", "USD")
+
+	for i := 1; i <= 15; i++ {
+		if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+			ActorID: testActorID, AccountRef: acc.Account.ID(),
+			Amount: fmt.Sprintf("%d", i), Date: "2026-08-01", Description: fmt.Sprintf("txn-%d", i),
+		}); err != nil {
+			t.Fatalf("RecordOutflow(%d): %v", i, err)
+		}
+	}
+
+	result, err := svc.TopTransactions(ctx, app.TopTransactionsQuery{ActorID: testActorID, Options: defaultAnalyticsOptions()})
+	if err != nil {
+		t.Fatalf("TopTransactions: %v", err)
+	}
+	if len(result.Rows) != 10 {
+		t.Fatalf("len(Rows) = %d, want 10 (the default limit)", len(result.Rows))
+	}
+	// The largest (15) must be first.
+	if got := result.Rows[0].Amount.Abs().AmountMinor(); got != 1500 {
+		t.Errorf("Rows[0].Amount magnitude = %d, want 1500", got)
+	}
+}
+
+func TestTopTransactions_LimitAboveMaximumRejected(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	_, err := svc.TopTransactions(context.Background(), app.TopTransactionsQuery{
+		ActorID: testActorID, Options: defaultAnalyticsOptions(), Limit: 101,
+	})
+	wantErrCode(t, err, errs.InvalidInput)
+}
+
+func TestTopTransactions_ZeroMatchingTransactionsIsEmptyNotError(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	result, err := svc.TopTransactions(context.Background(), app.TopTransactionsQuery{ActorID: testActorID, Options: defaultAnalyticsOptions()})
+	if err != nil {
+		t.Fatalf("TopTransactions: %v", err)
+	}
+	if len(result.Rows) != 0 {
+		t.Errorf("Rows = %+v, want empty", result.Rows)
+	}
+}
+
+func TestTopTransactions_MissingRateReportedNotOmitted(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	inrAcc := mustAccountFixture(t, svc, "HDFC", "bank", "INR")
+
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: inrAcc.Account.ID(), Amount: "1000", Date: "2026-08-06", Description: "Lunch",
+	}); err != nil {
+		t.Fatalf("RecordOutflow: %v", err)
+	}
+	// No INR/USD rate seeded.
+
+	result, err := svc.TopTransactions(ctx, app.TopTransactionsQuery{ActorID: testActorID, Options: defaultAnalyticsOptions()})
+	if err != nil {
+		t.Fatalf("TopTransactions: %v, want success with the shortfall reported instead", err)
+	}
+	if len(result.Rows) != 0 {
+		t.Errorf("Rows = %+v, want empty (the only posting couldn't be converted)", result.Rows)
+	}
+	if len(result.Unconverted) != 1 {
+		t.Fatalf("len(Unconverted) = %d, want 1", len(result.Unconverted))
+	}
+}
+
+// ---- AverageTransactionSize ----
+
+func TestAverageTransactionSize_OverallAndPerCategoryUseAbsoluteMean(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "Checking", "bank", "USD")
+	food := mustCategoryFixture(t, svc, "Food", "expense")
+
+	// Two Food outflows: 30.00 and 10.00 -> |sum| = 40.00, count 2, mean
+	// 20.00. A magnitude mean, not a signed one — an inflow below must
+	// pull the *overall* mean toward it without flipping any sign.
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), CategoryRef: food.Category.ID(),
+		Amount: "30", Date: "2026-08-01", Description: "Groceries",
+	}); err != nil {
+		t.Fatalf("RecordOutflow(30): %v", err)
+	}
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), CategoryRef: food.Category.ID(),
+		Amount: "10", Date: "2026-08-02", Description: "Snack",
+	}); err != nil {
+		t.Fatalf("RecordOutflow(10): %v", err)
+	}
+	if _, err := svc.RecordInflow(ctx, app.RecordInflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), Amount: "50", Date: "2026-08-03", Description: "Refund",
+	}); err != nil {
+		t.Fatalf("RecordInflow(50): %v", err)
+	}
+
+	result, err := svc.AverageTransactionSize(ctx, app.AverageTransactionSizeQuery{ActorID: testActorID, Options: defaultAnalyticsOptions()})
+	if err != nil {
+		t.Fatalf("AverageTransactionSize: %v", err)
+	}
+	if result.Overall.Count != 3 {
+		t.Errorf("Overall.Count = %d, want 3", result.Overall.Count)
+	}
+	// (3000 + 1000 + 5000) / 3 = 3000 minor units = 30.00.
+	if got := result.Overall.Average.AmountMinor(); got != 3000 {
+		t.Errorf("Overall.Average = %d, want 3000", got)
+	}
+	// Food (the two outflows) plus the uncategorized bucket (the inflow) —
+	// sorted name-ascending with uncategorized last (Food, then nil).
+	if len(result.ByCategory) != 2 {
+		t.Fatalf("len(ByCategory) = %d, want 2", len(result.ByCategory))
+	}
+	foodRow := result.ByCategory[0]
+	if foodRow.Category == nil || foodRow.Category.Name() != "Food" {
+		t.Fatalf("ByCategory[0].Category = %+v, want Food", foodRow.Category)
+	}
+	if foodRow.Count != 2 {
+		t.Errorf("Food Count = %d, want 2", foodRow.Count)
+	}
+	// (3000 + 1000) / 2 = 2000 minor units = 20.00 — a magnitude mean, not
+	// a signed one (which would be identical here since both are
+	// outflows, but the sign convention itself matters — see the
+	// rounding test below for where sign vs. magnitude actually diverges
+	// numerically).
+	if got := foodRow.Average.AmountMinor(); got != 2000 {
+		t.Errorf("Food Average = %d, want 2000", got)
+	}
+}
+
+func TestAverageTransactionSize_RoundsHalfAwayFromZeroNotTruncated(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "Checking", "bank", "USD")
+
+	// 1.00 + 0.01 = 1.01 -> 101 minor units / 2 = 50.5, which must round
+	// to 51 (half away from zero), not truncate to 50 — truncation would
+	// silently bias every average down.
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), Amount: "1.00", Date: "2026-08-01", Description: "a",
+	}); err != nil {
+		t.Fatalf("RecordOutflow(1.00): %v", err)
+	}
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), Amount: "0.01", Date: "2026-08-02", Description: "b",
+	}); err != nil {
+		t.Fatalf("RecordOutflow(0.01): %v", err)
+	}
+
+	result, err := svc.AverageTransactionSize(ctx, app.AverageTransactionSizeQuery{ActorID: testActorID, Options: defaultAnalyticsOptions()})
+	if err != nil {
+		t.Fatalf("AverageTransactionSize: %v", err)
+	}
+	if got := result.Overall.Average.AmountMinor(); got != 51 {
+		t.Errorf("Overall.Average = %d, want 51 (50.5 rounded half away from zero)", got)
+	}
+}
+
+func TestAverageTransactionSize_ZeroMatchingTransactions(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	result, err := svc.AverageTransactionSize(context.Background(), app.AverageTransactionSizeQuery{ActorID: testActorID, Options: defaultAnalyticsOptions()})
+	if err != nil {
+		t.Fatalf("AverageTransactionSize: %v", err)
+	}
+	if result.Overall.Count != 0 {
+		t.Errorf("Overall.Count = %d, want 0", result.Overall.Count)
+	}
+	if result.Overall.Average.AmountMinor() != 0 {
+		t.Errorf("Overall.Average = %d, want 0", result.Overall.Average.AmountMinor())
+	}
+	if len(result.ByCategory) != 0 {
+		t.Errorf("ByCategory = %+v, want empty", result.ByCategory)
+	}
+}
+
+func TestAverageTransactionSize_MissingRateReportedNotOmitted(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	inrAcc := mustAccountFixture(t, svc, "HDFC", "bank", "INR")
+
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: inrAcc.Account.ID(), Amount: "1000", Date: "2026-08-06", Description: "Lunch",
+	}); err != nil {
+		t.Fatalf("RecordOutflow: %v", err)
+	}
+	// No INR/USD rate seeded.
+
+	result, err := svc.AverageTransactionSize(ctx, app.AverageTransactionSizeQuery{ActorID: testActorID, Options: defaultAnalyticsOptions()})
+	if err != nil {
+		t.Fatalf("AverageTransactionSize: %v, want success with the shortfall reported instead", err)
+	}
+	if result.Overall.Count != 0 {
+		t.Errorf("Overall.Count = %d, want 0 (the only posting couldn't be converted)", result.Overall.Count)
+	}
+	if len(result.Unconverted) != 1 {
+		t.Fatalf("len(Unconverted) = %d, want 1", len(result.Unconverted))
+	}
+}
+
+// ---- CategoryTrends ----
+
+func TestCategoryTrends_ComputesPerCategoryPercentageChange(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "Checking", "bank", "USD")
+	groceries := mustCategoryFixture(t, svc, "Groceries", "expense")
+
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), CategoryRef: groceries.Category.ID(),
+		Amount: "100", Date: "2026-07-10", Description: "July groceries",
+	}); err != nil {
+		t.Fatalf("RecordOutflow(july): %v", err)
+	}
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), CategoryRef: groceries.Category.ID(),
+		Amount: "120", Date: "2026-08-10", Description: "August groceries",
+	}); err != nil {
+		t.Fatalf("RecordOutflow(august): %v", err)
+	}
+
+	result, err := svc.CategoryTrends(ctx, app.CategoryTrendsQuery{ActorID: testActorID, Options: defaultAnalyticsOptions()})
+	if err != nil {
+		t.Fatalf("CategoryTrends: %v", err)
+	}
+	if result.CurrentFrom.String() != "2026-08-01" || result.CurrentTo.String() != "2026-08-31" {
+		t.Errorf("CurrentFrom/To = %s..%s, want 2026-08-01..2026-08-31", result.CurrentFrom, result.CurrentTo)
+	}
+	if result.PreviousFrom.String() != "2026-07-01" || result.PreviousTo.String() != "2026-07-31" {
+		t.Errorf("PreviousFrom/To = %s..%s, want 2026-07-01..2026-07-31", result.PreviousFrom, result.PreviousTo)
+	}
+	if len(result.Rows) != 1 {
+		t.Fatalf("len(Rows) = %d, want 1", len(result.Rows))
+	}
+	row := result.Rows[0]
+	if row.Category == nil || row.Category.Name() != "Groceries" {
+		t.Fatalf("Rows[0].Category = %+v, want Groceries", row.Category)
+	}
+	if got := row.Current.Spending.AmountMinor(); got != 12000 {
+		t.Errorf("Current.Spending = %d, want 12000", got)
+	}
+	if got := row.Previous.Spending.AmountMinor(); got != 10000 {
+		t.Errorf("Previous.Spending = %d, want 10000", got)
+	}
+	if row.SpendingChangePct == nil {
+		t.Fatalf("SpendingChangePct = nil, want a value")
+	}
+	// (120 - 100) / 100 * 100 = 20%.
+	if got := *row.SpendingChangePct; got != 20 {
+		t.Errorf("SpendingChangePct = %v, want 20", got)
+	}
+}
+
+func TestCategoryTrends_CategoryOnlyInCurrentPeriodGetsZeroedPreviousRow(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "Checking", "bank", "USD")
+	newCat := mustCategoryFixture(t, svc, "Hobbies", "expense")
+
+	// Only an August transaction — no July transaction in this category
+	// at all, unlike TestCategoryTrends_ComputesPerCategoryPercentageChange
+	// where both periods have one.
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), CategoryRef: newCat.Category.ID(),
+		Amount: "40", Date: "2026-08-10", Description: "New hobby",
+	}); err != nil {
+		t.Fatalf("RecordOutflow: %v", err)
+	}
+
+	result, err := svc.CategoryTrends(ctx, app.CategoryTrendsQuery{ActorID: testActorID, Options: defaultAnalyticsOptions()})
+	if err != nil {
+		t.Fatalf("CategoryTrends: %v", err)
+	}
+	if len(result.Rows) != 1 {
+		t.Fatalf("len(Rows) = %d, want 1", len(result.Rows))
+	}
+	row := result.Rows[0]
+	if row.Category == nil || row.Category.Name() != "Hobbies" {
+		t.Fatalf("Rows[0].Category = %+v, want Hobbies", row.Category)
+	}
+	// Previous is a real, present zero row — not an absent one — per
+	// CategoryBreakdownRow's own "report zero, don't omit" convention.
+	if row.Previous.Category == nil || row.Previous.Category.Name() != "Hobbies" {
+		t.Errorf("Previous.Category = %+v, want Hobbies (present, zeroed)", row.Previous.Category)
+	}
+	if got := row.Previous.Spending.AmountMinor(); got != 0 {
+		t.Errorf("Previous.Spending = %d, want 0", got)
+	}
+	if got := row.Current.Spending.AmountMinor(); got != 4000 {
+		t.Errorf("Current.Spending = %d, want 4000", got)
+	}
+	// Previous spending is zero -> the percentage change is undefined,
+	// not some large finite number and not zero (changePct's own
+	// contract).
+	if row.SpendingChangePct != nil {
+		t.Errorf("SpendingChangePct = %v, want nil (previous spending is zero)", *row.SpendingChangePct)
+	}
+}
+
+func TestCategoryTrends_CategoryOnlyInPreviousPeriodIsMinusOneHundredPercent(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "Checking", "bank", "USD")
+	discontinued := mustCategoryFixture(t, svc, "Subscriptions", "expense")
+
+	// Only a July transaction — this category had spending last period
+	// but none at all this period (e.g. a cancelled subscription).
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), CategoryRef: discontinued.Category.ID(),
+		Amount: "15", Date: "2026-07-10", Description: "Cancelled service",
+	}); err != nil {
+		t.Fatalf("RecordOutflow: %v", err)
+	}
+
+	result, err := svc.CategoryTrends(ctx, app.CategoryTrendsQuery{ActorID: testActorID, Options: defaultAnalyticsOptions()})
+	if err != nil {
+		t.Fatalf("CategoryTrends: %v", err)
+	}
+	if len(result.Rows) != 1 {
+		t.Fatalf("len(Rows) = %d, want 1", len(result.Rows))
+	}
+	row := result.Rows[0]
+	if got := row.Current.Spending.AmountMinor(); got != 0 {
+		t.Errorf("Current.Spending = %d, want 0", got)
+	}
+	if got := row.Previous.Spending.AmountMinor(); got != 1500 {
+		t.Errorf("Previous.Spending = %d, want 1500", got)
+	}
+	if row.SpendingChangePct == nil {
+		t.Fatalf("SpendingChangePct = nil, want -100 (previous is nonzero, current is zero)")
+	}
+	if got := *row.SpendingChangePct; got != -100 {
+		t.Errorf("SpendingChangePct = %v, want -100", got)
+	}
+}
+
+func TestCategoryTrends_SortsByNameUncategorizedLast(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "Checking", "bank", "USD")
+	zoo := mustCategoryFixture(t, svc, "Zoo trips", "expense")
+	apparel := mustCategoryFixture(t, svc, "Apparel", "expense")
+
+	for _, ref := range []string{zoo.Category.ID(), apparel.Category.ID(), ""} {
+		if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+			ActorID: testActorID, AccountRef: acc.Account.ID(), CategoryRef: ref,
+			Amount: "10", Date: "2026-08-10", Description: "spend",
+		}); err != nil {
+			t.Fatalf("RecordOutflow(%q): %v", ref, err)
+		}
+	}
+
+	result, err := svc.CategoryTrends(ctx, app.CategoryTrendsQuery{ActorID: testActorID, Options: defaultAnalyticsOptions()})
+	if err != nil {
+		t.Fatalf("CategoryTrends: %v", err)
+	}
+	if len(result.Rows) != 3 {
+		t.Fatalf("len(Rows) = %d, want 3", len(result.Rows))
+	}
+	if result.Rows[0].Category.Name() != "Apparel" || result.Rows[1].Category.Name() != "Zoo trips" {
+		t.Fatalf("Rows[0..1] = %q, %q, want Apparel, Zoo trips", result.Rows[0].Category.Name(), result.Rows[1].Category.Name())
+	}
+	if result.Rows[2].Category != nil {
+		t.Errorf("Rows[2].Category = %+v, want nil (uncategorized last)", result.Rows[2].Category)
+	}
+}
+
+func TestCategoryTrends_InvalidGranularity(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	_, err := svc.CategoryTrends(context.Background(), app.CategoryTrendsQuery{
+		ActorID: testActorID, Options: defaultAnalyticsOptions(), Granularity: "not_a_real_granularity",
 	})
 	wantErrCode(t, err, errs.InvalidInput)
 }

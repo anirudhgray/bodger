@@ -380,6 +380,25 @@ var routeTable = []route{
 	},
 
 	{
+		Method: http.MethodGet, Pattern: "/api/v1/balances/net-worth-over-time",
+		Handler: func(h *handlers) http.HandlerFunc { return h.getNetWorthOverTime },
+
+		OperationID: "getNetWorthOverTime", Summary: "Total balance across every account, as a time series.",
+		Description:   "The total balance across every account, converted into \"currency\" under \"policy\", at each \"granularity\" period boundary within \"from\"..\"to\" (both required - there's no sensible default range for a time series). Every filter dimension other than \"from\"/\"to\" is ignored: net worth is a whole-ledger figure, not scoped to one account or category. Any account some period's conversion couldn't cover is reported once under \"unconverted\", not once per period.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "One point per period boundary in the requested range, ascending.",
+		Response: netWorthOverTimeView{},
+		Errors:   []int{http.StatusUnprocessableEntity},
+		Query: []queryParam{
+			{Name: "from", Description: "The inclusive start of the range (required).", Type: "string", Format: "date"},
+			{Name: "to", Description: "The inclusive end of the range (required).", Type: "string", Format: "date"},
+			{Name: "currency", Description: "Convert every point into this currency. Defaults to the actor's own reporting currency.", Type: "string"},
+			{Name: "policy", Description: "Which conversion policy to use (required).", Type: "string", Enum: []string{"transaction_date", "current", "pinned"}},
+			{Name: "pinned_date", Description: "The pinned date to convert at (required when \"policy\" is \"pinned\").", Type: "string", Format: "date"},
+			granularityQueryParam,
+		},
+	},
+
+	{
 		Method: http.MethodGet, Pattern: "/api/v1/fx/rates",
 		Handler: func(h *handlers) http.HandlerFunc { return h.listFxRates },
 
@@ -451,6 +470,39 @@ var routeTable = []route{
 		Response: savingsRateView{},
 		Errors:   []int{http.StatusUnprocessableEntity},
 		Query:    reportQueryParams,
+	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/analytics/top-transactions",
+		Handler: func(h *handlers) http.HandlerFunc { return h.getTopTransactions },
+
+		OperationID: "getTopTransactions", Summary: "The largest transactions in a period, by absolute amount.",
+		Description:   "\"limit\" is the top-N count (defaults to 10, capped at 100) - every matching posting is still fetched and converted first, and only then truncated to the largest \"limit\" by magnitude. \"amount\" stays signed (negative for an outflow) even though the sort itself is by magnitude. Transfers are excluded by construction.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The largest matching transactions, descending by absolute amount.",
+		Response: topTransactionsView{},
+		Errors:   []int{http.StatusUnprocessableEntity},
+		Query:    append(append([]queryParam{}, reportQueryParams...), queryParam{Name: "limit", Description: "The top-N count. Defaults to 10, capped at 100.", Type: "integer", Min: intPtr(1), Max: intPtr(100)}),
+	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/analytics/average-transaction-size",
+		Handler: func(h *handlers) http.HandlerFunc { return h.getAverageTransactionSize },
+
+		OperationID: "getAverageTransactionSize", Summary: "The mean transaction amount, overall and by top-level category.",
+		Description:   "\"average\" is the mean of each matching posting's absolute amount (a magnitude, not a signed net) - \"overall\" covers every matching posting; \"by_category\" breaks that down by top-level category, with an \"Uncategorized\" row for postings with no category at all. Transfers are excluded by construction.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The overall and per-category mean transaction size.",
+		Response: averageTransactionSizeView{},
+		Errors:   []int{http.StatusUnprocessableEntity},
+		Query:    reportQueryParams,
+	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/analytics/category-trends",
+		Handler: func(h *handlers) http.HandlerFunc { return h.getCategoryTrends },
+
+		OperationID: "getCategoryTrends", Summary: "Month-over-month (or period-over-period) spending/income change, per category.",
+		Description:   "Extends /trends' aggregate-only comparison to one row per top-level category: \"granularity\" selects the comparison period the same way it does for /trends (week, month - the default, year, or custom). A category present in only one of the two periods still gets a row, zeroed on the side with nothing to report, rather than being omitted. \"spending_change_pct\"/\"income_change_pct\" are absent when the previous period's corresponding figure is zero - an undefined ratio, not zero.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The resolved current/previous period bounds and one row per top-level category present in either period.",
+		Response: categoryTrendsView{},
+		Errors:   []int{http.StatusUnprocessableEntity},
+		Query:    append(append([]queryParam{}, reportQueryParams...), granularityQueryParam),
 	},
 
 	{
