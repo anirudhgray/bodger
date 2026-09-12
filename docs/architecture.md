@@ -616,8 +616,28 @@ duplicate detection (flags `suspected_duplicate` for review, never
 auto-excludes — proven by a regression test asserting two genuinely
 separate same-day, same-amount transactions are never silently merged),
 and an advisory cross-account transfer-candidate heuristic against other
-staged records. Commit/rollback (#211) and surface wiring (#212) are
-separate, later issues.
+staged records. Commit/rollback (#211) lands on top of this next; surface
+wiring (#212) is a separate, later issue.
+[#211](https://github.com/anirudhgray/bodger/issues/211) lands the only
+pipeline stage that touches the ledger: `ImportCommitRepository`
+(`internal/ports`/`internal/adapters/sqlite`) writes a batch's resolved
+records' transactions, marks those records committed, and marks the batch
+committed, all inside one database transaction — ADR-0008's all-or-nothing
+guarantee. No new migration was needed: `transactions.import_record_id`
+has existed, unconstrained, since M1's original schema
+(`00005_create_transactions.sql`), so a commit could start writing
+provenance into it immediately. `app.CommitImportBatch` refuses to
+commit while any record is still `pending` — an unresolved suspected
+duplicate or transfer proposal — and moves a still-`staged` batch through
+`reviewed` on its way to `committed` in the same call, since nothing else
+calls `MarkReviewed` separately. `app.RollbackImportBatch` soft-deletes
+exactly the transactions its batch created (ADR-0002) while leaving the
+records themselves `committed`, so a rolled-back batch's provenance stays
+queryable and a repeated rollback attempt fails cleanly on the domain
+state machine rather than reaching the database twice.
+`app.ImportBatchTransactions` and `app.TransactionImportRecord` answer
+ADR-0008's two-directional provenance query. Surface wiring (#212) is a
+separate, later issue.
 
 | Milestone | Status |
 | --- | --- |
