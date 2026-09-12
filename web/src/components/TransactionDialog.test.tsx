@@ -123,7 +123,7 @@ function renderAndOpen(onSaved?: (t: Transaction) => void) {
 
 // The Category field is a Combobox (issue #106), not a native <select>:
 // picking a value means opening it and clicking the matching option,
-// the same real-interaction shape as date-picker.test.tsx's calendar
+// the same real-interaction shape as date-picker-impl.test.tsx's calendar
 // day pick, not a plain fireEvent.change.
 async function pickCategory(
   user: ReturnType<typeof userEvent.setup>,
@@ -256,7 +256,7 @@ describe('TransactionDialog (create)', () => {
     // text — buttons are labelable elements, and an explicit label
     // association takes precedence over content in accessible-name
     // computation.
-    await user.click(screen.getByRole('button', { name: 'Date' }))
+    await user.click(await screen.findByRole('button', { name: 'Date' }))
     await screen.findByRole('button', { name: /15th, 2026/ })
     // Retries the day-cell click until the popover actually closes
     // (DatePicker's handleSelect calls setOpen(false) on a successful

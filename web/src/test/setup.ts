@@ -3,6 +3,18 @@
 // Vitest's own `expect`, run once before every test file.
 import '@testing-library/jest-dom/vitest'
 
+// components/ui/date-picker.tsx (issue #119) dynamically imports its own
+// implementation on mount, which under Vitest means an on-demand esbuild
+// transform of the whole react-day-picker/date-fns/Radix Popover graph
+// the first time any page renders one — under full-suite parallel load
+// that cold transform can run long enough to blow through an unrelated
+// test's own default findBy timeout (e.g. Analytics.test.tsx's data-load
+// assertion, racing the same worker's CPU). Setup files are awaited
+// before a test file's own tests run and don't count against any test's
+// timeout, so warming the module here - once per worker, before timing
+// matters - keeps every page's own tests from paying this cost.
+await import('@/components/ui/date-picker-impl')
+
 // @testing-library/react normally registers its own afterEach(cleanup)
 // automatically, but only if it finds a global `afterEach` — which
 // requires vitest's `test.globals: true` (vite.config.ts deliberately
