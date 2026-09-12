@@ -21,8 +21,18 @@ const ExportFormatVersion = "bodger.export/v1"
 // postings and tags) that actor owns. It is the shared read both
 // ExportJSON and ExportCSV build on, so the two formats can never disagree
 // about which rows exist -- only about how those rows are written out.
+//
+// Filter narrows which transactions are included (accounts and categories
+// are always exported in full, regardless of Filter -- a filtered export
+// still needs every account/category name a matching transaction's
+// postings reference). Its zero value is ports.TransactionFilter's own
+// "match everything" zero value, so ExportJSON's full, unfiltered backup
+// (ADR-0008) and ExportCSV's optionally-filtered download (ADR-0009) share
+// this one query struct and this one read, differing only in what Filter
+// they pass.
 type ExportSnapshotQuery struct {
 	ActorID string
+	Filter  ports.TransactionFilter
 }
 
 // ExportedTransaction pairs one ledger.Transaction with its Tags.
@@ -83,12 +93,14 @@ func (s *Service) ExportSnapshot(ctx context.Context, q ExportSnapshotQuery) (Ex
 	}
 	sort.Slice(categories, func(i, j int) bool { return categories[i].ID() < categories[j].ID() })
 
-	// The zero-value TransactionFilter matches every non-deleted
-	// transaction the actor owns, unpaginated (ports.TransactionFilter's
-	// own doc comment) -- exactly ADR-0008's "complete" snapshot, the same
-	// unfiltered-unpaginated pattern AccountBalances already relies on for
-	// the same reason.
-	txns, err := s.Transactions.List(ctx, q.ActorID, ports.TransactionFilter{})
+	// q.Filter's zero value matches every non-deleted transaction the
+	// actor owns, unpaginated (ports.TransactionFilter's own doc comment)
+	// -- exactly ADR-0008's "complete" snapshot when a caller (ExportJSON)
+	// leaves it unset, the same unfiltered-unpaginated pattern
+	// AccountBalances already relies on for the same reason. A caller that
+	// sets Filter (ExportCSV) gets the same query narrowed to a subset of
+	// transactions instead.
+	txns, err := s.Transactions.List(ctx, q.ActorID, q.Filter)
 	if err != nil {
 		return ExportSnapshot{}, err
 	}

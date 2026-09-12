@@ -597,8 +597,17 @@ sequential prefix per ADR-0007), and `ImportBatchRepository`/
 Parsing/mapping/duplicate-detection (#210) and commit/rollback (#211) are
 separate, later issues that write to this foundation; export (#209)
 proceeded in parallel, per both issues' own dependency notes.
+[#213](https://github.com/anirudhgray/bodger/issues/213) wires #209's
+export writers onto both surfaces: `GET /api/v1/export/json`/`GET
+/api/v1/export/csv` and `bodger export json`/`bodger export csv`, the
+CSV route optionally scoped by the same `TransactionFilter` dimensions
+as `/api/v1/analytics/*` ([ADR-0009](decisions/0009-query-and-analytics-model.md)).
+Both responses are raw bytes rather than the REST API's usual `{"data":
+...}` envelope, since ADR-0008 requires the JSON export to be
+byte-identical for the same underlying data. Import-side wiring (#212)
+and the web UI (#214) are separate, later issues.
 [#210](https://github.com/anirudhgray/bodger/issues/210) lands the
-staging pipeline's own logic on top of that foundation:
+staging pipeline's own logic on top of #208's foundation:
 `internal/app/importparse`'s `CSVParser` (column-mapping driven, reusing
 `internal/app/normalize` per ADR-0005), the mapping stage resolving
 account/category references, tier-1 exact-match duplicate detection

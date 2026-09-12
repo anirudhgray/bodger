@@ -329,18 +329,29 @@ func buildOperation(gen *openapi3gen.Generator, schemas openapi3.Schemas, rt rou
 		}
 	}
 
-	respRef, err := schemaForBody(gen, schemas, rt.Response)
-	if err != nil {
-		return nil, fmt.Errorf("response schema: %w", err)
-	}
-	envRef := registerEnvelope(schemas, envelopeName(reflect.TypeOf(rt.Response)), "data", respRef)
-
 	responses := &openapi3.Responses{}
-	responses.Set(strconv.Itoa(rt.SuccessStatus), &openapi3.ResponseRef{
-		Value: openapi3.NewResponse().
-			WithDescription(rt.SuccessDescription).
-			WithContent(openapi3.NewContentWithJSONSchemaRef(envRef)),
-	})
+	if rt.RawResponseContentType != "" {
+		// A download route's success response is an opaque byte stream,
+		// not a reflected Go type wrapped in the usual {"data": ...}
+		// envelope (see route.RawResponseContentType's own doc comment) —
+		// rt.Response is unused here.
+		responses.Set(strconv.Itoa(rt.SuccessStatus), &openapi3.ResponseRef{
+			Value: openapi3.NewResponse().
+				WithDescription(rt.SuccessDescription).
+				WithContent(openapi3.NewContentWithSchema(openapi3.NewBytesSchema(), []string{rt.RawResponseContentType})),
+		})
+	} else {
+		respRef, err := schemaForBody(gen, schemas, rt.Response)
+		if err != nil {
+			return nil, fmt.Errorf("response schema: %w", err)
+		}
+		envRef := registerEnvelope(schemas, envelopeName(reflect.TypeOf(rt.Response)), "data", respRef)
+		responses.Set(strconv.Itoa(rt.SuccessStatus), &openapi3.ResponseRef{
+			Value: openapi3.NewResponse().
+				WithDescription(rt.SuccessDescription).
+				WithContent(openapi3.NewContentWithJSONSchemaRef(envRef)),
+		})
+	}
 	for _, code := range rt.Errors {
 		name, ok := errorResponseNames[code]
 		if !ok {

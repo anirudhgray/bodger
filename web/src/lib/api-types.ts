@@ -414,6 +414,46 @@ export interface paths {
         patch: operations["patchCategory"];
         trace?: never;
     };
+    "/api/v1/export/csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download transactions as CSV, one row per posting.
+         * @description Flat and lossy by design: a split transaction's postings become separate rows sharing the same transaction-level fields, and this format can't represent a split unambiguously enough to import back in. Optionally scoped by the same filter dimensions as /api/v1/analytics/*; omitting every filter parameter exports every transaction. Not wrapped in the usual {"data": ...} envelope.
+         */
+        get: operations["exportCSV"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/export/json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a complete backup as canonical JSON.
+         * @description Every account, category, and transaction the actor owns, unfiltered - independent of the database schema and deterministic across repeated calls with the same underlying data, so it's safe to use as a backup. Unlike every other route in this API, the response body is the export document itself, not wrapped in the usual {"data": ...} envelope.
+         */
+        get: operations["exportJSON"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/fx/rates": {
         parameters: {
             query?: never;
@@ -2110,6 +2150,69 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             422: components["responses"]["InvalidInput"];
+        };
+    };
+    exportCSV: {
+        parameters: {
+            query?: {
+                /** @description An account's ID or unique name. */
+                account?: string;
+                /** @description A category's ID or unique name; its whole subtree is included. */
+                category?: string;
+                /** @description One of "outflow", "inflow", or "transfer". */
+                type?: "outflow" | "inflow" | "transfer";
+                /** @description The inclusive start of a booked-date range. */
+                from?: string;
+                /** @description The inclusive end of a booked-date range. */
+                to?: string;
+                /** @description Only include this transaction currency (repeatable). */
+                filter_currency?: string;
+                /** @description Only include transactions at or above this amount (absolute value). */
+                amount_min?: string;
+                /** @description Only include transactions at or below this amount (absolute value). */
+                amount_max?: string;
+                /** @description Only include transactions whose description contains this text. */
+                description?: string;
+                /** @description Only include transactions carrying this tag (repeatable). */
+                tag?: string;
+                /** @description How multiple "tag" values combine. */
+                tag_mode?: "any" | "all";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The CSV export. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+        };
+    };
+    exportJSON: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The canonical JSON export document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string;
+                };
+            };
         };
     };
     listFxRates: {
