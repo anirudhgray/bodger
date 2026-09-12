@@ -31,6 +31,7 @@ const importRecordSelect = `
 	SELECT id, import_batch_id, user_id, raw_payload, booked_date, posted_date, description,
 	       amount_minor, currency, external_id, resolved_account_id, resolved_category_id,
 	       duplicate_tier, duplicate_matched_transaction_id, duplicate_resolution,
+	       transfer_candidate_record_id,
 	       status, transaction_id, sort_order
 	FROM import_record
 `
@@ -127,12 +128,14 @@ func (r *ImportRecordRepository) Update(ctx context.Context, actorID string, rec
 	resolvedCategoryID, hasResolvedCategoryID := record.ResolvedCategoryID()
 	transactionID, hasTransactionID := record.TransactionID()
 	duplicateTier, matchedTransactionID, duplicateResolution := nullableDuplicateMatch(record)
+	transferCandidateID, hasTransferCandidate := record.TransferCandidateRecordID()
 
 	result, err := r.db.write.ExecContext(ctx, `
 		UPDATE import_record
 		SET raw_payload = ?, booked_date = ?, posted_date = ?, description = ?, amount_minor = ?, currency = ?,
 		    external_id = ?, resolved_account_id = ?, resolved_category_id = ?,
 		    duplicate_tier = ?, duplicate_matched_transaction_id = ?, duplicate_resolution = ?,
+		    transfer_candidate_record_id = ?,
 		    status = ?, transaction_id = ?, sort_order = ?, updated_at = ?
 		WHERE id = ? AND user_id = ?
 	`,
@@ -140,6 +143,7 @@ func (r *ImportRecordRepository) Update(ctx context.Context, actorID string, rec
 		record.Amount().AmountMinor(), record.Amount().Currency(),
 		nullableString(externalID, hasExternalID), nullableString(resolvedAccountID, hasResolvedAccountID), nullableString(resolvedCategoryID, hasResolvedCategoryID),
 		duplicateTier, matchedTransactionID, duplicateResolution,
+		nullableString(transferCandidateID, hasTransferCandidate),
 		string(record.Status()), nullableString(transactionID, hasTransactionID), record.SortOrder(), now,
 		record.ID(), actorID,
 	)
@@ -166,15 +170,17 @@ func insertImportRecord(ctx context.Context, tx execer, actorID string, record i
 	resolvedCategoryID, hasResolvedCategoryID := record.ResolvedCategoryID()
 	transactionID, hasTransactionID := record.TransactionID()
 	duplicateTier, matchedTransactionID, duplicateResolution := nullableDuplicateMatch(record)
+	transferCandidateID, hasTransferCandidate := record.TransferCandidateRecordID()
 
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO import_record (
 			id, import_batch_id, user_id, raw_payload, booked_date, posted_date, description,
 			amount_minor, currency, external_id, resolved_account_id, resolved_category_id,
 			duplicate_tier, duplicate_matched_transaction_id, duplicate_resolution,
+			transfer_candidate_record_id,
 			status, transaction_id, sort_order, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		record.ID(), record.ImportBatchID(), actorID, record.RawPayload(), formatDate(record.BookedDate()),
 		nullableDate(postedDate, hasPostedDate), record.Description(),
@@ -182,6 +188,7 @@ func insertImportRecord(ctx context.Context, tx execer, actorID string, record i
 		nullableString(externalID, hasExternalID), nullableString(resolvedAccountID, hasResolvedAccountID),
 		nullableString(resolvedCategoryID, hasResolvedCategoryID),
 		duplicateTier, matchedTransactionID, duplicateResolution,
+		nullableString(transferCandidateID, hasTransferCandidate),
 		string(record.Status()), nullableString(transactionID, hasTransactionID), record.SortOrder(), now, now,
 	)
 	if err != nil {
@@ -215,6 +222,7 @@ func scanImportRecord(row rowScanner) (importing.ImportRecord, error) {
 		duplicateTierCol                                                  sql.NullString
 		duplicateMatchedTxnIDCol                                          sql.NullString
 		duplicateResolutionCol                                            string
+		transferCandidateIDCol                                            sql.NullString
 		status                                                            string
 		transactionIDCol                                                  sql.NullString
 		sortOrder                                                         int
@@ -223,6 +231,7 @@ func scanImportRecord(row rowScanner) (importing.ImportRecord, error) {
 		&id, &importBatchID, &userID, &rawPayload, &bookedDateCol, &postedDateCol, &description,
 		&amountMinor, &currency, &externalIDCol, &resolvedAccountIDCol, &resolvedCategoryIDCol,
 		&duplicateTierCol, &duplicateMatchedTxnIDCol, &duplicateResolutionCol,
+		&transferCandidateIDCol,
 		&status, &transactionIDCol, &sortOrder,
 	); err != nil {
 		return importing.ImportRecord{}, err
@@ -266,6 +275,9 @@ func scanImportRecord(row rowScanner) (importing.ImportRecord, error) {
 			}
 		}
 		opts = append(opts, importing.WithDuplicateMatch(match))
+	}
+	if transferCandidateIDCol.Valid {
+		opts = append(opts, importing.WithTransferCandidate(transferCandidateIDCol.String))
 	}
 	opts = append(opts, importing.WithRecordStatus(importing.ImportRecordStatus(status)))
 	if transactionIDCol.Valid {

@@ -144,6 +144,7 @@ func TestNewImportRecord(t *testing.T) {
 			importing.WithResolvedAccount("acc-1"),
 			importing.WithResolvedCategory("cat-1"),
 			importing.WithDuplicateMatch(match),
+			importing.WithTransferCandidate("record-2"),
 		)
 		if err != nil {
 			t.Fatalf("NewImportRecord(...) = %v, want success", err)
@@ -162,6 +163,24 @@ func TestNewImportRecord(t *testing.T) {
 		}
 		if dm, ok := r.DuplicateMatch(); !ok || dm.MatchedTransactionID() != "txn-1" {
 			t.Errorf("DuplicateMatch() = (%+v, %v), want a match against txn-1", dm, ok)
+		}
+		if v, ok := r.TransferCandidateRecordID(); !ok || v != "record-2" {
+			t.Errorf("TransferCandidateRecordID() = (%q, %v), want (%q, true)", v, ok, "record-2")
+		}
+	})
+
+	t.Run("WithTransferCandidate ignores an empty record id", func(t *testing.T) {
+		t.Parallel()
+		r, err := importing.NewImportRecord(
+			"record-1", "user-1", "batch-1", "raw", mustRecordDate(t, 2026, 8, 14), "desc",
+			mustRecordMoney(t, -100, "USD"), 0,
+			importing.WithTransferCandidate(""),
+		)
+		if err != nil {
+			t.Fatalf("NewImportRecord(...) = %v, want success", err)
+		}
+		if _, ok := r.TransferCandidateRecordID(); ok {
+			t.Error("TransferCandidateRecordID() ok = true, want false for an empty option value")
 		}
 	})
 

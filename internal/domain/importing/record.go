@@ -87,6 +87,7 @@ type ImportRecord struct {
 	resolvedAccountID  *string
 	resolvedCategoryID *string
 	duplicateMatch     *DuplicateMatch
+	transferCandidate  *string
 	status             ImportRecordStatus
 	transactionID      *string
 	sortOrder          int
@@ -149,6 +150,24 @@ func WithDuplicateMatch(match DuplicateMatch) ImportRecordOption {
 	return func(r *ImportRecord) {
 		m := match
 		r.duplicateMatch = &m
+	}
+}
+
+// WithTransferCandidate points this record at another ImportRecord — in
+// this batch or a different one — that duplicate/transfer detection (a
+// separate, out-of-scope issue) believes is the other leg of the same
+// cross-account movement: an outflow on one account and an inflow on
+// another, ADR-0008's "the same heuristic across accounts". This is purely
+// advisory: ADR-0008 is explicit that a transfer candidate is "proposed,
+// never applied automatically", so it never changes this record's status
+// or excludes it from commit by itself, and it is independent of
+// DuplicateMatch — a record can carry both, neither, or just one.
+func WithTransferCandidate(recordID string) ImportRecordOption {
+	return func(r *ImportRecord) {
+		if recordID != "" {
+			v := recordID
+			r.transferCandidate = &v
+		}
 	}
 }
 
@@ -289,6 +308,17 @@ func (r ImportRecord) DuplicateMatch() (DuplicateMatch, bool) {
 		return DuplicateMatch{}, false
 	}
 	return *r.duplicateMatch, true
+}
+
+// TransferCandidateRecordID returns the ID of the other ImportRecord
+// duplicate/transfer detection believes is the other leg of the same
+// cross-account transfer, and false if none was found. This is advisory
+// only — see WithTransferCandidate.
+func (r ImportRecord) TransferCandidateRecordID() (string, bool) {
+	if r.transferCandidate == nil {
+		return "", false
+	}
+	return *r.transferCandidate, true
 }
 
 // Status returns the record's current status in ADR-0008's state machine.

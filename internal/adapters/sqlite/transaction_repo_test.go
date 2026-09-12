@@ -421,6 +421,58 @@ func TestTransactionRepository_List_FilterByDescription(t *testing.T) {
 	}
 }
 
+// TestTransactionRepository_List_FilterByExternalID exercises issue #210's
+// tier-1 exact-duplicate lookup filter: ADR-0008's "(account_id,
+// external_id) is unique" is checked by combining this filter with
+// AccountID, so this test also confirms a same-external-id transaction on
+// a different account doesn't match.
+func TestTransactionRepository_List_FilterByExternalID(t *testing.T) {
+	db, _ := newTestDB(t)
+	seedAccountAndCategory(t, db, ports.SeededUserID, "acc-1", "cat-1")
+	seedAccountAndCategory(t, db, ports.SeededUserID, "acc-2", "cat-2")
+	repo := NewTransactionRepository(db)
+	ctx := context.Background()
+
+	matched := mustPosting(t, "post-matched", "acc-1", -1000, "INR", nil)
+	txnMatched, err := ledger.NewOutflow("txn-matched", ports.SeededUserID, mustDate(t, 2026, time.August, 1), "Coffee", []ledger.Posting{matched},
+		ledger.WithImportProvenance("", "bank-ext-1"))
+	if err != nil {
+		t.Fatalf("NewOutflow txnMatched: %v", err)
+	}
+	if err := repo.Create(ctx, ports.SeededUserID, txnMatched, nil); err != nil {
+		t.Fatalf("Create txnMatched: %v", err)
+	}
+
+	// Same external ID, different account: must not match when AccountID
+	// scopes the lookup to acc-1.
+	otherAccount := mustPosting(t, "post-other-account", "acc-2", -1000, "INR", nil)
+	txnOtherAccount, err := ledger.NewOutflow("txn-other-account", ports.SeededUserID, mustDate(t, 2026, time.August, 1), "Coffee", []ledger.Posting{otherAccount},
+		ledger.WithImportProvenance("", "bank-ext-1"))
+	if err != nil {
+		t.Fatalf("NewOutflow txnOtherAccount: %v", err)
+	}
+	if err := repo.Create(ctx, ports.SeededUserID, txnOtherAccount, nil); err != nil {
+		t.Fatalf("Create txnOtherAccount: %v", err)
+	}
+
+	unrelated := mustPosting(t, "post-unrelated", "acc-1", -1000, "INR", nil)
+	txnUnrelated, err := ledger.NewOutflow("txn-unrelated", ports.SeededUserID, mustDate(t, 2026, time.August, 2), "Rent", []ledger.Posting{unrelated})
+	if err != nil {
+		t.Fatalf("NewOutflow txnUnrelated: %v", err)
+	}
+	if err := repo.Create(ctx, ports.SeededUserID, txnUnrelated, nil); err != nil {
+		t.Fatalf("Create txnUnrelated: %v", err)
+	}
+
+	list, err := repo.List(ctx, ports.SeededUserID, ports.TransactionFilter{AccountID: "acc-1", ExternalID: "bank-ext-1"})
+	if err != nil {
+		t.Fatalf("List filtered by external id: %v", err)
+	}
+	if len(list) != 1 || list[0].ID() != "txn-matched" {
+		t.Errorf("List(AccountID=acc-1, ExternalID=bank-ext-1) = %+v, want only txn-matched", list)
+	}
+}
+
 func TestTransactionRepository_List_FilterByTags(t *testing.T) {
 	db, _ := newTestDB(t)
 	seedAccountAndCategory(t, db, ports.SeededUserID, "acc-1", "cat-1")

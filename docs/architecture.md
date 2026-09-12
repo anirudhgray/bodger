@@ -606,6 +606,18 @@ Both responses are raw bytes rather than the REST API's usual `{"data":
 ...}` envelope, since ADR-0008 requires the JSON export to be
 byte-identical for the same underlying data. Import-side wiring (#212)
 and the web UI (#214) are separate, later issues.
+[#210](https://github.com/anirudhgray/bodger/issues/210) lands the
+staging pipeline's own logic on top of #208's foundation:
+`internal/app/importparse`'s `CSVParser` (column-mapping driven, reusing
+`internal/app/normalize` per ADR-0005), the mapping stage resolving
+account/category references, tier-1 exact-match duplicate detection
+(auto-excludes on `(account_id, external_id)`), tier-2 heuristic
+duplicate detection (flags `suspected_duplicate` for review, never
+auto-excludes — proven by a regression test asserting two genuinely
+separate same-day, same-amount transactions are never silently merged),
+and an advisory cross-account transfer-candidate heuristic against other
+staged records. Commit/rollback (#211) and surface wiring (#212) are
+separate, later issues.
 
 **Scope addition: restoring a canonical JSON backup.** The original M6
 issue set (#208-215) never actually scoped a way to load a canonical
