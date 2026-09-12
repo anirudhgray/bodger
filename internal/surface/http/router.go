@@ -351,7 +351,7 @@ var routeTable = []route{
 		Handler: func(h *handlers) http.HandlerFunc { return h.getBalances },
 
 		OperationID: "getBalances", Summary: "Every account's balance as of a date.",
-		Description:   "Setting \"currency\" converts every account's balance into it, under \"policy\" (ADR-0004) - the response's \"balances[].converted\" carries the converted figure and its full provenance, and any account the conversion couldn't cover is reported under \"unconverted\" rather than silently dropped.",
+		Description:   "Setting \"currency\" converts every account's balance into it, under \"policy\" - the response's \"balances[].converted\" carries the converted figure and its full provenance, and any account the conversion couldn't cover is reported under \"unconverted\" rather than silently dropped.",
 		SuccessStatus: http.StatusOK, SuccessDescription: "Every account's balance as of the resolved date.",
 		Response: balancesView{},
 		Errors:   []int{http.StatusUnprocessableEntity},

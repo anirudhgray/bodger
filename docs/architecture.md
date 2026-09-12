@@ -222,8 +222,8 @@ Cross-currency transfers enabled. FX provider abstraction, rate storage, explici
 ### M5 · Orthanc — Analytics and charts
 The shared query/filter model ([ADR-0009](decisions/0009-query-and-analytics-model.md)), spending and income by category, cash flow, trends, savings rate. Charts in the web UI and machine-readable output from the CLI, both over the same analytics methods. Named for Saruman's tower and its palantír — a seeing-stone, for the milestone where the ledger's data finally becomes something you can *see*.
 
-### M6 — Import and export
-The staged import pipeline, CSV import with column mapping, duplicate detection, preview and commit. Canonical versioned JSON export and full backup ([ADR-0008](decisions/0008-import-export-architecture.md)). Export lands before or with import: backup is what makes import safe to attempt.
+### M6 · Fangorn — Import and export
+The staged import pipeline, CSV import with column mapping, duplicate detection, preview and commit. Canonical versioned JSON export and full backup ([ADR-0008](decisions/0008-import-export-architecture.md)). Export lands before or with import: backup is what makes import safe to attempt. Named for the old forest that outlasts everything built around it — a fitting name for the milestone where the ledger's own history, not just its present state, becomes something you can carry out and bring back in.
 
 ### M7 — Budgets
 Monthly category budgets, actual vs budget, remaining, utilisation, history. Rollover stays deferred.
@@ -591,7 +591,7 @@ last open issue — the milestone is now complete.
 | M3 · Rivendell — UI polish and design system | ✅ Complete |
 | M4 · The Grey Havens — Multi-currency and FX | ✅ Complete |
 | M5 · Orthanc — Analytics and charts | ✅ Complete |
-| M6 — Import and export | ⬜ Not started |
+| M6 · Fangorn — Import and export | ⬜ Not started |
 | M7 — Budgets | ⬜ Not started |
 | M8 — MCP server | ⬜ Not started |
 | M9 — Recurring transactions | ⬜ Not started |

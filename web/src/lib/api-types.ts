@@ -320,7 +320,7 @@ export interface paths {
         };
         /**
          * Every account's balance as of a date.
-         * @description Setting "currency" converts every account's balance into it, under "policy" (ADR-0004) - the response's "balances[].converted" carries the converted figure and its full provenance, and any account the conversion couldn't cover is reported under "unconverted" rather than silently dropped.
+         * @description Setting "currency" converts every account's balance into it, under "policy" - the response's "balances[].converted" carries the converted figure and its full provenance, and any account the conversion couldn't cover is reported under "unconverted" rather than silently dropped.
          */
         get: operations["getBalances"];
         put?: never;
