@@ -606,6 +606,64 @@ Both responses are raw bytes rather than the REST API's usual `{"data":
 ...}` envelope, since ADR-0008 requires the JSON export to be
 byte-identical for the same underlying data. Import-side wiring (#212)
 and the web UI (#214) are separate, later issues.
+[#210](https://github.com/anirudhgray/bodger/issues/210) lands the
+staging pipeline's own logic on top of #208's foundation:
+`internal/app/importparse`'s `CSVParser` (column-mapping driven, reusing
+`internal/app/normalize` per ADR-0005), the mapping stage resolving
+account/category references, tier-1 exact-match duplicate detection
+(auto-excludes on `(account_id, external_id)`), tier-2 heuristic
+duplicate detection (flags `suspected_duplicate` for review, never
+auto-excludes — proven by a regression test asserting two genuinely
+separate same-day, same-amount transactions are never silently merged),
+and an advisory cross-account transfer-candidate heuristic against other
+staged records. Commit/rollback (#211) lands on top of this next; surface
+wiring (#212) is a separate, later issue.
+[#211](https://github.com/anirudhgray/bodger/issues/211) lands the only
+pipeline stage that touches the ledger: `ImportCommitRepository`
+(`internal/ports`/`internal/adapters/sqlite`) writes a batch's resolved
+records' transactions, marks those records committed, and marks the batch
+committed, all inside one database transaction — ADR-0008's all-or-nothing
+guarantee. No new migration was needed: `transactions.import_record_id`
+has existed, unconstrained, since M1's original schema
+(`00005_create_transactions.sql`), so a commit could start writing
+provenance into it immediately. `app.CommitImportBatch` refuses to
+commit while any record is still `pending` — an unresolved suspected
+duplicate or transfer proposal — and moves a still-`staged` batch through
+`reviewed` on its way to `committed` in the same call, since nothing else
+calls `MarkReviewed` separately. `app.RollbackImportBatch` soft-deletes
+exactly the transactions its batch created (ADR-0002) while leaving the
+records themselves `committed`, so a rolled-back batch's provenance stays
+queryable and a repeated rollback attempt fails cleanly on the domain
+state machine rather than reaching the database twice.
+`app.ImportBatchTransactions` and `app.TransactionImportRecord` answer
+ADR-0008's two-directional provenance query. Surface wiring (#212) is a
+separate, later issue.
+[#212](https://github.com/anirudhgray/bodger/issues/212) wires #210/#211's
+pipeline onto both surfaces: `POST /api/v1/imports`/`bodger import upload`
+(stage), `GET /api/v1/imports`/`bodger import list` and `GET
+/api/v1/imports/{id}`/`bodger import show` (history and status lookup),
+`GET /api/v1/imports/{id}/records`/`bodger import records` (staged rows
+with their duplicate/transfer flags), `POST
+/api/v1/import-records/{id}/resolve`/`bodger import resolve` (the user's
+confirm/dismiss decision), and `POST /api/v1/imports/{id}/commit`/`rollback`
+with their CLI equivalents. Two design decisions this issue had to make
+that neither #210 nor #211 settled: upload's request body is the
+uploaded file's own raw bytes, not JSON — the target account, filename,
+and CSV column mapping travel as query parameters/flags instead, mirroring
+`/api/v1/export/*`'s raw-bytes convention in reverse (`router.go` gains a
+`RawRequestContentType` field alongside its existing
+`RawResponseContentType` for this); and reviewing a record's duplicate
+proposal needed a use case neither prior issue built
+(`app.ResolveImportRecord`, `internal/app/import_review.go`, together with
+`app.ListImportBatches`/`GetImportBatch`/`ListImportRecords`) — there is no
+separate "resolve a transfer candidate" verb, since a transfer candidate
+(`WithTransferCandidate`) is advisory only and carries no resolution field
+of its own; what actually blocks a commit is always a record's
+`DuplicateMatch`, which `ResolveImportRecord` already handles. Conformance
+coverage follows `export_conformance_test.go`'s precedent (a handful of
+focused test functions, not `cases_test.go`'s single table) since an
+import operation's inputs vary too much between steps to fit one row
+shape.
 
 **Scope addition: restoring a canonical JSON backup.** The original M6
 issue set (#208-215) never actually scoped a way to load a canonical

@@ -68,6 +68,10 @@ var enumSets = map[string][]string{
 	"conversion_policy":           {"transaction_date", "current", "pinned"},
 	"health_status":               {"ok"},
 	"error_code":                  errorCodeValues(),
+	"import_batch_status":         {"staged", "reviewed", "committed", "rolled_back"},
+	"import_record_status":        {"pending", "ready", "excluded", "committed"},
+	"import_duplicate_tier":       {"exact", "suspected_duplicate"},
+	"import_duplicate_resolution": {"pending", "confirmed_duplicate", "not_duplicate"},
 }
 
 func errorCodeValues() []string {
@@ -88,6 +92,7 @@ var errorResponseNames = map[int]string{
 	http.StatusNotFound:            "NotFound",
 	http.StatusUnprocessableEntity: "InvalidInput",
 	http.StatusUnauthorized:        "Unauthenticated",
+	http.StatusPreconditionFailed:  "PreconditionFailed",
 }
 
 // schemaTypeName is this generator's naming rule for a Go DTO type's
@@ -319,7 +324,16 @@ func buildOperation(gen *openapi3gen.Generator, schemas openapi3.Schemas, rt rou
 		op.Parameters = append(op.Parameters, &openapi3.ParameterRef{Value: queryParameter(q)})
 	}
 
-	if rt.Request != nil {
+	switch {
+	case rt.RawRequestContentType != "":
+		// A file-upload route's request body is an opaque byte stream,
+		// not a reflected Go type (see route.RawRequestContentType's own
+		// doc comment) — rt.Request is unused here.
+		op.RequestBody = &openapi3.RequestBodyRef{
+			Value: openapi3.NewRequestBody().WithRequired(true).
+				WithContent(openapi3.NewContentWithSchema(openapi3.NewBytesSchema(), []string{rt.RawRequestContentType})),
+		}
+	case rt.Request != nil:
 		reqRef, err := schemaForBody(gen, schemas, rt.Request)
 		if err != nil {
 			return nil, fmt.Errorf("request schema: %w", err)
@@ -431,9 +445,10 @@ func GenerateOpenAPIDocument() ([]byte, error) {
 				"Id": &openapi3.ParameterRef{Value: idParameter()},
 			},
 			Responses: openapi3.ResponseBodies{
-				"NotFound":        errorResponse("No such resource.", errorEnvelopeRef),
-				"InvalidInput":    errorResponse("The request failed validation.", errorEnvelopeRef),
-				"Unauthenticated": errorResponse("No valid credential was presented.", errorEnvelopeRef),
+				"NotFound":           errorResponse("No such resource.", errorEnvelopeRef),
+				"InvalidInput":       errorResponse("The request failed validation.", errorEnvelopeRef),
+				"Unauthenticated":    errorResponse("No valid credential was presented.", errorEnvelopeRef),
+				"PreconditionFailed": errorResponse("The request is valid, but not allowed given the resource's current state.", errorEnvelopeRef),
 			},
 		},
 	}

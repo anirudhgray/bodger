@@ -32,6 +32,16 @@
         },
         "description": "No such resource."
       },
+      "PreconditionFailed": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        },
+        "description": "The request is valid, but not allowed given the resource's current state."
+      },
       "Unauthenticated": {
         "content": {
           "application/json": {
@@ -987,6 +997,36 @@
         ],
         "type": "object"
       },
+      "DuplicateMatch": {
+        "properties": {
+          "matched_transaction_id": {
+            "description": "The existing transaction this record was matched against.",
+            "type": "string"
+          },
+          "resolution": {
+            "enum": [
+              "pending",
+              "confirmed_duplicate",
+              "not_duplicate"
+            ],
+            "type": "string"
+          },
+          "tier": {
+            "description": "\"exact\" is a definite duplicate, already excluded automatically. \"suspected_duplicate\" needs your decision — see POST /api/v1/import-records/{id}/resolve.",
+            "enum": [
+              "exact",
+              "suspected_duplicate"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "tier",
+          "matched_transaction_id",
+          "resolution"
+        ],
+        "type": "object"
+      },
       "EditTransactionRequest": {
         "properties": {
           "account": {
@@ -1253,6 +1293,262 @@
         ],
         "type": "object"
       },
+      "ImportBatch": {
+        "properties": {
+          "file_hash": {
+            "description": "A content hash of the uploaded file, for spotting an accidental re-upload.",
+            "type": "string"
+          },
+          "filename": {
+            "description": "The uploaded file's own name.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "source_format": {
+            "description": "The uploaded file's format. Only \"csv\" is supported today.",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "staged",
+              "reviewed",
+              "committed",
+              "rolled_back"
+            ],
+            "type": "string"
+          },
+          "target_account_id": {
+            "description": "The account new transactions from this import post against once committed.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_format",
+          "filename",
+          "file_hash",
+          "target_account_id",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ImportBatchEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ImportBatch"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ImportBatchListEnvelope": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ImportBatch"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ImportBatchWithRecords": {
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/ImportBatch"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/ImportRecord"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "batch",
+          "records"
+        ],
+        "type": "object"
+      },
+      "ImportBatchWithRecordsEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ImportBatchWithRecords"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ImportCommit": {
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/ImportBatch"
+          },
+          "transactions": {
+            "items": {
+              "$ref": "#/components/schemas/Transaction"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "batch",
+          "transactions"
+        ],
+        "type": "object"
+      },
+      "ImportCommitEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ImportCommit"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ImportRecord": {
+        "properties": {
+          "amount": {
+            "description": "Signed: negative for money out, positive for money in.",
+            "format": "money",
+            "type": "string"
+          },
+          "booked_date": {
+            "format": "date",
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "duplicate_match": {
+            "$ref": "#/components/schemas/DuplicateMatch"
+          },
+          "external_id": {
+            "description": "The source's own ID for this row, when it had one.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "import_id": {
+            "description": "The import this record was staged into.",
+            "type": "string"
+          },
+          "posted_date": {
+            "description": "Set only when the source distinguished it from booked_date.",
+            "format": "date",
+            "type": "string"
+          },
+          "resolved_account_id": {
+            "type": "string"
+          },
+          "resolved_category_id": {
+            "type": "string"
+          },
+          "sort_order": {
+            "description": "This record's position in the uploaded file.",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "ready",
+              "excluded",
+              "committed"
+            ],
+            "type": "string"
+          },
+          "transaction_id": {
+            "description": "Set once this record has been committed.",
+            "type": "string"
+          },
+          "transfer_candidate_record_id": {
+            "description": "Another staged record this one might be the other leg of a transfer with. Informational only — resolving duplicate_match is what actually affects commit.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "import_id",
+          "booked_date",
+          "description",
+          "amount",
+          "currency",
+          "status",
+          "sort_order"
+        ],
+        "type": "object"
+      },
+      "ImportRecordEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ImportRecord"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ImportRecordListEnvelope": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ImportRecord"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ImportRollback": {
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/ImportBatch"
+          },
+          "transaction_ids": {
+            "description": "The transactions this rollback deleted.",
+            "items": {
+              "description": "The transactions this rollback deleted.",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "batch",
+          "transaction_ids"
+        ],
+        "type": "object"
+      },
+      "ImportRollbackEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ImportRollback"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "LoginRequest": {
         "properties": {
           "password": {
@@ -1405,6 +1701,23 @@
         },
         "required": [
           "data"
+        ],
+        "type": "object"
+      },
+      "ResolveImportRecordRequest": {
+        "properties": {
+          "resolution": {
+            "description": "\"confirmed_duplicate\" excludes the record from commit; \"not_duplicate\" clears it for commit.",
+            "enum": [
+              "pending",
+              "confirmed_duplicate",
+              "not_duplicate"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "resolution"
         ],
         "type": "object"
       },
@@ -3830,6 +4143,296 @@
           }
         },
         "summary": "Fetch and store exchange rates from the configured provider."
+      }
+    },
+    "/api/v1/import-records/{id}/resolve": {
+      "post": {
+        "description": "\"confirmed_duplicate\" excludes the record from commit; \"not_duplicate\" clears it for commit. Refused for a record with no suspected duplicate to resolve, or one already resolved.",
+        "operationId": "resolveImportRecord",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveImportRecordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportRecordEnvelope"
+                }
+              }
+            },
+            "description": "The updated record."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Record your decision on a staged record's suspected duplicate."
+      }
+    },
+    "/api/v1/imports": {
+      "get": {
+        "operationId": "listImportBatches",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportBatchListEnvelope"
+                }
+              }
+            },
+            "description": "Every import."
+          }
+        },
+        "summary": "List every import, most recently created first."
+      },
+      "post": {
+        "description": "The request body is the file's own raw bytes - not wrapped in the usual {\"data\": ...} envelope or JSON. account, filename, and the column mapping are given as query parameters rather than in the body, since the body is already spoken for by the file itself. Nothing is written to your accounts, categories, or transactions by this call: every row is only staged for review (see GET /api/v1/imports/{id}/records), and stays that way until you commit it.",
+        "operationId": "createImportBatch",
+        "parameters": [
+          {
+            "description": "The account new transactions from this import will post against, by ID or unique name (required).",
+            "in": "query",
+            "name": "account",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The uploaded file's own name, for display and history (required).",
+            "in": "query",
+            "name": "filename",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The uploaded file's format. Only \"csv\" is supported today; omit this to use it.",
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "enum": [
+                "csv"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The column holding each row's booked date (required for csv).",
+            "in": "query",
+            "name": "date_column",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The column holding each row's description (required for csv).",
+            "in": "query",
+            "name": "description_column",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The column holding each row's signed amount (required for csv).",
+            "in": "query",
+            "name": "amount_column",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The column holding each row's posted date, when the file distinguishes it from the booked date.",
+            "in": "query",
+            "name": "posted_date_column",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The column holding each row's currency, when the file has more than one. Omit to use the account's own currency for every row.",
+            "in": "query",
+            "name": "currency_column",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The column holding each row's own ID from the source, used to detect an exact duplicate on a re-import.",
+            "in": "query",
+            "name": "external_id_column",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The column holding a hint for each row's category, matched against your existing category names.",
+            "in": "query",
+            "name": "category_column",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "text/csv": {
+              "schema": {
+                "format": "byte",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportBatchWithRecordsEnvelope"
+                }
+              }
+            },
+            "description": "The staged import and every record it staged."
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Upload a file and stage it for import."
+      }
+    },
+    "/api/v1/imports/{id}": {
+      "get": {
+        "operationId": "getImportBatch",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportBatchEnvelope"
+                }
+              }
+            },
+            "description": "The import."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Look up one import's status."
+      }
+    },
+    "/api/v1/imports/{id}/commit": {
+      "post": {
+        "description": "Refused if any staged record is still awaiting a decision on a suspected duplicate. Every record is written in one all-or-nothing step.",
+        "operationId": "commitImportBatch",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportCommitEnvelope"
+                }
+              }
+            },
+            "description": "The committed import and the transactions it created."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          }
+        },
+        "summary": "Commit a staged import: write its cleared records as real transactions."
+      }
+    },
+    "/api/v1/imports/{id}/records": {
+      "get": {
+        "description": "Every row from the uploaded file, in its own original order - including a row already excluded as an exact duplicate, and one still awaiting your decision on a suspected duplicate (see POST /api/v1/import-records/{id}/resolve).",
+        "operationId": "listImportRecords",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportRecordListEnvelope"
+                }
+              }
+            },
+            "description": "Every staged record."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "List an import's staged records, with their duplicate/transfer flags."
+      }
+    },
+    "/api/v1/imports/{id}/rollback": {
+      "post": {
+        "description": "Only a currently committed import can be rolled back. The deleted transactions keep their history, the same as deleting any other transaction.",
+        "operationId": "rollbackImportBatch",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportRollbackEnvelope"
+                }
+              }
+            },
+            "description": "The rolled-back import and the IDs of the deleted transactions."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          }
+        },
+        "summary": "Undo a committed import: delete the transactions it created."
       }
     },
     "/api/v1/reporting-currency": {

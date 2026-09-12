@@ -272,6 +272,51 @@ The REST API offers the same two downloads at `GET /api/v1/export/json` and `GET
 
 ---
 
+## Importing a bank statement
+
+`bodger import upload` reads a CSV file from your bank or card and stages it for review — nothing is added to your accounts yet. You tell it which account the file belongs to, and which column holds which field:
+
+```sh
+bodger import upload statement.csv \
+  --account "HDFC Savings" \
+  --date-column Date --description-column Description --amount-column Amount
+```
+
+This prints a summary: how many rows are ready to go in as-is, how many were skipped as exact duplicates of something you already have, and how many need your attention because they look like they might be duplicates of an existing transaction. It also prints the import's own ID, which every other `bodger import` command below takes.
+
+See what was staged, including any rows flagged for review:
+
+```sh
+bodger import records <import-id>
+```
+
+A row flagged as a possible duplicate needs a decision before you can commit:
+
+```sh
+bodger import resolve <record-id> --resolution not_duplicate       # keep it
+bodger import resolve <record-id> --resolution confirmed_duplicate # leave it out
+```
+
+Once every flagged row has been resolved, commit the import to actually record the transactions:
+
+```sh
+bodger import commit <import-id>
+```
+
+If something went wrong — the wrong account, a bad column mapping — undo it:
+
+```sh
+bodger import rollback <import-id>
+```
+
+This removes exactly the transactions that import created; everything else you've recorded is untouched. `bodger import list` shows every import you've started, and `bodger import show <import-id>` looks up one import's current status.
+
+The REST API offers the same operations: `POST /api/v1/imports` (the uploaded file's own bytes as the request body, with the account, filename, and column mapping as query parameters), `GET /api/v1/imports`, `GET /api/v1/imports/{id}`, `GET /api/v1/imports/{id}/records`, `POST /api/v1/import-records/{id}/resolve`, `POST /api/v1/imports/{id}/commit`, and `POST /api/v1/imports/{id}/rollback`.
+
+Only CSV is supported today.
+
+---
+
 ## Running the REST API
 
 `bodger serve` starts a REST API server backed by the same database and the same application logic as the command line — nothing about how a transaction is recorded or validated differs between the two.
@@ -458,6 +503,13 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | `bodger report category-trends --policy [--currency] [--pinned-date] [--granularity] [filters]` | Per-category spending/income trend deltas |
 | `bodger export json [--output]` | Download a complete backup of everything you have, as JSON |
 | `bodger export csv [--output] [filters]` | Download your transactions as CSV |
+| `bodger import upload <file> --account <account> --date-column <col> --description-column <col> --amount-column <col> [--filename] [--format] [--posted-date-column] [--currency-column] [--external-id-column] [--category-column]` | Stage a CSV file for review — nothing is recorded yet |
+| `bodger import list` | List every import you've started |
+| `bodger import show <import-id>` | Look up one import's status |
+| `bodger import records <import-id>` | List an import's staged rows, with any duplicate/transfer flags |
+| `bodger import resolve <record-id> --resolution <confirmed_duplicate\|not_duplicate>` | Record your decision on a flagged row |
+| `bodger import commit <import-id>` | Write a staged import's cleared rows as real transactions |
+| `bodger import rollback <import-id>` | Undo a committed import |
 | `bodger transactions list [--account] [--category] [--type] [--since] [--until] [--limit] [--offset]` | List what you've recorded, newest first |
 | `bodger transactions edit <id> --amount <amount> --description <text> [--account] [--category] [--currency] [--from] [--to] [--to-amount] [--on] [--tag] [--note]` | Correct a transaction — replaces every value |
 | `bodger transactions delete <id>` | Delete a transaction you recorded by mistake |

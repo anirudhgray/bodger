@@ -494,6 +494,124 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/import-records/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record your decision on a staged record's suspected duplicate.
+         * @description "confirmed_duplicate" excludes the record from commit; "not_duplicate" clears it for commit. Refused for a record with no suspected duplicate to resolve, or one already resolved.
+         */
+        post: operations["resolveImportRecord"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List every import, most recently created first. */
+        get: operations["listImportBatches"];
+        put?: never;
+        /**
+         * Upload a file and stage it for import.
+         * @description The request body is the file's own raw bytes - not wrapped in the usual {"data": ...} envelope or JSON. account, filename, and the column mapping are given as query parameters rather than in the body, since the body is already spoken for by the file itself. Nothing is written to your accounts, categories, or transactions by this call: every row is only staged for review (see GET /api/v1/imports/{id}/records), and stays that way until you commit it.
+         */
+        post: operations["createImportBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Look up one import's status. */
+        get: operations["getImportBatch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{id}/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Commit a staged import: write its cleared records as real transactions.
+         * @description Refused if any staged record is still awaiting a decision on a suspected duplicate. Every record is written in one all-or-nothing step.
+         */
+        post: operations["commitImportBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{id}/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an import's staged records, with their duplicate/transfer flags.
+         * @description Every row from the uploaded file, in its own original order - including a row already excluded as an exact duplicate, and one still awaiting your decision on a suspected duplicate (see POST /api/v1/import-records/{id}/resolve).
+         */
+        get: operations["listImportRecords"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo a committed import: delete the transactions it created.
+         * @description Only a currently committed import can be rolled back. The deleted transactions keep their history, the same as deleting any other transaction.
+         */
+        post: operations["rollbackImportBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reporting-currency": {
         parameters: {
             query?: never;
@@ -958,6 +1076,17 @@ export interface components {
             amount: string;
             currency: string;
         };
+        DuplicateMatch: {
+            /** @description The existing transaction this record was matched against. */
+            matched_transaction_id: string;
+            /** @enum {string} */
+            resolution: "pending" | "confirmed_duplicate" | "not_duplicate";
+            /**
+             * @description "exact" is a definite duplicate, already excluded automatically. "suspected_duplicate" needs your decision — see POST /api/v1/import-records/{id}/resolve.
+             * @enum {string}
+             */
+            tier: "exact" | "suspected_duplicate";
+        };
         EditTransactionRequest: {
             /** @description An account's ID or unique name. Read when editing an outflow or an inflow. */
             account?: string;
@@ -1057,6 +1186,85 @@ export interface components {
         HealthzEnvelope: {
             data: components["schemas"]["Healthz"];
         };
+        ImportBatch: {
+            /** @description A content hash of the uploaded file, for spotting an accidental re-upload. */
+            file_hash: string;
+            /** @description The uploaded file's own name. */
+            filename: string;
+            id: string;
+            /** @description The uploaded file's format. Only "csv" is supported today. */
+            source_format: string;
+            /** @enum {string} */
+            status: "staged" | "reviewed" | "committed" | "rolled_back";
+            /** @description The account new transactions from this import post against once committed. */
+            target_account_id: string;
+        };
+        ImportBatchEnvelope: {
+            data: components["schemas"]["ImportBatch"];
+        };
+        ImportBatchListEnvelope: {
+            data: components["schemas"]["ImportBatch"][];
+        };
+        ImportBatchWithRecords: {
+            batch: components["schemas"]["ImportBatch"];
+            records: components["schemas"]["ImportRecord"][];
+        };
+        ImportBatchWithRecordsEnvelope: {
+            data: components["schemas"]["ImportBatchWithRecords"];
+        };
+        ImportCommit: {
+            batch: components["schemas"]["ImportBatch"];
+            transactions: components["schemas"]["Transaction"][];
+        };
+        ImportCommitEnvelope: {
+            data: components["schemas"]["ImportCommit"];
+        };
+        ImportRecord: {
+            /**
+             * Format: money
+             * @description Signed: negative for money out, positive for money in.
+             */
+            amount: string;
+            /** Format: date */
+            booked_date: string;
+            currency: string;
+            description: string;
+            duplicate_match?: components["schemas"]["DuplicateMatch"];
+            /** @description The source's own ID for this row, when it had one. */
+            external_id?: string;
+            id: string;
+            /** @description The import this record was staged into. */
+            import_id: string;
+            /**
+             * Format: date
+             * @description Set only when the source distinguished it from booked_date.
+             */
+            posted_date?: string;
+            resolved_account_id?: string;
+            resolved_category_id?: string;
+            /** @description This record's position in the uploaded file. */
+            sort_order: number;
+            /** @enum {string} */
+            status: "pending" | "ready" | "excluded" | "committed";
+            /** @description Set once this record has been committed. */
+            transaction_id?: string;
+            /** @description Another staged record this one might be the other leg of a transfer with. Informational only — resolving duplicate_match is what actually affects commit. */
+            transfer_candidate_record_id?: string;
+        };
+        ImportRecordEnvelope: {
+            data: components["schemas"]["ImportRecord"];
+        };
+        ImportRecordListEnvelope: {
+            data: components["schemas"]["ImportRecord"][];
+        };
+        ImportRollback: {
+            batch: components["schemas"]["ImportBatch"];
+            /** @description The transactions this rollback deleted. */
+            transaction_ids: string[];
+        };
+        ImportRollbackEnvelope: {
+            data: components["schemas"]["ImportRollback"];
+        };
         LoginRequest: {
             password: string;
         };
@@ -1112,6 +1320,13 @@ export interface components {
         };
         ReportingCurrencyEnvelope: {
             data: components["schemas"]["ReportingCurrency"];
+        };
+        ResolveImportRecordRequest: {
+            /**
+             * @description "confirmed_duplicate" excludes the record from commit; "not_duplicate" clears it for commit.
+             * @enum {string}
+             */
+            resolution: "pending" | "confirmed_duplicate" | "not_duplicate";
         };
         SavingsRate: {
             currency: string;
@@ -1269,6 +1484,15 @@ export interface components {
         };
         /** @description No such resource. */
         NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorEnvelope"];
+            };
+        };
+        /** @description The request is valid, but not allowed given the resource's current state. */
+        PreconditionFailed: {
             headers: {
                 [name: string]: unknown;
             };
@@ -2274,6 +2498,200 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             422: components["responses"]["InvalidInput"];
+        };
+    };
+    resolveImportRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's ID, or (for an account or category) its unique name. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveImportRecordRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated record. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRecordEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    listImportBatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every import. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchListEnvelope"];
+                };
+            };
+        };
+    };
+    createImportBatch: {
+        parameters: {
+            query?: {
+                /** @description The account new transactions from this import will post against, by ID or unique name (required). */
+                account?: string;
+                /** @description The uploaded file's own name, for display and history (required). */
+                filename?: string;
+                /** @description The uploaded file's format. Only "csv" is supported today; omit this to use it. */
+                format?: "csv";
+                /** @description The column holding each row's booked date (required for csv). */
+                date_column?: string;
+                /** @description The column holding each row's description (required for csv). */
+                description_column?: string;
+                /** @description The column holding each row's signed amount (required for csv). */
+                amount_column?: string;
+                /** @description The column holding each row's posted date, when the file distinguishes it from the booked date. */
+                posted_date_column?: string;
+                /** @description The column holding each row's currency, when the file has more than one. Omit to use the account's own currency for every row. */
+                currency_column?: string;
+                /** @description The column holding each row's own ID from the source, used to detect an exact duplicate on a re-import. */
+                external_id_column?: string;
+                /** @description The column holding a hint for each row's category, matched against your existing category names. */
+                category_column?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "text/csv": string;
+            };
+        };
+        responses: {
+            /** @description The staged import and every record it staged. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchWithRecordsEnvelope"];
+                };
+            };
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    getImportBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's ID, or (for an account or category) its unique name. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The import. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    commitImportBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's ID, or (for an account or category) its unique name. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The committed import and the transactions it created. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportCommitEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+        };
+    };
+    listImportRecords: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's ID, or (for an account or category) its unique name. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every staged record. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRecordListEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rollbackImportBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's ID, or (for an account or category) its unique name. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rolled-back import and the IDs of the deleted transactions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRollbackEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
         };
     };
     getReportingCurrency: {
