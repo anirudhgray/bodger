@@ -1721,6 +1721,52 @@
         ],
         "type": "object"
       },
+      "RestoreSnapshot": {
+        "properties": {
+          "accounts": {
+            "type": "integer"
+          },
+          "categories": {
+            "type": "integer"
+          },
+          "transactions": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accounts",
+          "categories",
+          "transactions"
+        ],
+        "type": "object"
+      },
+      "RestoreSnapshotEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RestoreSnapshot"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "RestoreSnapshotRequest": {
+        "properties": {
+          "confirm": {
+            "description": "Must be true. Restoring replaces every account, category, and transaction you currently have.",
+            "type": "boolean"
+          },
+          "document": {
+            "description": "The canonical JSON document to restore, exactly as produced by GET /api/v1/export/json."
+          }
+        },
+        "required": [
+          "confirm",
+          "document"
+        ],
+        "type": "object"
+      },
       "SavingsRate": {
         "properties": {
           "currency": {
@@ -4480,6 +4526,38 @@
           }
         },
         "summary": "Set the acting user's reporting currency."
+      }
+    },
+    "/api/v1/restore": {
+      "post": {
+        "description": "Wipes and reloads the actor's entire ledger - every account, category, and transaction - from \"document\", a canonical JSON backup exactly as produced by GET /api/v1/export/json. This can't be undone and has no preview step: the request must set \"confirm\": true, or it's rejected before anything is touched.",
+        "operationId": "restoreSnapshot",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreSnapshotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreSnapshotEnvelope"
+                }
+              }
+            },
+            "description": "The restore completed; how many accounts, categories, and transactions were installed."
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Replace everything with a canonical JSON backup."
       }
     },
     "/api/v1/transactions": {

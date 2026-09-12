@@ -562,6 +562,16 @@ var routeTable = []route{
 	},
 
 	{
+		Method: http.MethodPost, Pattern: "/api/v1/restore",
+		Handler: func(h *handlers) http.HandlerFunc { return h.restoreSnapshot },
+
+		OperationID: "restoreSnapshot", Summary: "Replace everything with a canonical JSON backup.",
+		Description:   `Wipes and reloads the actor's entire ledger - every account, category, and transaction - from "document", a canonical JSON backup exactly as produced by GET /api/v1/export/json. This can't be undone and has no preview step: the request must set "confirm": true, or it's rejected before anything is touched.`,
+		SuccessStatus: http.StatusOK, SuccessDescription: "The restore completed; how many accounts, categories, and transactions were installed.",
+		Request: restoreSnapshotRequest{}, Response: restoreSnapshotView{},
+		Errors: []int{http.StatusUnprocessableEntity},
+	},
+	{
 		Method: http.MethodPost, Pattern: "/api/v1/imports",
 		Handler: func(h *handlers) http.HandlerFunc { return h.createImportBatch },
 
