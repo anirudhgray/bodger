@@ -574,7 +574,14 @@ totals overview — landed: `Service.BalanceTotals`, `GET
 the Balances screen, reusing `AccountBalances`' own conversion/provenance
 pattern), and [#196](https://github.com/anirudhgray/bodger/issues/196)
 (net worth over time, top transactions, average transaction size, and
-per-category trend deltas).
+per-category trend deltas — landed: `Service.NetWorthOverTime` (a time
+series, `internal/app/balances.go`, distinct from `BalanceTotals`' own
+point-in-time snapshot) and `TopTransactions`/`AverageTransactionSize`/
+`CategoryTrends` (`internal/app/analytics.go`), all reusing
+`convertPostings`/`categoryBreakdownRows`/`overallBalance` rather than
+recomputing independently, with matching REST routes, CLI subcommands,
+and web sections on the Balances and Analytics screens). #196 was M5's
+last open issue — the milestone is now complete.
 
 | Milestone | Status |
 | --- | --- |
