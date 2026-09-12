@@ -590,3 +590,213 @@ export function getNetWorthOverTime(
     })}`,
   )
 }
+
+// --- Import (issue #214, wrapping #212's REST surface) ---------------------
+//
+// ADR-0008's staged pipeline: upload stages a file's rows for review
+// without touching the ledger, resolving a suspected duplicate clears (or
+// excludes) a row, and only commit ever writes real transactions. This
+// file's functions are thin wrappers over #212's routes — no parsing,
+// mapping, or duplicate-detection logic lives here (docs/architecture.md
+// §3's "no financial logic in the web UI").
+
+export type ImportBatch = components['schemas']['ImportBatch']
+export type ImportBatchStatus = ImportBatch['status']
+export type ImportRecord = components['schemas']['ImportRecord']
+export type ImportRecordStatus = ImportRecord['status']
+export type DuplicateMatch = components['schemas']['DuplicateMatch']
+export type ImportDuplicateResolution = DuplicateMatch['resolution']
+export type ImportBatchWithRecords =
+  components['schemas']['ImportBatchWithRecords']
+export type ImportCommit = components['schemas']['ImportCommit']
+export type ImportRollback = components['schemas']['ImportRollback']
+
+// ImportColumnMapping mirrors POST /api/v1/imports' own query parameters
+// (internal/surface/http/imports.go's columnMappingFromQuery) field for
+// field: raw column names read straight off the uploaded file's own
+// header row. Nothing here is validated or resolved client-side — the
+// app layer does that once the upload actually lands (ADR-0005's
+// normalise-once rule applies to a wizard step the same as any other
+// surface).
+export type ImportColumnMapping = {
+  dateColumn: string
+  descriptionColumn: string
+  amountColumn: string
+  postedDateColumn?: string
+  currencyColumn?: string
+  externalIDColumn?: string
+  categoryColumn?: string
+}
+
+export type UploadImportInput = {
+  account: string
+  filename: string
+  fileContent: string
+  mapping: ImportColumnMapping
+}
+
+// uploadImport is POST /api/v1/imports: the request body is the uploaded
+// file's own raw bytes, not JSON (mirroring the server's own raw-request
+// convention for this one route) — account, filename, and the column
+// mapping travel as query parameters instead. apiFetch's default
+// Content-Type would be "application/json"; this call overrides it since
+// the body is CSV text, not a JSON string.
+export function uploadImport(
+  input: UploadImportInput,
+): Promise<ImportBatchWithRecords> {
+  const query = buildQuery({
+    account: input.account,
+    filename: input.filename,
+    format: 'csv',
+    date_column: input.mapping.dateColumn,
+    description_column: input.mapping.descriptionColumn,
+    amount_column: input.mapping.amountColumn,
+    posted_date_column: input.mapping.postedDateColumn,
+    currency_column: input.mapping.currencyColumn,
+    external_id_column: input.mapping.externalIDColumn,
+    category_column: input.mapping.categoryColumn,
+  })
+  return apiFetch<ImportBatchWithRecords>(`/api/v1/imports${query}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/csv' },
+    body: input.fileContent,
+  })
+}
+
+// listImportBatches lists every import, most recently created first (the
+// order the API itself already guarantees — nothing is re-sorted here).
+export function listImportBatches(): Promise<ImportBatch[]> {
+  return apiFetch<ImportBatch[]>('/api/v1/imports')
+}
+
+export function getImportBatch(id: string): Promise<ImportBatch> {
+  return apiFetch<ImportBatch>(`/api/v1/imports/${id}`)
+}
+
+export function listImportRecords(batchId: string): Promise<ImportRecord[]> {
+  return apiFetch<ImportRecord[]>(`/api/v1/imports/${batchId}/records`)
+}
+
+export function commitImportBatch(id: string): Promise<ImportCommit> {
+  return apiFetch<ImportCommit>(`/api/v1/imports/${id}/commit`, {
+    method: 'POST',
+  })
+}
+
+export function rollbackImportBatch(id: string): Promise<ImportRollback> {
+  return apiFetch<ImportRollback>(`/api/v1/imports/${id}/rollback`, {
+    method: 'POST',
+  })
+}
+
+// ResolvableImportResolution excludes "pending" — that's a staged
+// record's own starting state, never something a caller resolves it back
+// to (internal/surface/http/imports.go's resolveImportRecordRequest doc
+// comment: only "confirmed_duplicate" or "not_duplicate" are valid
+// decisions).
+export type ResolvableImportResolution = Exclude<
+  ImportDuplicateResolution,
+  'pending'
+>
+
+export function resolveImportRecord(
+  id: string,
+  resolution: ResolvableImportResolution,
+): Promise<ImportRecord> {
+  return apiFetch<ImportRecord>(`/api/v1/import-records/${id}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify({ resolution }),
+  })
+}
+
+// --- Export and restore (issues #213, #227) ---------------------------
+//
+// Both /api/v1/export/* routes and /api/v1/restore move whole documents
+// rather than the usual small JSON objects: export's response body and
+// restore's own upload are the canonical bodger.export/v1 document itself
+// (ADR-0008), not this API's usual {"data": ...} envelope. downloadFile
+// below is this file's equivalent of apiFetch for that shape — same
+// ApiError on failure, but the success body is a Blob, not parsed JSON.
+
+export type ExportCSVFilter = {
+  account?: string
+  category?: string
+  type?: TransactionKind
+  from?: string
+  to?: string
+}
+
+// downloadFile fetches path and returns its raw response body as a Blob,
+// throwing the same ApiError apiFetch does on a non-2xx response (the
+// error envelope is identical; only the success body's shape differs
+// here, per this section's own doc comment above).
+async function downloadFile(path: string): Promise<Blob> {
+  const res = await fetch(path, { credentials: 'include' })
+  if (!res.ok) {
+    let errBody: ErrorBody | undefined
+    try {
+      errBody = (await res.json()) as ErrorBody
+    } catch {
+      errBody = undefined
+    }
+    throw new ApiError(
+      errBody?.error?.code ?? 'internal',
+      errBody?.error?.message ?? 'Something went wrong. Try again in a moment.',
+      errBody?.error?.field,
+    )
+  }
+  return res.blob()
+}
+
+// saveBlob triggers a browser "Save As" for blob without navigating the
+// SPA away from the current page — there's no server-rendered <a> to
+// just click here, so this is the client-side equivalent.
+function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+// downloadExportJSON downloads the complete canonical JSON backup
+// (ADR-0008) — every account, category, and transaction the actor owns,
+// unfiltered, deterministic across repeated calls against the same data.
+export async function downloadExportJSON(): Promise<void> {
+  const blob = await downloadFile('/api/v1/export/json')
+  saveBlob(blob, 'bodger-export.json')
+}
+
+// downloadExportCSV downloads transactions as CSV, one row per posting,
+// optionally narrowed by the same filter dimensions the transaction list
+// itself already filters by. Flat and lossy by design (ADR-0008): not an
+// interchange format, for spreadsheets only — a split transaction can't
+// round-trip through it.
+export async function downloadExportCSV(
+  filter: ExportCSVFilter = {},
+): Promise<void> {
+  const blob = await downloadFile(`/api/v1/export/csv${buildQuery(filter)}`)
+  saveBlob(blob, 'bodger-export.csv')
+}
+
+export type RestoreSnapshotResult = components['schemas']['RestoreSnapshot']
+
+// restoreSnapshot is POST /api/v1/restore: wipes and reloads the actor's
+// entire ledger — every account, category, and transaction — from
+// document, a canonical JSON backup exactly as GET /api/v1/export/json
+// produces. confirm has no default and must be passed as literal `true`:
+// the server itself refuses the request without it (restore.go), and
+// requiring it here too means a caller can't accidentally wire this up
+// to fire without its own explicit confirmation step.
+export function restoreSnapshot(
+  document: unknown,
+  confirm: true,
+): Promise<RestoreSnapshotResult> {
+  return apiFetch<RestoreSnapshotResult>('/api/v1/restore', {
+    method: 'POST',
+    body: JSON.stringify({ document, confirm }),
+  })
+}
