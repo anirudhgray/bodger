@@ -80,16 +80,22 @@ import {
 import {
   ApiError,
   fetchFxRates,
+  getAverageTransactionSize,
   getCashFlow,
   getCategoryBreakdown,
+  getCategoryTrends,
   getReportingCurrency,
   getSavingsRate,
+  getTopTransactions,
   getTrends,
   listAccounts,
+  type AverageTransactionSize,
   type CashFlow,
   type CategoryBreakdown,
+  type CategoryTrends,
   type Granularity,
   type SavingsRate,
+  type TopTransactions,
   type Trends,
 } from '@/lib/api'
 
@@ -443,6 +449,17 @@ export function AnalyticsPage() {
   const [cashFlow, setCashFlow] = useState<CashFlow | null>(null)
   const [trends, setTrends] = useState<Trends | null>(null)
   const [savingsRate, setSavingsRate] = useState<SavingsRate | null>(null)
+  // Issue #196's additional stats: top transactions, average transaction
+  // size, and per-category trend deltas — fetched alongside M5's
+  // baseline four, same filter/currency/granularity chrome.
+  const [topTransactions, setTopTransactions] =
+    useState<TopTransactions | null>(null)
+  const [averageSize, setAverageSize] = useState<AverageTransactionSize | null>(
+    null,
+  )
+  const [categoryTrends, setCategoryTrends] = useState<CategoryTrends | null>(
+    null,
+  )
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -501,6 +518,9 @@ export function AnalyticsPage() {
       setCashFlow(null)
       setTrends(null)
       setSavingsRate(null)
+      setTopTransactions(null)
+      setAverageSize(null)
+      setCategoryTrends(null)
       setError(null)
       setLoading(false)
       return
@@ -514,12 +534,18 @@ export function AnalyticsPage() {
       getCashFlow(filter, options, granularity),
       getTrends(options, granularity, filter),
       getSavingsRate(filter, options),
+      getTopTransactions(filter, options),
+      getAverageTransactionSize(filter, options),
+      getCategoryTrends(filter, options, granularity),
     ])
-      .then(([b, cf, t, sr]) => {
+      .then(([b, cf, t, sr, top, avg, catTrends]) => {
         setBreakdown(b)
         setCashFlow(cf)
         setTrends(t)
         setSavingsRate(sr)
+        setTopTransactions(top)
+        setAverageSize(avg)
+        setCategoryTrends(catTrends)
       })
       .catch((err: unknown) => setError(errorMessage(err)))
       .finally(() => setLoading(false))
@@ -538,11 +564,27 @@ export function AnalyticsPage() {
   // posting the same way.
   const unconvertedCurrencies = useMemo(() => {
     const set = new Set<string>()
-    for (const result of [breakdown, cashFlow, trends, savingsRate]) {
+    for (const result of [
+      breakdown,
+      cashFlow,
+      trends,
+      savingsRate,
+      topTransactions,
+      averageSize,
+      categoryTrends,
+    ]) {
       for (const u of result?.unconverted ?? []) set.add(u.currency)
     }
     return Array.from(set).sort()
-  }, [breakdown, cashFlow, trends, savingsRate])
+  }, [
+    breakdown,
+    cashFlow,
+    trends,
+    savingsRate,
+    topTransactions,
+    averageSize,
+    categoryTrends,
+  ])
 
   function openRefresh(open: boolean) {
     setRefreshOpen(open)
@@ -642,7 +684,10 @@ export function AnalyticsPage() {
     categoryData.length > 0 ||
     cashFlowData.length > 0 ||
     (trends !== null &&
-      (trends.current.inflow !== '0' || trends.current.outflow !== '0'))
+      (trends.current.inflow !== '0' || trends.current.outflow !== '0')) ||
+    (topTransactions?.rows.length ?? 0) > 0 ||
+    (averageSize?.overall.count ?? 0) > 0 ||
+    (categoryTrends?.rows.length ?? 0) > 0
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 sm:p-6">
@@ -913,15 +958,147 @@ export function AnalyticsPage() {
             </Card>
           )}
 
-          {[breakdown, cashFlow, trends, savingsRate].some(
-            (r) => (r?.unconverted?.length ?? 0) > 0,
-          ) && (
+          {topTransactions && topTransactions.rows.length > 0 && (
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Top transactions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {topTransactions.rows.map((row) => (
+                      <TableRow key={row.transaction_id}>
+                        <TableCell>{row.description}</TableCell>
+                        <TableCell>{row.date}</TableCell>
+                        <TableCell>{row.category}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {row.amount} {topTransactions.currency}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
+          {averageSize && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Average transaction size</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-semibold tabular-nums">
+                  {averageSize.overall.average} {averageSize.currency}
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  Overall, across {averageSize.overall.count} transaction
+                  {averageSize.overall.count === 1 ? '' : 's'}
+                </p>
+                {averageSize.by_category.length > 0 && (
+                  <Table className="mt-4">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Category</TableHead>
+                        <TableHead className="text-right">Count</TableHead>
+                        <TableHead className="text-right">Average</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {averageSize.by_category.map((row) => (
+                        <TableRow key={row.category}>
+                          <TableCell>{row.category}</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {row.count}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {row.average} {averageSize.currency}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {categoryTrends && categoryTrends.rows.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Category trends</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground mb-2 text-xs">
+                  {categoryTrends.previous_from} – {categoryTrends.previous_to}{' '}
+                  vs. {categoryTrends.current_from} –{' '}
+                  {categoryTrends.current_to}
+                </p>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Category</TableHead>
+                      <TableHead className="text-right">Spending</TableHead>
+                      <TableHead className="text-right">Change</TableHead>
+                      <TableHead className="text-right">Income</TableHead>
+                      <TableHead className="text-right">Change</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {categoryTrends.rows.map((row) => (
+                      <TableRow key={row.category}>
+                        <TableCell>{row.category}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {row.current.spending} {categoryTrends.currency}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {changeLabel(row.spending_change_pct)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {row.current.income} {categoryTrends.currency}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {changeLabel(row.income_change_pct)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
+          {[
+            breakdown,
+            cashFlow,
+            trends,
+            savingsRate,
+            topTransactions,
+            averageSize,
+            categoryTrends,
+          ].some((r) => (r?.unconverted?.length ?? 0) > 0) && (
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle>Not converted</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-1">
-                {[breakdown, cashFlow, trends, savingsRate]
+                {[
+                  breakdown,
+                  cashFlow,
+                  trends,
+                  savingsRate,
+                  topTransactions,
+                  averageSize,
+                  categoryTrends,
+                ]
                   .flatMap((r) => r?.unconverted ?? [])
                   .map((u, i) => (
                     <div
