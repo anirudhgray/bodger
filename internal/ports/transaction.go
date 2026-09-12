@@ -61,6 +61,14 @@ type TransactionFilter struct {
 	// Description, when non-empty, restricts to transactions whose
 	// description contains this substring, case-insensitive.
 	Description string
+	// ExternalID, when non-empty, restricts to transactions whose own
+	// ExternalID (ledger.Transaction.ExternalID, set by
+	// ledger.WithImportProvenance on a previously committed import) equals
+	// this value exactly. This is issue #210's tier-1 exact-duplicate
+	// lookup (ADR-0008: "(account_id, external_id) is unique") — paired
+	// with AccountID, since the uniqueness is scoped per account, not
+	// global.
+	ExternalID string
 	// Tags, when non-empty, restricts to transactions carrying at least
 	// one (TagMode "any") or all (TagMode "all") of these tag values.
 	// Values are already-normalised Tag strings (ledger.Tag.String()) —
