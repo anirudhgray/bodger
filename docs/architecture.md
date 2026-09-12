@@ -722,6 +722,30 @@ state compared against each other — proving the two surfaces install
 identical data, not just that each happens to work alone. #214's web
 restore flow remains the only open piece of this scope addition.
 
+**#215 enforces the round-trip guarantee as a CI test.**
+`internal/app/roundtrip_test.go`'s `TestRoundTrip_ExportImportExportIsByteIdenticalModuloIDs`
+builds one fixture covering every case §7's testing-strategy list names —
+multiple currencies, a cross-currency and a same-currency transfer, a
+split, a refund (`ledger.WithRelatedTransaction`, built directly since
+`RecordInflow` has no field for it), a credit card, rows committed through
+the real CSV import pipeline (#211/#229) straddling a month boundary, and
+a leap day — exports it, restores that export (#226), exports again, and
+asserts the two documents are equivalent. "Import" is `RestoreSnapshot`,
+not the staged CSV pipeline, per #215's own dependency note. Comparison
+can't be a literal byte diff: a restore both regenerates every surrogate
+ID and re-sorts `ExportSnapshot`'s slices by that (now different) ID, so
+`canonicalizeExport` first reorders each collection by a business key
+ADR-0008 guarantees is stable (account/category name; a transaction's
+booked-date-and-description pair) and only then replaces every ID-shaped
+field with a placeholder assigned by first-appearance order — two
+documents describing the same data, reordered the same way, always assign
+the same placeholders. `import_record_id`/`external_id` are left
+untouched, since `RestoreSnapshot` never regenerates them either.
+Verified against a real regression, not just written and trusted: with
+`RelatedTransactionID`'s remap temporarily deleted from `restore.go`, the
+test fails on the refund fixture with an unmapped reference, and passes
+again once reverted. This is the last M6 issue apart from #214.
+
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
