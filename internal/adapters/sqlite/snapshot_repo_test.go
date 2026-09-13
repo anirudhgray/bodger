@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anirudhgray/bodger/internal/domain/budgeting"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
@@ -25,6 +26,14 @@ func TestSnapshotRepository_Replace_WipesAndReloads(t *testing.T) {
 	if err := NewTransactionRepository(db).Create(ctx, ports.SeededUserID, oldTxn, nil); err != nil {
 		t.Fatalf("seed old transaction: %v", err)
 	}
+	// An old budget, planning against old-cat -- this exercises
+	// wipeActorLedger's budgets-before-categories ordering: deleting
+	// old-cat before old-budget (and its old-budget-line) would trip a
+	// FOREIGN KEY constraint if the ordering were wrong.
+	oldBudget := mustBudget(t, "old-budget", ports.SeededUserID, []budgeting.BudgetLine{mustBudgetLine(t, "old-budget", "old-cat", 10000)})
+	if err := NewBudgetRepository(db).Create(ctx, ports.SeededUserID, oldBudget); err != nil {
+		t.Fatalf("seed old budget: %v", err)
+	}
 
 	newAcc := mustAccount(t, "new-acc", ports.SeededUserID, "New Account")
 	newCat := mustCategory(t, "new-cat", ports.SeededUserID, nil, "New Category", ledger.CategoryKindExpense)
@@ -34,6 +43,11 @@ func TestSnapshotRepository_Replace_WipesAndReloads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewOutflow: %v", err)
 	}
+	// A new budget, planning against new-cat -- only declared as part of
+	// this same snapshot, exercising Replace's insert-budgets-after-
+	// categories ordering: inserting it before new-cat exists would trip
+	// the same FOREIGN KEY constraint.
+	newBudget := mustBudget(t, "new-budget", ports.SeededUserID, []budgeting.BudgetLine{mustBudgetLine(t, "new-budget", "new-cat", 20000)})
 
 	repo := NewSnapshotRepository(db)
 	snapshot := ports.Snapshot{
@@ -42,6 +56,7 @@ func TestSnapshotRepository_Replace_WipesAndReloads(t *testing.T) {
 		Transactions: []ports.SnapshotTransaction{
 			{Transaction: newTxn, Tags: []ledger.Tag{mustTag(t, "restored")}},
 		},
+		Budgets: []budgeting.Budget{newBudget},
 	}
 	if err := repo.Replace(ctx, ports.SeededUserID, snapshot); err != nil {
 		t.Fatalf("Replace: %v", err)
@@ -75,6 +90,17 @@ func TestSnapshotRepository_Replace_WipesAndReloads(t *testing.T) {
 	}
 	if len(gotTags) != 1 || gotTags[0].String() != "restored" {
 		t.Errorf("new-txn tags = %+v, want [restored]", gotTags)
+	}
+
+	budgets, err := NewBudgetRepository(db).List(ctx, ports.SeededUserID)
+	if err != nil {
+		t.Fatalf("List budgets: %v", err)
+	}
+	if len(budgets) != 1 || budgets[0].ID() != "new-budget" {
+		t.Errorf("budgets after Replace = %+v, want exactly [new-budget]", budgets)
+	}
+	if lines := budgets[0].Lines(); len(lines) != 1 || lines[0].CategoryID() != "new-cat" {
+		t.Errorf("new-budget lines = %+v, want exactly one line for new-cat", lines)
 	}
 }
 

@@ -2062,6 +2062,9 @@
           "accounts": {
             "type": "integer"
           },
+          "budgets": {
+            "type": "integer"
+          },
           "categories": {
             "type": "integer"
           },
@@ -2072,7 +2075,8 @@
         "required": [
           "accounts",
           "categories",
-          "transactions"
+          "transactions",
+          "budgets"
         ],
         "type": "object"
       },

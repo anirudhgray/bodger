@@ -319,10 +319,11 @@ type memSnapshots struct {
 	accounts     *memAccounts
 	categories   *memCategories
 	transactions *memTransactions
+	budgets      *memBudgets
 }
 
-func newMemSnapshots(accounts *memAccounts, categories *memCategories, transactions *memTransactions) *memSnapshots {
-	return &memSnapshots{accounts: accounts, categories: categories, transactions: transactions}
+func newMemSnapshots(accounts *memAccounts, categories *memCategories, transactions *memTransactions, budgets *memBudgets) *memSnapshots {
+	return &memSnapshots{accounts: accounts, categories: categories, transactions: transactions, budgets: budgets}
 }
 
 func (m *memSnapshots) Replace(_ context.Context, actorID string, snapshot ports.Snapshot) error {
@@ -338,6 +339,11 @@ func (m *memSnapshots) Replace(_ context.Context, actorID string, snapshot ports
 	}
 	for _, st := range snapshot.Transactions {
 		if st.Transaction.UserID() != actorID {
+			return errs.New(errs.NotAllowed)
+		}
+	}
+	for _, b := range snapshot.Budgets {
+		if b.UserID() != actorID {
 			return errs.New(errs.NotAllowed)
 		}
 	}
@@ -357,6 +363,12 @@ func (m *memSnapshots) Replace(_ context.Context, actorID string, snapshot ports
 			delete(m.transactions.byID, id)
 		}
 	}
+	for id, b := range m.budgets.byID {
+		if b.UserID() == actorID {
+			delete(m.budgets.byID, id)
+			delete(m.budgets.seq, id)
+		}
+	}
 
 	for _, a := range snapshot.Accounts {
 		m.accounts.byID[a.ID()] = a
@@ -367,6 +379,11 @@ func (m *memSnapshots) Replace(_ context.Context, actorID string, snapshot ports
 	for _, st := range snapshot.Transactions {
 		m.transactions.next++
 		m.transactions.byID[st.Transaction.ID()] = memTransactionRecord{txn: st.Transaction, tags: st.Tags, seq: m.transactions.next}
+	}
+	for _, b := range snapshot.Budgets {
+		m.budgets.next++
+		m.budgets.byID[b.ID()] = b
+		m.budgets.seq[b.ID()] = m.budgets.next
 	}
 	return nil
 }
@@ -738,6 +755,31 @@ func (m *memFxRates) Lookup(_ context.Context, base, quote string, date domain.D
 		return fx.Selection{}, errs.New(errs.NotFound).Explain("No %s/%s rate available.", base, quote).Wrap(err)
 	}
 	return sel, nil
+}
+
+// ListAll implements ports.FxRateRepository, mirroring the real sqlite
+// adapter's deterministic (base, quote, rate_date, source) ordering so a
+// test exercising export via this fake sees the same ordering the real
+// adapter would produce.
+func (m *memFxRates) ListAll(_ context.Context) ([]ports.FxRateRow, error) {
+	rows := make([]ports.FxRateRow, 0, len(m.byKey))
+	for key, rate := range m.byKey {
+		rows = append(rows, ports.FxRateRow{Rate: rate, Date: key.date, Source: key.source})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		a, b := rows[i], rows[j]
+		if a.Rate.Base() != b.Rate.Base() {
+			return a.Rate.Base() < b.Rate.Base()
+		}
+		if a.Rate.Quote() != b.Rate.Quote() {
+			return a.Rate.Quote() < b.Rate.Quote()
+		}
+		if a.Date.String() != b.Date.String() {
+			return a.Date.String() < b.Date.String()
+		}
+		return a.Source < b.Source
+	})
+	return rows, nil
 }
 
 // InUsePairs implements ports.FxRateRepository, mirroring the real

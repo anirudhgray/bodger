@@ -101,6 +101,7 @@ func (fakeFxRates) Lookup(context.Context, string, string, domain.Date, int) (fx
 func (fakeFxRates) InUsePairs(context.Context, string, string) ([]ports.CurrencyPair, error) {
 	return nil, nil
 }
+func (fakeFxRates) ListAll(context.Context) ([]ports.FxRateRow, error) { return nil, nil }
 
 type fakeFxProvider struct{}
 

@@ -26,6 +26,8 @@ type jsonEnvelope struct {
 	Accounts     []jsonAccount     `json:"accounts"`
 	Categories   []jsonCategory    `json:"categories"`
 	Transactions []jsonExportedTxn `json:"transactions"`
+	Budgets      []jsonBudget      `json:"budgets"`
+	FxRates      []jsonFxRate      `json:"fx_rates"`
 }
 
 type jsonAccount struct {
@@ -68,6 +70,42 @@ type jsonExportedTxn struct {
 	RelatedTransactionID *string       `json:"related_transaction_id,omitempty"`
 	Tags                 []string      `json:"tags,omitempty"`
 	Postings             []jsonPosting `json:"postings"`
+}
+
+// jsonBudgetLine is one budget's planned amount for one category
+// (data-model.md §10) -- nested under its owning jsonBudget's "lines"
+// field, the same "no independent existence apart from its parent" shape
+// jsonPosting nests under jsonExportedTxn's "postings" rather than as its
+// own top-level array.
+type jsonBudgetLine struct {
+	ID          string `json:"id"`
+	CategoryID  string `json:"category_id"`
+	AmountMinor int64  `json:"amount_minor"`
+	Rollover    bool   `json:"rollover"`
+}
+
+type jsonBudget struct {
+	ID         string           `json:"id"`
+	Name       string           `json:"name"`
+	PeriodType string           `json:"period_type"`
+	Currency   string           `json:"currency"`
+	StartsOn   string           `json:"starts_on"`
+	ArchivedAt *string          `json:"archived_at,omitempty"`
+	Lines      []jsonBudgetLine `json:"lines"`
+}
+
+// jsonFxRate is one stored fx_rates row (ports.FxRateRow), included in the
+// export (#221) but never restored -- see ExportSnapshot's doc comment
+// for why. Rate is rendered as a bare decimal string (fx.Rate.String(),
+// already a fixed-point decimal with no "BASE/QUOTE" prefix) rather than
+// a display string, since this is a wire format meant to round-trip, not
+// something meant to be read by a person.
+type jsonFxRate struct {
+	Base   string `json:"base"`
+	Quote  string `json:"quote"`
+	Date   string `json:"date"`
+	Rate   string `json:"rate"`
+	Source string `json:"source"`
 }
 
 // toJSONEnvelope converts snapshot into jsonEnvelope's wire shape.
@@ -182,11 +220,54 @@ func toJSONEnvelope(snapshot ExportSnapshot) jsonEnvelope {
 		})
 	}
 
+	budgets := make([]jsonBudget, 0, len(snapshot.Budgets))
+	for _, b := range snapshot.Budgets {
+		var archivedAt *string
+		if d, ok := b.ArchivedAt(); ok {
+			s := d.String()
+			archivedAt = &s
+		}
+
+		lines := b.Lines()
+		jsonLines := make([]jsonBudgetLine, 0, len(lines))
+		for _, l := range lines {
+			jsonLines = append(jsonLines, jsonBudgetLine{
+				ID:          l.ID(),
+				CategoryID:  l.CategoryID(),
+				AmountMinor: l.AmountMinor(),
+				Rollover:    l.Rollover(),
+			})
+		}
+
+		budgets = append(budgets, jsonBudget{
+			ID:         b.ID(),
+			Name:       b.Name(),
+			PeriodType: string(b.PeriodType()),
+			Currency:   b.Currency(),
+			StartsOn:   b.StartsOn().String(),
+			ArchivedAt: archivedAt,
+			Lines:      jsonLines,
+		})
+	}
+
+	fxRates := make([]jsonFxRate, 0, len(snapshot.FxRates))
+	for _, row := range snapshot.FxRates {
+		fxRates = append(fxRates, jsonFxRate{
+			Base:   row.Rate.Base(),
+			Quote:  row.Rate.Quote(),
+			Date:   row.Date.String(),
+			Rate:   row.Rate.String(),
+			Source: row.Source,
+		})
+	}
+
 	return jsonEnvelope{
 		Format:       ExportFormatVersion,
 		Accounts:     accounts,
 		Categories:   categories,
 		Transactions: transactions,
+		Budgets:      budgets,
+		FxRates:      fxRates,
 	}
 }
 

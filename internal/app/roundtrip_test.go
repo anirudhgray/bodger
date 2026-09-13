@@ -8,9 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/anirudhgray/bodger/internal/app"
 	"github.com/anirudhgray/bodger/internal/app/importparse"
 	"github.com/anirudhgray/bodger/internal/domain"
+	"github.com/anirudhgray/bodger/internal/domain/fx"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/domain/money"
 )
@@ -153,6 +156,37 @@ func buildRoundTripFixture(t *testing.T, svc *app.Service) {
 	}); err != nil {
 		t.Fatalf("RecordInflow(Leap day gift): %v", err)
 	}
+
+	// A budget with one line (#246), through the same app-layer CRUD use
+	// case the real feature is exercised by (CreateBudget) rather than a
+	// hand-built domain value, targeting a category (dining) already
+	// created above -- exercising #246's category-ID remapping on
+	// restore.
+	if _, err := svc.CreateBudget(ctx, app.CreateBudgetCommand{
+		ActorID: testActorID, Name: "Round Trip Monthly Budget", Currency: "GBP", StartsOn: "2026-08-01",
+		Lines: []app.BudgetLineInput{
+			{CategoryRef: dining.Category.ID(), Amount: "150.00"},
+		},
+	}); err != nil {
+		t.Fatalf("CreateBudget: %v", err)
+	}
+
+	// A stored FX rate (#221): fx_rates is export-only (never restored --
+	// see ExportSnapshot's doc comment), so this only needs to prove the
+	// same stored rate appears in both the "before" and "after" export.
+	// The pair/date/source is picked to need no resolution against
+	// anything else in this fixture.
+	rate, err := fx.NewRate("JPY", "GBP", decimal.NewFromFloat(0.0052))
+	if err != nil {
+		t.Fatalf("fx.NewRate: %v", err)
+	}
+	rateDate, err := domain.NewDate(2026, time.August, 1)
+	if err != nil {
+		t.Fatalf("domain.NewDate: %v", err)
+	}
+	if err := svc.FxRates.Store(ctx, rate, rateDate, "roundtrip-fixture"); err != nil {
+		t.Fatalf("FxRates.Store: %v", err)
+	}
 }
 
 // mustRefundFixture builds a refund -- an ordinary inflow, in categoryID,
@@ -271,6 +305,8 @@ type rtEnvelope struct {
 	Accounts     []rtAccount  `json:"accounts"`
 	Categories   []rtCategory `json:"categories"`
 	Transactions []rtTxn      `json:"transactions"`
+	Budgets      []rtBudget   `json:"budgets"`
+	FxRates      []rtFxRate   `json:"fx_rates"`
 }
 
 type rtAccount struct {
@@ -313,6 +349,31 @@ type rtTxn struct {
 	RelatedTransactionID *string     `json:"related_transaction_id,omitempty"`
 	Tags                 []string    `json:"tags,omitempty"`
 	Postings             []rtPosting `json:"postings"`
+}
+
+type rtBudgetLine struct {
+	ID          string `json:"id"`
+	CategoryID  string `json:"category_id"`
+	AmountMinor int64  `json:"amount_minor"`
+	Rollover    bool   `json:"rollover"`
+}
+
+type rtBudget struct {
+	ID         string         `json:"id"`
+	Name       string         `json:"name"`
+	PeriodType string         `json:"period_type"`
+	Currency   string         `json:"currency"`
+	StartsOn   string         `json:"starts_on"`
+	ArchivedAt *string        `json:"archived_at,omitempty"`
+	Lines      []rtBudgetLine `json:"lines"`
+}
+
+type rtFxRate struct {
+	Base   string `json:"base"`
+	Quote  string `json:"quote"`
+	Date   string `json:"date"`
+	Rate   string `json:"rate"`
+	Source string `json:"source"`
 }
 
 // idNormalizer assigns each distinct source ID a stable placeholder, in
@@ -373,6 +434,28 @@ func canonicalizeExport(t *testing.T, raw []byte) rtEnvelope {
 		}
 		return env.Transactions[i].Description < env.Transactions[j].Description
 	})
+	// Budgets have no (date, description)-shaped natural key the way a
+	// transaction does; Name is buildRoundTripFixture's own
+	// globally-unique business key for them, the same role it plays for
+	// accounts/categories.
+	sort.Slice(env.Budgets, func(i, j int) bool { return env.Budgets[i].Name < env.Budgets[j].Name })
+	// fx_rates carries no surrogate ID at all (base/quote/date/source is
+	// already a stable natural key), but still needs a deterministic
+	// order: nothing else guarantees the two documents' fx_rates arrays
+	// come back in the same order.
+	sort.Slice(env.FxRates, func(i, j int) bool {
+		a, b := env.FxRates[i], env.FxRates[j]
+		if a.Base != b.Base {
+			return a.Base < b.Base
+		}
+		if a.Quote != b.Quote {
+			return a.Quote < b.Quote
+		}
+		if a.Date != b.Date {
+			return a.Date < b.Date
+		}
+		return a.Source < b.Source
+	})
 
 	accountIDs := newIDNormalizer("account")
 	for i := range env.Accounts {
@@ -410,6 +493,23 @@ func canonicalizeExport(t *testing.T, raw []byte) rtEnvelope {
 				c := categoryIDs.lookup(t, "posting category_id", *p.CategoryID)
 				p.CategoryID = &c
 			}
+		}
+	}
+
+	budgetIDs := newIDNormalizer("budget")
+	budgetLineIDs := newIDNormalizer("budget-line")
+	for i := range env.Budgets {
+		b := &env.Budgets[i]
+		b.ID = budgetIDs.assign(b.ID)
+		// budget_lines has a UNIQUE(budget_id, category_id) constraint, so
+		// there's at most one line per category -- sort deterministically
+		// by category_id anyway, since insertion order isn't guaranteed on
+		// either side.
+		sort.Slice(b.Lines, func(i, j int) bool { return b.Lines[i].CategoryID < b.Lines[j].CategoryID })
+		for j := range b.Lines {
+			l := &b.Lines[j]
+			l.ID = budgetLineIDs.assign(l.ID)
+			l.CategoryID = categoryIDs.lookup(t, "budget line category_id", l.CategoryID)
 		}
 	}
 

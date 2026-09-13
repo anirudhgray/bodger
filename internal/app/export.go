@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 
+	"github.com/anirudhgray/bodger/internal/domain/budgeting"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
@@ -55,24 +56,24 @@ type ExportedTransaction struct {
 // snapshot, byte for byte, regardless of what order List happens to
 // return rows in.
 //
-// Budgets and budget lines are absent: M7 (Budgets) hasn't shipped, so
-// internal/domain has no budget domain type to read yet (confirmed against
-// internal/domain and internal/app at the time this was written) --
-// nothing here invents a placeholder for them. FX rates are also absent:
-// ports.FxRateRepository exposes Store, StoreBatch, Lookup (a single
-// nearest-earlier-within-a-window resolution for one pair and date), and
-// InUsePairs (which pairs are in use, not their stored history) -- there
-// is no method that enumerates every stored fx_rate row, and adding one
-// would mean extending internal/ports, which this issue's own scope keeps
-// out of (app-layer-only, to stay clear of the concurrently-developed
-// import-persistence issue's ports changes). Both are gaps to close in a
-// follow-up once the missing pieces (the M7 budget domain type; an
-// enumerating FX-rate-repository method) exist, not something to
-// approximate here.
+// Budgets are included as of #246, sorted by ID ascending the same way
+// accounts and categories are (see below) rather than in
+// ports.BudgetRepository.List's own most-recently-created-first order.
+//
+// FX rates are included (as of #221) but never restored: fx_rates carries
+// no actor/user scoping at all (ADR-0004 -- "a rate between two currencies
+// on a given date is the same fact for every user of this bodger
+// instance"), and RestoreSnapshot/SnapshotRepository.Replace both operate
+// per-actor, with no ownership check that would make sense for a
+// globally-shared table. This is a deliberate export-only asymmetry, not
+// an oversight: a restore never touches fx_rates, so any rows present
+// before a restore remain present, untouched, after it.
 type ExportSnapshot struct {
 	Accounts     []ledger.Account
 	Categories   []ledger.Category
 	Transactions []ExportedTransaction
+	Budgets      []budgeting.Budget
+	FxRates      []ports.FxRateRow
 }
 
 // ExportSnapshot implements issue #209's full-domain-snapshot read.
@@ -120,7 +121,27 @@ func (s *Service) ExportSnapshot(ctx context.Context, q ExportSnapshotQuery) (Ex
 		return exported[i].Transaction.ID() < exported[j].Transaction.ID()
 	})
 
-	return ExportSnapshot{Accounts: accounts, Categories: categories, Transactions: exported}, nil
+	budgets, err := s.Budgets.List(ctx, q.ActorID)
+	if err != nil {
+		return ExportSnapshot{}, err
+	}
+	// List's own SQL order is most-recently-created-first (its doc
+	// comment) -- not the deterministic-by-ID order export needs, so this
+	// re-sorts the same way accounts/categories above already do.
+	sort.Slice(budgets, func(i, j int) bool { return budgets[i].ID() < budgets[j].ID() })
+
+	fxRates, err := s.FxRates.ListAll(ctx)
+	if err != nil {
+		return ExportSnapshot{}, err
+	}
+
+	return ExportSnapshot{
+		Accounts:     accounts,
+		Categories:   categories,
+		Transactions: exported,
+		Budgets:      budgets,
+		FxRates:      fxRates,
+	}, nil
 }
 
 // sortedPostings returns txn's postings ordered by SortOrder, then by ID as

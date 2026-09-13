@@ -57,6 +57,17 @@ type FxRateRepository interface {
 	// regardless — resolving "the" reporting currency is an
 	// application-layer concern (ADR-0005).
 	InUsePairs(ctx context.Context, actorID, reportingCurrency string) ([]CurrencyPair, error)
+
+	// ListAll returns every stored fx_rates row, across every currency
+	// pair, date, and source -- unlike every other method on this
+	// interface, it takes no actorID: fx_rates carries no actor/user
+	// scoping at all (ADR-0004, see this interface's own doc comment), so
+	// there is no "this actor's rows" subset to narrow to here either.
+	// This exists specifically so a complete canonical export (ADR-0008)
+	// can include every fact this instance has ever stored about exchange
+	// rates, not just the pairs/dates one actor's own accounts and
+	// transactions happen to reference (InUsePairs' narrower question).
+	ListAll(ctx context.Context) ([]FxRateRow, error)
 }
 
 // CurrencyPair is a distinct (base, quote) currency pair, as returned by

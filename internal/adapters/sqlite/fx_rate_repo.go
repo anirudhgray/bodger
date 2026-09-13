@@ -185,6 +185,49 @@ func (r *FxRateRepository) InUsePairs(ctx context.Context, actorID, reportingCur
 	return pairs, nil
 }
 
+// ListAll implements ports.FxRateRepository. It returns every stored row
+// across every pair, date, and source, in a fixed deterministic order
+// (base, quote, rate_date, source) -- the same "sort by the row's own
+// identity, never rely on incidental storage order" discipline
+// internal/app's ExportSnapshot already applies to accounts, categories,
+// and transactions, so a caller building a complete export gets
+// byte-identical output across repeated calls over unchanged data.
+func (r *FxRateRepository) ListAll(ctx context.Context) ([]ports.FxRateRow, error) {
+	rows, err := r.db.read.QueryContext(ctx, `
+		SELECT base, quote, rate_date, rate, source FROM fx_rates
+		ORDER BY base, quote, rate_date, source
+	`)
+	if err != nil {
+		return nil, errs.New(errs.Internal).Wrap(err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var result []ports.FxRateRow
+	for rows.Next() {
+		var baseCol, quoteCol, dateCol, rateCol, sourceCol string
+		if err := rows.Scan(&baseCol, &quoteCol, &dateCol, &rateCol, &sourceCol); err != nil {
+			return nil, errs.New(errs.Internal).Wrap(err)
+		}
+		d, err := parseDate(dateCol)
+		if err != nil {
+			return nil, errs.New(errs.Internal).Wrap(err)
+		}
+		value, err := decimal.NewFromString(rateCol)
+		if err != nil {
+			return nil, errs.New(errs.Internal).Wrap(err)
+		}
+		rate, err := fx.NewRate(baseCol, quoteCol, value)
+		if err != nil {
+			return nil, errs.New(errs.Internal).Wrap(err)
+		}
+		result = append(result, ports.FxRateRow{Rate: rate, Date: d, Source: sourceCol})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errs.New(errs.Internal).Wrap(err)
+	}
+	return result, nil
+}
+
 // requireRateKey validates the fields that make up fx_rates' primary key
 // (base, quote, rate_date, source) before a write: an empty base/quote
 // can only happen via a zero-value fx.Rate{} constructed outside the fx

@@ -8,7 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/anirudhgray/bodger/internal/app"
+	"github.com/anirudhgray/bodger/internal/domain"
+	"github.com/anirudhgray/bodger/internal/domain/fx"
 )
 
 func TestExportJSON_RequiresActorID(t *testing.T) {
@@ -32,6 +36,18 @@ func TestExportJSON_EnvelopeShape(t *testing.T) {
 		t.Fatalf("RecordOutflow: %v", err)
 	}
 
+	rate, err := fx.NewRate("USD", "INR", decimal.NewFromFloat(83.25))
+	if err != nil {
+		t.Fatalf("fx.NewRate: %v", err)
+	}
+	rateDate, err := domain.NewDate(2026, time.August, 1)
+	if err != nil {
+		t.Fatalf("domain.NewDate: %v", err)
+	}
+	if err := svc.FxRates.Store(ctx, rate, rateDate, "test-provider"); err != nil {
+		t.Fatalf("FxRates.Store: %v", err)
+	}
+
 	out, err := svc.ExportJSON(ctx, app.ExportJSONQuery{ActorID: testActorID})
 	if err != nil {
 		t.Fatalf("ExportJSON: %v", err)
@@ -45,21 +61,44 @@ func TestExportJSON_EnvelopeShape(t *testing.T) {
 	if doc["format"] != "bodger.export/v1" {
 		t.Errorf(`doc["format"] = %v, want "bodger.export/v1"`, doc["format"])
 	}
-	for _, key := range []string{"accounts", "categories", "transactions"} {
+	for _, key := range []string{"accounts", "categories", "transactions", "budgets", "fx_rates"} {
 		if _, ok := doc[key]; !ok {
 			t.Errorf("doc missing key %q", key)
 		}
 	}
-	// ADR-0008: budgets/budget lines (no domain type yet -- M7) and FX
-	// rates (no port method to enumerate every stored row) are both
-	// genuinely absent from this version of the payload -- see
-	// ExportSnapshot's doc comment. Asserting their absence here pins that
-	// decision so a future accidental `"budgets": null` doesn't slip in
-	// unnoticed.
-	for _, key := range []string{"budgets", "budget_lines", "fx_rates"} {
+	// budget_lines will never be a top-level key, regardless of #221/#246:
+	// a budget line has no independent existence apart from its budget
+	// (data-model.md §10), so it nests under each budget's own "lines"
+	// field -- the same shape a transaction's postings nest under
+	// "postings" rather than a sibling top-level array. Asserting its
+	// absence here pins that decision so a future accidental top-level
+	// "budget_lines" array doesn't slip in unnoticed.
+	for _, key := range []string{"budget_lines"} {
 		if _, ok := doc[key]; ok {
 			t.Errorf("doc unexpectedly has key %q", key)
 		}
+	}
+
+	if _, ok := doc["budgets"].([]any); !ok {
+		t.Fatalf("budgets = %v, want an array", doc["budgets"])
+	}
+
+	fxRates, ok := doc["fx_rates"].([]any)
+	if !ok || len(fxRates) != 1 {
+		t.Fatalf("fx_rates = %v, want a one-element array", doc["fx_rates"])
+	}
+	fxRateObj := fxRates[0].(map[string]any)
+	if fxRateObj["base"] != "USD" || fxRateObj["quote"] != "INR" {
+		t.Errorf("fx_rate base/quote = %v/%v, want USD/INR", fxRateObj["base"], fxRateObj["quote"])
+	}
+	if fxRateObj["date"] != "2026-08-01" {
+		t.Errorf("fx_rate date = %v, want 2026-08-01", fxRateObj["date"])
+	}
+	if fxRateObj["source"] != "test-provider" {
+		t.Errorf("fx_rate source = %v, want test-provider", fxRateObj["source"])
+	}
+	if fxRateObj["rate"] != "83.250000000000" {
+		t.Errorf("fx_rate rate = %v, want 83.250000000000", fxRateObj["rate"])
 	}
 
 	accounts, ok := doc["accounts"].([]any)

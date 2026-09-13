@@ -103,6 +103,7 @@ describe('RestorePage', () => {
       accounts: 3,
       categories: 5,
       transactions: 42,
+      budgets: 2,
     })
     renderWithRouter()
 
@@ -123,7 +124,9 @@ describe('RestorePage', () => {
     )
     expect(await screen.findByText('Restore complete')).toBeInTheDocument()
     expect(
-      screen.getByText(/3 accounts, 5 categories, and 42 transactions/),
+      screen.getByText(
+        /3 accounts, 5 categories, 42 transactions, and 2 budgets/,
+      ),
     ).toBeInTheDocument()
     // The dialog closes on success rather than lingering.
     expect(
