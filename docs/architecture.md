@@ -583,9 +583,10 @@ recomputing independently, with matching REST routes, CLI subcommands,
 and web sections on the Balances and Analytics screens). #196 was M5's
 last open issue — the milestone is now complete.
 
-**M6 · Fangorn is in progress** — see the
-[M6 milestone](https://github.com/anirudhgray/bodger/milestone/6) for its
-issues. [#208](https://github.com/anirudhgray/bodger/issues/208) lands the
+**M6 · Fangorn is complete, shipped as
+[v0.6.0](https://github.com/anirudhgray/bodger/releases/tag/v0.6.0)** — see
+the [M6 milestone](https://github.com/anirudhgray/bodger/milestone/6) for
+its issues. [#208](https://github.com/anirudhgray/bodger/issues/208) lands the
 staged import pipeline's only state (ADR-0008): `internal/domain/importing`
 (`ImportBatch`'s staged -> reviewed -> committed -> rolled_back state
 machine, `ImportRecord`'s pending -> ready/excluded -> committed state
@@ -799,12 +800,18 @@ changes) — until they land, restoring a backup from an actor with any
 import history, or any nested category tree unlucky enough in its ID
 ordering, does not actually work.
 
-#214 was the last issue open in the M6 milestone (#215 closed earlier,
-per its own dependency note above) — but #236 and #237 mean the
-milestone's status below stays "in progress" rather than flipping to
-complete: a restore that fails on realistic data isn't the working,
-useful state §8's own definition of a finished milestone asks for, even
-though every planned issue is now closed.
+#214 was the last planned issue open in the M6 milestone (#215 closed
+earlier, per its own dependency note above), but #236
+([PR #239](https://github.com/anirudhgray/bodger/pull/239)) and #237
+([PR #240](https://github.com/anirudhgray/bodger/pull/240)) held the
+milestone's status below at "in progress" until they landed — a restore
+that fails on realistic data isn't the working, useful state §8's own
+definition of a finished milestone asks for. Both are now fixed:
+`wipeActorLedger` clears the actor's `import_batch`/`import_record` rows
+(cascading to both tables) before deleting the transactions/accounts they
+reference, and `restoreCategories` inserts categories in parent-before-
+child topological order rather than the document's own (ID-sorted) array
+order. With both merged, M6 is complete.
 
 | Milestone | Status |
 | --- | --- |
@@ -814,7 +821,7 @@ though every planned issue is now closed.
 | M3 · Rivendell — UI polish and design system | ✅ Complete |
 | M4 · The Grey Havens — Multi-currency and FX | ✅ Complete |
 | M5 · Orthanc — Analytics and charts | ✅ Complete |
-| M6 · Fangorn — Import and export | 🚧 In progress |
+| M6 · Fangorn — Import and export | ✅ Complete (v0.6.0) |
 | M7 — Budgets | ⬜ Not started |
 | M8 — MCP server | ⬜ Not started |
 | M9 — Recurring transactions | ⬜ Not started |
