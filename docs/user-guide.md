@@ -602,6 +602,21 @@ These are available by default (no `--allow-destructive` needed), run immediatel
 | `remove_budget_line` | Remove one line from an existing budget — the same as `bodger budgets lines remove`. |
 | `archive_budget` | Archive a budget: it stops appearing in current listings and creation flows, but its history stays fully queryable and archiving is fully reversible — the same as `bodger budgets archive`. |
 
+### Undo-or-bulk-change tools
+
+These are refused outright unless the server was started with `--allow-destructive` — with it absent, your assistant doesn't even see them in its tool list, rather than seeing them and being turned down when it tries. Every call here is also recorded in `bodger mcp audit`, the confirming call and the unconfirmed one both.
+
+| Tool | What it does |
+| --- | --- |
+| `delete_transaction` | Soft-delete a transaction — the same as `bodger transactions delete`. |
+| `commit_import` | Commit a staged import: write its cleared records as real transactions — the same as `bodger import commit`. |
+| `rollback_import` | Undo a committed import: soft-delete the transactions it created — the same as `bodger import rollback`. |
+| `restore_snapshot` | Replace everything you have with a JSON backup document, passed inline as part of the call (an assistant has no access to files on your machine the way `bodger restore <file>` does) — the same as `bodger restore`. |
+
+**How the confirmation flow works, from your assistant's side:** calling one of these tools the first time, without a `confirmation_token` argument, never changes anything. It gets back a plain-text description of exactly what would happen — which transaction, which import batch, how many records or transactions are affected — plus a one-time `confirmation_token`. Only calling the same tool again, with that exact token and the same arguments, actually performs the action. A token that's reused, that's expired (they're short-lived), or that's presented alongside different arguments than it was issued for is refused, and the assistant has to start over by calling without a token again.
+
+**This is a second, independent layer of protection, not a replacement for your MCP client's own.** A compliant MCP client is expected to show you its own approval dialog before letting an assistant call a tool marked as destructive in the first place — that's the client-side layer, and it's the one you actually see and click through. The confirmation-token exchange above happens underneath that, inside bodger itself, regardless of whether the client you're using implements a confirmation dialog well, badly, or not at all (a script driving an MCP client programmatically has no dialog to show one in). The two aren't redundant with each other: the client's dialog is the one a human is meant to actually read, and bodger's own token exchange is the backstop that holds even when nothing is showing a human anything.
+
 ### Reviewing what an assistant has done
 
 `bodger mcp audit` lists what an assistant has actually changed — every "make a change" or "undo/bulk change" request it made, most recent first. Looking things up isn't listed here, since nothing you look up ever changes anything.
