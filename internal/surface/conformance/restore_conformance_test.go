@@ -36,6 +36,7 @@ import (
 	"testing"
 
 	"github.com/anirudhgray/bodger/internal/app"
+	"github.com/anirudhgray/bodger/internal/app/importparse"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 )
 
@@ -339,6 +340,103 @@ func TestRestoreSnapshotConformance(t *testing.T) {
 			t.Errorf("HTTP restore result transactions = %d, want %d", got, len(wantTxns))
 		}
 
+		if got := h.httpAccountNames(t); !equalStrings(got, wantAccounts) {
+			t.Errorf("HTTP post-restore account names = %v, want %v", got, wantAccounts)
+		}
+		if got := h.httpCategoryNames(t); !equalStrings(got, wantCategories) {
+			t.Errorf("HTTP post-restore category names = %v, want %v", got, wantCategories)
+		}
+		if got := h.httpTransactionSignatures(t); !equalStrings(got, wantTxns) {
+			t.Errorf("HTTP post-restore transaction signatures = %v, want %v", got, wantTxns)
+		}
+	})
+}
+
+// seedRestoreImportHistoryFixture stages, commits, and rolls back one
+// import batch against a dedicated account on h — through the application
+// layer directly, as fixture setup rather than part of what's under test,
+// the same exception seedRestoreStrayFixtures above documents. It leaves
+// behind exactly the state issue #236 identified as breaking restore: an
+// import_batch row whose target_account_id references an account restore
+// is about to delete, and an import_record row whose transaction_id still
+// references the (soft-deleted, per ADR-0008) transaction rollback left
+// in place.
+func (h *harness) seedRestoreImportHistoryFixture() {
+	h.t.Helper()
+	ctx := context.Background()
+
+	acc, err := h.svc.CreateAccount(ctx, app.CreateAccountCommand{
+		ActorID: seededUserID, Name: "Import Source", Kind: "bank", Currency: "USD",
+	})
+	if err != nil {
+		h.t.Fatalf("seed import account: %v", err)
+	}
+	staged, err := h.svc.StageImport(ctx, app.StageImportCommand{
+		ActorID: seededUserID, AccountRef: acc.Account.ID(), Filename: "statement.csv", SourceFormat: "csv",
+		FileContent: []byte("Date,Description,Amount\n2026-08-01,Coffee Shop,-4.50\n"),
+		ColumnMapping: importparse.ColumnMapping{
+			DateColumn: "Date", DescriptionColumn: "Description", AmountColumn: "Amount",
+		},
+	})
+	if err != nil {
+		h.t.Fatalf("seed StageImport: %v", err)
+	}
+	if _, err := h.svc.CommitImportBatch(ctx, app.CommitImportBatchCommand{
+		ActorID: seededUserID, ImportBatchRef: staged.Batch.ID(),
+	}); err != nil {
+		h.t.Fatalf("seed CommitImportBatch: %v", err)
+	}
+	if _, err := h.svc.RollbackImportBatch(ctx, app.RollbackImportBatchCommand{
+		ActorID: seededUserID, ImportBatchRef: staged.Batch.ID(),
+	}); err != nil {
+		h.t.Fatalf("seed RollbackImportBatch: %v", err)
+	}
+}
+
+// TestRestoreSnapshotConformance_AfterImportHistory is issue #236's
+// conformance regression test: an actor with prior import activity —
+// committed, then rolled back — must still be able to restore on both
+// surfaces. Before the fix, wipeActorLedger's DELETE FROM
+// transactions/accounts tripped a FOREIGN KEY constraint failure because
+// import_batch.target_account_id and import_record.transaction_id still
+// referenced rows the restore was about to delete, and both surfaces
+// surfaced that as a rejected restore.
+func TestRestoreSnapshotConformance_AfterImportHistory(t *testing.T) {
+	document, wantAccounts, wantCategories, wantTxns := buildRestoreDocument(t)
+
+	t.Run("CLI", func(t *testing.T) {
+		h := newHarness(t)
+		h.seedRestoreImportHistoryFixture()
+
+		backupPath := filepath.Join(t.TempDir(), "backup.json")
+		if err := os.WriteFile(backupPath, document, 0o600); err != nil {
+			t.Fatalf("write fixture backup: %v", err)
+		}
+
+		out, err := h.runCLI("restore", backupPath, "--yes")
+		if err != nil {
+			t.Fatalf("restore --yes after import history: unexpected error: %v (output: %s)", err, out)
+		}
+		if got := h.cliAccountNames(t); !equalStrings(got, wantAccounts) {
+			t.Errorf("CLI post-restore account names = %v, want %v", got, wantAccounts)
+		}
+		if got := h.cliCategoryNames(t); !equalStrings(got, wantCategories) {
+			t.Errorf("CLI post-restore category names = %v, want %v", got, wantCategories)
+		}
+		if got := h.cliTransactionSignatures(t); !equalStrings(got, wantTxns) {
+			t.Errorf("CLI post-restore transaction signatures = %v, want %v", got, wantTxns)
+		}
+	})
+
+	t.Run("HTTP", func(t *testing.T) {
+		h := newHarness(t)
+		h.seedRestoreImportHistoryFixture()
+
+		var raw json.RawMessage = document
+		status, decoded := h.runHTTP("POST", "/api/v1/restore", map[string]any{"confirm": true, "document": raw})
+		if status != http.StatusOK {
+			t.Fatalf("restore with confirm after import history: status = %d, want 200: %+v", status, decoded)
+		}
 		if got := h.httpAccountNames(t); !equalStrings(got, wantAccounts) {
 			t.Errorf("HTTP post-restore account names = %v, want %v", got, wantAccounts)
 		}

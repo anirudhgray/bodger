@@ -120,6 +120,96 @@ func TestRestoreSnapshot_RoundTripEquivalentAfterReExport(t *testing.T) {
 	assertSnapshotsEquivalentModuloIDs(t, beforeSnapshot, afterSnapshot)
 }
 
+// TestRestoreSnapshot_SucceedsAfterCommittedImport is issue #236's
+// regression test for the narrower of its two repro paths: an actor who
+// has ever committed an import batch (#212's pipeline) must still be able
+// to restore, even though the committed batch's import_record.transaction_id
+// and import_batch.target_account_id still reference the very
+// transaction/account wipeActorLedger is about to delete. Before the fix,
+// this tripped a FOREIGN KEY constraint failure on the DELETE FROM
+// transactions statement, and the whole restore rolled back.
+func TestRestoreSnapshot_SucceedsAfterCommittedImport(t *testing.T) {
+	svc, _, _ := newSQLiteTestService(t, time.Date(2026, time.August, 20, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	actorID := sqliteActorID
+
+	acc := mustAccountFixtureAs(t, svc, actorID, "Checking", "bank", "USD")
+	staged, err := svc.StageImport(ctx, app.StageImportCommand{
+		ActorID: actorID, AccountRef: acc.Account.ID(), Filename: "statement.csv", SourceFormat: "csv",
+		FileContent:   []byte("Date,Description,Amount\n2026-08-01,Coffee Shop,-4.50\n"),
+		ColumnMapping: basicCSVMapping(),
+	})
+	if err != nil {
+		t.Fatalf("StageImport: %v", err)
+	}
+	if _, err := svc.CommitImportBatch(ctx, app.CommitImportBatchCommand{ActorID: actorID, ImportBatchRef: staged.Batch.ID()}); err != nil {
+		t.Fatalf("CommitImportBatch: %v", err)
+	}
+
+	doc, err := svc.ExportJSON(ctx, app.ExportJSONQuery{ActorID: actorID})
+	if err != nil {
+		t.Fatalf("ExportJSON: %v", err)
+	}
+
+	if _, err := svc.RestoreSnapshot(ctx, app.RestoreSnapshotQuery{ActorID: actorID, Document: doc}); err != nil {
+		t.Fatalf("RestoreSnapshot after a committed import: %v", err)
+	}
+}
+
+// TestRestoreSnapshot_SucceedsAfterRolledBackImport is issue #236's
+// regression test for its broader repro path: restore must also succeed
+// for an import batch that was committed and then rolled back.
+// RollbackImportBatch only soft-deletes the transaction it created
+// (ADR-0008's "provenance stays queryable" guarantee), so
+// import_record.transaction_id keeps pointing at that still-present row
+// indefinitely — before the fix, this made every future restore for the
+// actor fail forever, not just once.
+func TestRestoreSnapshot_SucceedsAfterRolledBackImport(t *testing.T) {
+	svc, _, _ := newSQLiteTestService(t, time.Date(2026, time.August, 20, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	actorID := sqliteActorID
+
+	acc := mustAccountFixtureAs(t, svc, actorID, "Checking", "bank", "USD")
+	staged, err := svc.StageImport(ctx, app.StageImportCommand{
+		ActorID: actorID, AccountRef: acc.Account.ID(), Filename: "statement.csv", SourceFormat: "csv",
+		FileContent:   []byte("Date,Description,Amount\n2026-08-01,Coffee Shop,-4.50\n"),
+		ColumnMapping: basicCSVMapping(),
+	})
+	if err != nil {
+		t.Fatalf("StageImport: %v", err)
+	}
+	if _, err := svc.CommitImportBatch(ctx, app.CommitImportBatchCommand{ActorID: actorID, ImportBatchRef: staged.Batch.ID()}); err != nil {
+		t.Fatalf("CommitImportBatch: %v", err)
+	}
+	if _, err := svc.RollbackImportBatch(ctx, app.RollbackImportBatchCommand{ActorID: actorID, ImportBatchRef: staged.Batch.ID()}); err != nil {
+		t.Fatalf("RollbackImportBatch: %v", err)
+	}
+
+	// A hand-entered transaction unrelated to the rolled-back import, so
+	// the document being restored isn't empty.
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: actorID, AccountRef: acc.Account.ID(), Amount: "10", Description: "Snack", Date: "2026-08-02",
+	}); err != nil {
+		t.Fatalf("RecordOutflow: %v", err)
+	}
+
+	doc, err := svc.ExportJSON(ctx, app.ExportJSONQuery{ActorID: actorID})
+	if err != nil {
+		t.Fatalf("ExportJSON: %v", err)
+	}
+
+	result, err := svc.RestoreSnapshot(ctx, app.RestoreSnapshotQuery{ActorID: actorID, Document: doc})
+	if err != nil {
+		t.Fatalf("RestoreSnapshot after a rolled-back import: %v", err)
+	}
+	// The rolled-back import's transaction was soft-deleted and therefore
+	// never appeared in ExportJSON's output — only the hand-entered
+	// transaction should have been restored.
+	if result.Transactions != 1 {
+		t.Errorf("RestoreSnapshotResult.Transactions = %d, want 1", result.Transactions)
+	}
+}
+
 // assertSnapshotsEquivalentModuloIDs compares before (pre-restore) and
 // after (post-restore) domain snapshots for equivalence under ADR-0008's
 // round-trip rule: every account/category/transaction/posting's own facts
