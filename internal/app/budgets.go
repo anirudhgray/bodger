@@ -6,6 +6,7 @@ import (
 
 	"github.com/anirudhgray/bodger/internal/app/normalize"
 	"github.com/anirudhgray/bodger/internal/domain/budgeting"
+	"github.com/anirudhgray/bodger/internal/domain/money"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 )
 
@@ -423,6 +424,22 @@ func (s *Service) RemoveBudgetLine(ctx context.Context, cmd RemoveBudgetLineComm
 		return BudgetResult{}, err
 	}
 	return BudgetResult{Budget: updated}, nil
+}
+
+// BudgetLineAmount pairs line's planned amount with currency — always the
+// owning Budget's own Currency() — as a money.Money a surface can render,
+// since a BudgetLine stores no currency of its own (see BudgetLine's doc
+// comment) and internal/surface/cli is barred from importing
+// internal/domain/money to build one itself (docs/architecture.md §3).
+// Returns a *errs.Error with code Internal if currency is invalid —
+// unreachable in practice, since every Budget already validates its own
+// currency at construction (budgeting.NewBudget).
+func BudgetLineAmount(currency string, line budgeting.BudgetLine) (money.Money, error) {
+	m, err := money.NewMoney(line.AmountMinor(), currency)
+	if err != nil {
+		return money.Money{}, errs.New(errs.Internal).Wrap(err)
+	}
+	return m, nil
 }
 
 // findBudgetLineIndex returns the index of the line identified by lineID
