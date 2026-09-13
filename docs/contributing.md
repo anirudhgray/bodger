@@ -29,11 +29,12 @@ The [`Makefile`](../Makefile) is the build contract. **Every PR runs `make check
 | Command | What it does |
 | --- | --- |
 | `make check` | `check-go` + `check-web`. Run before every push |
-| `make check-go` | `fmt-check-go` + `vet` + `lint-go` + `test-go` |
+| `make check-go` | `fmt-check-go` + `vet` + `lint-go` + `test-go` + `check-erd` |
 | `make check-web` | `fmt-check-web` + `lint-web` + `test-web` |
 | `make test` | Go tests with `-race`, plus web tests |
 | `make fmt` | Format everything in place |
 | `make generate` | Regenerate generated files (`internal/surface/http/openapi.json`, then `web/src/lib/api-types.ts` from it) |
+| `make erd` | Regenerate [`docs/schema`](schema/README.md)'s ER diagram from a scratch, fully-migrated database (issue #248) — see [Regenerating the schema ERD](#regenerating-the-schema-erd) |
 | `make build` | Build the web UI, then the binary, into `bin/bodger` |
 | `make build-bin` | Build just the `bodger` binary, without the web UI |
 | `make run` | Run the server locally |
@@ -179,6 +180,20 @@ Write one when a decision is expensive to reverse, constrains more than one part
 ### Adding a migration
 
 Sequential numeric prefix, embedded SQL, with a **tested** `-- +goose Down`. CI runs up→down→up. Migration files are a known parallel-work conflict point — see [ADR-0007](decisions/0007-persistence-and-migrations.md) for why sequential numbering was chosen anyway.
+
+After adding one, regenerate the schema ERD (below) so `docs/schema` doesn't drift from it.
+
+### Regenerating the schema ERD
+
+[`docs/schema/README.md`](schema/README.md) (issue #248) is generated, not hand-drawn: [`tbls`](https://github.com/k1LoW/tbls) introspects a real, fully-migrated SQLite database and writes a Mermaid ER diagram plus one page per table, straight from `internal/adapters/sqlite/migrations` rather than a conceptual sketch that can drift from it (`docs/data-model.md` §2 keeps that hand-drawn sketch too, for the domain's *intended* shape including entities not built yet — the two serve different purposes). `cmd/erdgen` builds the scratch database (applying every migration via `internal/adapters/sqlite`'s own goose provider, so there's nothing to keep in sync by hand), and `.tbls.yml` configures `tbls` itself. After adding or changing a migration, run:
+
+```sh
+make erd
+```
+
+and commit the result alongside the migration. `make check-erd` (part of `make check`/`check-go`) fails CI if `docs/schema` doesn't match a fresh run — the same regenerate-and-diff freshness check `openapigen_test.go` does for `openapi.json`, applied to the schema instead.
+
+`tbls` has no `asdf`/`mise` plugin, so unlike `golangci-lint` it isn't pinned in `.tool-versions`; `make erd`/`make check-erd` fetch a pinned release binary into `bin/tbls` on first use via `scripts/install-tbls.sh` instead (see that script's own doc comment for why not `go install` — its full dependency tree pulls in drivers for every database it supports, not just SQLite). Bump the pinned version there deliberately, the same way CI's `golangci-lint` version is bumped deliberately.
 
 ### Regenerating the OpenAPI document
 
