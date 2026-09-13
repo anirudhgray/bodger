@@ -319,10 +319,11 @@ type memSnapshots struct {
 	accounts     *memAccounts
 	categories   *memCategories
 	transactions *memTransactions
+	budgets      *memBudgets
 }
 
-func newMemSnapshots(accounts *memAccounts, categories *memCategories, transactions *memTransactions) *memSnapshots {
-	return &memSnapshots{accounts: accounts, categories: categories, transactions: transactions}
+func newMemSnapshots(accounts *memAccounts, categories *memCategories, transactions *memTransactions, budgets *memBudgets) *memSnapshots {
+	return &memSnapshots{accounts: accounts, categories: categories, transactions: transactions, budgets: budgets}
 }
 
 func (m *memSnapshots) Replace(_ context.Context, actorID string, snapshot ports.Snapshot) error {
@@ -338,6 +339,11 @@ func (m *memSnapshots) Replace(_ context.Context, actorID string, snapshot ports
 	}
 	for _, st := range snapshot.Transactions {
 		if st.Transaction.UserID() != actorID {
+			return errs.New(errs.NotAllowed)
+		}
+	}
+	for _, b := range snapshot.Budgets {
+		if b.UserID() != actorID {
 			return errs.New(errs.NotAllowed)
 		}
 	}
@@ -357,6 +363,12 @@ func (m *memSnapshots) Replace(_ context.Context, actorID string, snapshot ports
 			delete(m.transactions.byID, id)
 		}
 	}
+	for id, b := range m.budgets.byID {
+		if b.UserID() == actorID {
+			delete(m.budgets.byID, id)
+			delete(m.budgets.seq, id)
+		}
+	}
 
 	for _, a := range snapshot.Accounts {
 		m.accounts.byID[a.ID()] = a
@@ -367,6 +379,11 @@ func (m *memSnapshots) Replace(_ context.Context, actorID string, snapshot ports
 	for _, st := range snapshot.Transactions {
 		m.transactions.next++
 		m.transactions.byID[st.Transaction.ID()] = memTransactionRecord{txn: st.Transaction, tags: st.Tags, seq: m.transactions.next}
+	}
+	for _, b := range snapshot.Budgets {
+		m.budgets.next++
+		m.budgets.byID[b.ID()] = b
+		m.budgets.seq[b.ID()] = m.budgets.next
 	}
 	return nil
 }

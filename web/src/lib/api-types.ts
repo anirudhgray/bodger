@@ -1618,6 +1618,7 @@ export interface components {
         };
         RestoreSnapshot: {
             accounts: number;
+            budgets: number;
             categories: number;
             transactions: number;
         };

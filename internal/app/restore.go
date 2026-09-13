@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/anirudhgray/bodger/internal/domain"
+	"github.com/anirudhgray/bodger/internal/domain/budgeting"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
@@ -30,6 +31,7 @@ type RestoreSnapshotResult struct {
 	Accounts     int
 	Categories   int
 	Transactions int
+	Budgets      int
 }
 
 // RestoreSnapshot implements issue #226: a full-state restore of a
@@ -53,11 +55,14 @@ type RestoreSnapshotResult struct {
 // method or inside that transaction, leaves the actor's existing ledger
 // completely untouched.
 //
-// Budgets/budget lines and FX rates are not restored: ExportSnapshot's own
-// current shape doesn't emit either (no budget domain type exists before
-// M7; no repository method enumerates every stored fx_rate row — see its
-// doc comment in export.go), so a bodger.export/v1 document never carries
-// them today and there is nothing here to read back.
+// Budgets and their lines are restored (#246), through the same
+// regenerate-every-surrogate-ID-and-remap-references discipline as every
+// other entity here: a budget line's category_id is remapped through the
+// same categoryIDs map restoreTransactions' postings already use. FX rates
+// are not restored, deliberately: fx_rates carries no actor/user scoping
+// at all (ADR-0004), so there is no per-actor ownership check that would
+// make sense for it — see ExportSnapshot's doc comment (export.go) and
+// ports.Snapshot's own doc comment for the full reasoning (#221).
 func (s *Service) RestoreSnapshot(ctx context.Context, q RestoreSnapshotQuery) (RestoreSnapshotResult, error) {
 	if err := requireActorID(q.ActorID); err != nil {
 		return RestoreSnapshotResult{}, err
@@ -93,6 +98,7 @@ func (s *Service) RestoreSnapshot(ctx context.Context, q RestoreSnapshotQuery) (
 		Accounts:     len(snapshot.Accounts),
 		Categories:   len(snapshot.Categories),
 		Transactions: len(snapshot.Transactions),
+		Budgets:      len(snapshot.Budgets),
 	}, nil
 }
 
@@ -123,7 +129,12 @@ func buildRestoreSnapshot(ids idgen.Generator, actorID string, envelope jsonEnve
 		return ports.Snapshot{}, err
 	}
 
-	return ports.Snapshot{Accounts: accounts, Categories: categories, Transactions: transactions}, nil
+	budgets, err := restoreBudgets(ids, actorID, envelope.Budgets, categoryIDs)
+	if err != nil {
+		return ports.Snapshot{}, err
+	}
+
+	return ports.Snapshot{Accounts: accounts, Categories: categories, Transactions: transactions, Budgets: budgets}, nil
 }
 
 // restoreAccounts rebuilds every account in raw with a freshly generated
@@ -445,6 +456,59 @@ func restorePostings(ids idgen.Generator, raw []jsonPosting, accountIDs, categor
 		postings = append(postings, posting)
 	}
 	return postings, nil
+}
+
+// restoreBudgets rebuilds every budget (and its lines) in raw with freshly
+// generated IDs — one new ID per budget and one per line, the same
+// per-aggregate-and-its-children ID assignment restoreTransactions uses
+// for a transaction and its postings. Each line's category_id is remapped
+// through categoryIDs, the same map restorePostings already resolves a
+// posting's category_id through; a line referencing a category ID the
+// document's own categories section never declared is an error, never
+// silently dropped, the same as a dangling posting reference.
+func restoreBudgets(ids idgen.Generator, actorID string, raw []jsonBudget, categoryIDs map[string]string) ([]budgeting.Budget, error) {
+	budgets := make([]budgeting.Budget, 0, len(raw))
+	for _, jb := range raw {
+		newID := ids.NewID()
+
+		lines := make([]budgeting.BudgetLine, 0, len(jb.Lines))
+		for _, jl := range jb.Lines {
+			newCategoryID, ok := categoryIDs[jl.CategoryID]
+			if !ok {
+				return nil, errs.New(errs.InvalidInput).
+					Explain("The document's budgets entry %q has a line referencing a category %q that doesn't exist in the document.", jb.ID, jl.CategoryID).
+					Field("document").
+					Wrap(fmt.Errorf("app: budget %q line references unknown category %q", jb.ID, jl.CategoryID))
+			}
+
+			line, err := budgeting.NewBudgetLine(ids.NewID(), newID, newCategoryID, jl.AmountMinor, jl.Rollover)
+			if err != nil {
+				return nil, restoreFieldError(err, "budgets", jb.ID, "lines")
+			}
+			lines = append(lines, line)
+		}
+
+		startsOn, err := parseISODate(jb.StartsOn)
+		if err != nil {
+			return nil, restoreFieldError(err, "budgets", jb.ID, "starts_on")
+		}
+
+		var opts []budgeting.BudgetOption
+		if jb.ArchivedAt != nil {
+			archivedAt, err := parseISODate(*jb.ArchivedAt)
+			if err != nil {
+				return nil, restoreFieldError(err, "budgets", jb.ID, "archived_at")
+			}
+			opts = append(opts, budgeting.WithArchivedAt(archivedAt))
+		}
+
+		budget, err := budgeting.NewBudget(newID, actorID, jb.Name, budgeting.PeriodType(jb.PeriodType), jb.Currency, startsOn, lines, opts...)
+		if err != nil {
+			return nil, restoreFieldError(err, "budgets", jb.ID, "")
+		}
+		budgets = append(budgets, budget)
+	}
+	return budgets, nil
 }
 
 // restoreOptionalDate parses raw (an ISO 8601 date string) if non-nil,

@@ -1,6 +1,7 @@
 // The Restore subpage of the Import & export area (issue #214), wrapping
 // #227's REST surface: upload a canonical JSON backup and replace every
-// account, category, and transaction the actor has with its contents.
+// account, category, transaction, and budget the actor has with its
+// contents.
 //
 // This is the one flow in the whole web UI where the interface has to
 // carry real weight rather than just render a server response: restoring
@@ -111,9 +112,9 @@ export function RestorePage() {
         <AlertTitle>This replaces everything you currently have</AlertTitle>
         <AlertDescription>
           Restoring loads a backup file as your entire ledger: every account,
-          category, and transaction you have right now is deleted and replaced
-          with the backup’s contents. There is no preview and no undo. If you’re
-          not sure, download a fresh backup from Export first.
+          category, transaction, and budget you have right now is deleted and
+          replaced with the backup’s contents. There is no preview and no undo.
+          If you’re not sure, download a fresh backup from Export first.
         </AlertDescription>
       </Alert>
 
@@ -123,8 +124,10 @@ export function RestorePage() {
           <AlertDescription>
             Installed {result.accounts} account
             {result.accounts === 1 ? '' : 's'}, {result.categories} categor
-            {result.categories === 1 ? 'y' : 'ies'}, and {result.transactions}{' '}
-            transaction{result.transactions === 1 ? '' : 's'} from the backup.
+            {result.categories === 1 ? 'y' : 'ies'}, {result.transactions}{' '}
+            transaction{result.transactions === 1 ? '' : 's'}, and{' '}
+            {result.budgets} budget{result.budgets === 1 ? '' : 's'} from the
+            backup.
           </AlertDescription>
           <Button
             size="sm"
@@ -176,8 +179,8 @@ export function RestorePage() {
           <DialogHeader>
             <DialogTitle>Replace everything with this backup?</DialogTitle>
             <DialogDescription>
-              This permanently deletes every account, category, and transaction
-              you currently have and replaces them with {picked?.name}’s
+              This permanently deletes every account, category, transaction, and
+              budget you currently have and replaces them with {picked?.name}’s
               contents. This can’t be undone.
             </DialogDescription>
           </DialogHeader>

@@ -19,10 +19,11 @@ type restoreSnapshotView struct {
 	Accounts     int `json:"accounts"`
 	Categories   int `json:"categories"`
 	Transactions int `json:"transactions"`
+	Budgets      int `json:"budgets"`
 }
 
 func restoreSnapshotViewFrom(r app.RestoreSnapshotResult) restoreSnapshotView {
-	return restoreSnapshotView{Accounts: r.Accounts, Categories: r.Categories, Transactions: r.Transactions}
+	return restoreSnapshotView{Accounts: r.Accounts, Categories: r.Categories, Transactions: r.Transactions, Budgets: r.Budgets}
 }
 
 // readRestoreInput reads the document "restore" installs: path's
@@ -88,8 +89,8 @@ func newRestoreCmd(factory ServiceFactory) *cobra.Command {
 			}
 			view := restoreSnapshotViewFrom(result)
 			return render(cmd, view, func(w io.Writer) {
-				_, _ = fmt.Fprintf(w, "Restored %d account(s), %d category(-ies), %d transaction(s).\n",
-					view.Accounts, view.Categories, view.Transactions)
+				_, _ = fmt.Fprintf(w, "Restored %d account(s), %d category(-ies), %d transaction(s), %d budget(s).\n",
+					view.Accounts, view.Categories, view.Transactions, view.Budgets)
 			})
 		},
 	}

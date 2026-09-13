@@ -46,12 +46,13 @@ func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
 	users.byID[testActorID] = ports.User{ID: testActorID}
 	importBatches := newMemImportBatches()
 	importRecords := newMemImportRecords()
+	budgets := newMemBudgets()
 	svc, err := app.NewService(
 		clk, cfg, idgen.New(), accounts, categories, transactions, newMemTags(),
 		users, newMemSessions(), newMemAPITokens(), newMemFxRates(accounts, transactions), newMemFxProvider(),
 		importBatches, importRecords, newMemImportCommits(importBatches, importRecords, transactions),
-		newMemSnapshots(accounts, categories, transactions),
-		newMemBudgets(),
+		newMemSnapshots(accounts, categories, transactions, budgets),
+		budgets,
 	)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)

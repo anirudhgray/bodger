@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 
+	"github.com/anirudhgray/bodger/internal/domain/budgeting"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 )
 
@@ -26,30 +27,32 @@ type SnapshotTransaction struct {
 // this restored entity's new identity be" is a case of); this port has no
 // opinion on where the IDs came from, only that they're what gets written.
 //
-// Budgets/budget lines and FX rates are absent for the same reason
-// internal/app's ExportSnapshot doesn't produce them yet: no domain type
-// for budgets exists before M7, and there is no repository method that
-// enumerates every stored fx_rate row. Adding either is a follow-up once
-// the missing piece exists on the read side too — see ExportSnapshot's own
-// doc comment.
+// Budgets are now included (#246), restored the same replace-wholesale way
+// as everything else here. FX rates remain deliberately excluded: fx_rates
+// carries no actor/user scoping at all (ADR-0004), so there is no
+// per-actor ownership check that would make sense for a globally-shared
+// table — a restore is defined per-actor, and fx_rates simply isn't
+// per-actor data. See internal/app's ExportSnapshot (#221) for the export
+// side of that same reasoning.
 type Snapshot struct {
 	Accounts     []ledger.Account
 	Categories   []ledger.Category
 	Transactions []SnapshotTransaction
+	Budgets      []budgeting.Budget
 }
 
 // SnapshotRepository replaces one actor's entire ledger — every account,
-// category, transaction, and posting — in a single atomic database
+// category, transaction, posting, and budget — in a single atomic database
 // transaction (issue #226, ADR-0008's canonical-JSON restore). "Replace"
 // means the actor's existing rows for these entities are deleted first, in
 // the same transaction, then every row in snapshot is inserted; a failure
 // partway through leaves the actor's prior data completely untouched —
 // this is a full-state replace, never a merge, and never a partial one.
 type SnapshotRepository interface {
-	// Replace wipes actorID's existing accounts, categories, and
-	// transactions (with their postings and tags), then writes snapshot in
-	// their place, all in one database transaction. It returns a
-	// *errs.Error with code NotAllowed if any value in snapshot has a
-	// UserID() other than actorID.
+	// Replace wipes actorID's existing accounts, categories, transactions
+	// (with their postings and tags), and budgets (with their lines), then
+	// writes snapshot in their place, all in one database transaction. It
+	// returns a *errs.Error with code NotAllowed if any value in snapshot
+	// has a UserID() other than actorID.
 	Replace(ctx context.Context, actorID string, snapshot Snapshot) error
 }
