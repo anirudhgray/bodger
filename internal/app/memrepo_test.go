@@ -740,6 +740,31 @@ func (m *memFxRates) Lookup(_ context.Context, base, quote string, date domain.D
 	return sel, nil
 }
 
+// ListAll implements ports.FxRateRepository, mirroring the real sqlite
+// adapter's deterministic (base, quote, rate_date, source) ordering so a
+// test exercising export via this fake sees the same ordering the real
+// adapter would produce.
+func (m *memFxRates) ListAll(_ context.Context) ([]ports.FxRateRow, error) {
+	rows := make([]ports.FxRateRow, 0, len(m.byKey))
+	for key, rate := range m.byKey {
+		rows = append(rows, ports.FxRateRow{Rate: rate, Date: key.date, Source: key.source})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		a, b := rows[i], rows[j]
+		if a.Rate.Base() != b.Rate.Base() {
+			return a.Rate.Base() < b.Rate.Base()
+		}
+		if a.Rate.Quote() != b.Rate.Quote() {
+			return a.Rate.Quote() < b.Rate.Quote()
+		}
+		if a.Date.String() != b.Date.String() {
+			return a.Date.String() < b.Date.String()
+		}
+		return a.Source < b.Source
+	})
+	return rows, nil
+}
+
 // InUsePairs implements ports.FxRateRepository, mirroring the real
 // sqlite adapter's union-of-account-and-posting-currencies query
 // (internal/adapters/sqlite/fx_rate_repo.go's InUsePairs doc comment) over
