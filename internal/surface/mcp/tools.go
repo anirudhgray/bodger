@@ -86,11 +86,17 @@ type ToolDef struct {
 // tools in this issue, not real ones") are registered directly against a
 // Dispatcher in dispatcher_test.go, never listed here.
 //
-// Every tool below whoami is issue #260's read-tier wiring: one tool per
-// existing read-only app-layer method (account balances, transaction
-// list/filter, category spending reports, budget actuals & history, FX
-// rate lookup), always allowed and never audited (ADR-0013). Write and
-// destructive tools are #261/#262, not this file.
+// Every tool below whoami through listFxRatesTool is issue #260's
+// read-tier wiring: one tool per existing read-only app-layer method
+// (account balances, transaction list/filter, category spending reports,
+// budget actuals & history, FX rate lookup), always allowed and never
+// audited (ADR-0013).
+//
+// Every tool from recordOutflowTool through archiveBudgetTool is issue
+// #261's write-tier wiring: recording/editing transactions and budget/line
+// CRUD, allowed and audited via mcp_tool_call (ADR-0013). archiveBudgetTool
+// is registered here as write, not destructive -- see its own doc comment
+// for the reasoning. Destructive tools are #262, not this file.
 func Tools() []ToolDef {
 	return []ToolDef{
 		whoAmITool(),
@@ -100,5 +106,15 @@ func Tools() []ToolDef {
 		getBudgetActualsTool(),
 		getBudgetHistoryTool(),
 		listFxRatesTool(),
+		recordOutflowTool(),
+		recordInflowTool(),
+		recordTransferTool(),
+		editTransactionTool(),
+		createBudgetTool(),
+		updateBudgetTool(),
+		addBudgetLineTool(),
+		updateBudgetLineTool(),
+		removeBudgetLineTool(),
+		archiveBudgetTool(),
 	}
 }
