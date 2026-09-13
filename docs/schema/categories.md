@@ -25,7 +25,7 @@ CREATE TABLE "categories" (
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| id | TEXT |  | true | [postings](postings.md) [categories](categories.md) [import_record](import_record.md) |  |  |
+| id | TEXT |  | true | [postings](postings.md) [categories](categories.md) [import_record](import_record.md) [budget_lines](budget_lines.md) |  |  |
 | user_id | TEXT |  | false |  | [users](users.md) |  |
 | parent_id | TEXT |  | true |  | [categories](categories.md) |  |
 | name | TEXT |  | false |  |  |  |
@@ -63,6 +63,7 @@ erDiagram
 "postings" }o--o| "categories" : "FOREIGN KEY (category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "categories" }o--o| "categories" : "FOREIGN KEY (parent_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_record" }o--o| "categories" : "FOREIGN KEY (resolved_category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"budget_lines" }o--|| "categories" : "FOREIGN KEY (category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "categories" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 
 "categories" {
@@ -107,6 +108,13 @@ erDiagram
   TEXT created_at
   TEXT updated_at
   TEXT transfer_candidate_record_id FK
+}
+"budget_lines" {
+  TEXT id PK
+  TEXT budget_id FK
+  TEXT category_id FK
+  INTEGER amount_minor
+  INTEGER rollover
 }
 "users" {
   TEXT id PK

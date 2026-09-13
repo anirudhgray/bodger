@@ -18,6 +18,8 @@
 | [fx_rates](fx_rates.md) | 6 |  | table |
 | [import_batch](import_batch.md) | 9 |  | table |
 | [import_record](import_record.md) | 21 |  | table |
+| [budgets](budgets.md) | 9 |  | table |
+| [budget_lines](budget_lines.md) | 5 |  | table |
 
 ## Relations
 
@@ -51,6 +53,10 @@ erDiagram
 "import_record" }o--|| "currencies" : "FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_record" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_record" }o--|| "import_batch" : "FOREIGN KEY (import_batch_id) REFERENCES import_batch (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+"budgets" }o--|| "currencies" : "FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"budgets" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"budget_lines" }o--|| "categories" : "FOREIGN KEY (category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"budget_lines" }o--|| "budgets" : "FOREIGN KEY (budget_id) REFERENCES budgets (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
 
 "users" {
   TEXT id PK
@@ -191,6 +197,24 @@ erDiagram
   TEXT created_at
   TEXT updated_at
   TEXT transfer_candidate_record_id FK
+}
+"budgets" {
+  TEXT id PK
+  TEXT user_id FK
+  TEXT name
+  TEXT period_type
+  TEXT currency FK
+  TEXT starts_on
+  TEXT archived_at
+  TEXT created_at
+  TEXT updated_at
+}
+"budget_lines" {
+  TEXT id PK
+  TEXT budget_id FK
+  TEXT category_id FK
+  INTEGER amount_minor
+  INTEGER rollover
 }
 ```
 
