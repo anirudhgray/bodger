@@ -75,7 +75,15 @@ const household: Budget = {
   lines: [{ id: 'l1', category_id: 'c1', amount: '500.00', rollover: false }],
 }
 
-function historyFor(budget: Budget, from: string, to: string): BudgetHistory {
+// asOf defaults to `from`, outside most tests' concern — pass it
+// explicitly to exercise the month-progress marker (monthProgressPercent
+// in Budgets.tsx), which only renders when as_of falls within [from, to].
+function historyFor(
+  budget: Budget,
+  from: string,
+  to: string,
+  asOf: string = from,
+): BudgetHistory {
   return {
     budget_id: budget.id,
     periods: [
@@ -84,6 +92,15 @@ function historyFor(budget: Budget, from: string, to: string): BudgetHistory {
         currency: budget.currency,
         from,
         to,
+        as_of: asOf,
+        overall: {
+          budgeted: budget.lines
+            .reduce((sum, l) => sum + Number(l.amount), 0)
+            .toFixed(2),
+          actual: (450 * budget.lines.length).toFixed(2),
+          remaining: '50.00',
+          utilisation: 0.9,
+        },
         lines: budget.lines.map((l) => ({
           line_id: l.id,
           category_id: l.category_id,
@@ -144,10 +161,42 @@ describe('BudgetsPage', () => {
     expect(screen.getByText('500.00 USD')).toBeInTheDocument()
     expect(screen.getByText('450.00 USD')).toBeInTheDocument()
     expect(screen.getByText('50.00 USD')).toBeInTheDocument()
-    expect(screen.getByText('90%')).toBeInTheDocument()
-    expect(screen.getByText('At budget')).toBeInTheDocument()
+    // "90%"/"At budget" render twice — once for the Overall row, once for
+    // the one line — because with a single line, Overall trivially equals
+    // it (TestBudgetActuals_OverallSumsAllLines in the Go suite covers the
+    // case where they diverge, with more than one line).
+    expect(screen.getAllByText('90%')).toHaveLength(2)
+    expect(screen.getAllByText('At budget')).toHaveLength(2)
     expect(screen.getByText('September 2026')).toBeInTheDocument()
     expect(mockedGetBudgetHistory).toHaveBeenCalledWith('b1', undefined, 1)
+  })
+
+  it('shows the month-progress marker when the period is the current one', async () => {
+    mockedListBudgets.mockResolvedValue([household])
+    // 13th of a 30-day September: 13/30 = 43.3%, rounds to 43%.
+    mockedGetBudgetHistory.mockResolvedValue(
+      historyFor(household, '2026-09-01', '2026-09-30', '2026-09-13'),
+    )
+
+    renderPage()
+
+    expect(
+      await screen.findByText(/43% of the way through/),
+    ).toBeInTheDocument()
+  })
+
+  it('hides the month-progress marker for a period that is not the current one', async () => {
+    mockedListBudgets.mockResolvedValue([household])
+    // as_of (today) is in August; the period being viewed is September —
+    // a past or future period gets no marker, only the current one does.
+    mockedGetBudgetHistory.mockResolvedValue(
+      historyFor(household, '2026-09-01', '2026-09-30', '2026-08-15'),
+    )
+
+    renderPage()
+
+    await screen.findByText('Household')
+    expect(screen.queryByText(/of the way through/)).not.toBeInTheDocument()
   })
 
   it('shows an empty state with a call to action when there are no budgets', async () => {
