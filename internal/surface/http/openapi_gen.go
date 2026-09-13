@@ -72,6 +72,7 @@ var enumSets = map[string][]string{
 	"import_record_status":        {"pending", "ready", "excluded", "committed"},
 	"import_duplicate_tier":       {"exact", "suspected_duplicate"},
 	"import_duplicate_resolution": {"pending", "confirmed_duplicate", "not_duplicate"},
+	"budget_period_type":          {"monthly"},
 }
 
 func errorCodeValues() []string {
