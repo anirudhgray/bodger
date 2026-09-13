@@ -508,6 +508,48 @@ The **Settings** area covers everything about your account and ledger setup, spl
 
 ---
 
+## Connecting an MCP client to bodger
+
+`bodger mcp` lets an AI assistant or agent that speaks the [Model Context Protocol](https://modelcontextprotocol.io) read and act on your transactions directly, the same way the command line does. There's nothing to install separately — it's the same `bodger` binary, running in a different mode.
+
+Point your MCP client at the command rather than a network address — most clients ask for a command to run, not a URL:
+
+```json
+{
+  "mcpServers": {
+    "bodger": {
+      "command": "bodger",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+(The exact place you paste this depends on your client — check its own documentation for "add an MCP server" or "add a tool.")
+
+Once connected, your assistant can call bodger's tools the same way you'd run a command yourself. Tools are grouped into three levels of trust:
+
+- **Look things up** — checking balances, listing transactions, running reports. Always available, and nothing you do this way changes anything.
+- **Make changes** — recording a transaction, editing one, and similar. Available by default, and everything done this way is recorded so you can review it later (see "Reviewing what an assistant has done," below).
+- **Undo or bulk changes** — deleting something, or anything that affects many transactions at once. Turned off unless you start the server with `--allow-destructive`:
+
+  ```sh
+  bodger mcp --allow-destructive
+  ```
+
+  Even then, nothing happens on the first request — your assistant gets back a plain description of what it's about to do, along with a one-time confirmation code. Only a second request, carrying that exact code, actually makes the change. If your assistant tries the same request again with an old code, or with anything changed, it's turned down and has to ask again.
+
+### Reviewing what an assistant has done
+
+`bodger mcp audit` lists what an assistant has actually changed — every "make a change" or "undo/bulk change" request it made, most recent first. Looking things up isn't listed here, since nothing you look up ever changes anything.
+
+```sh
+bodger mcp audit
+bodger mcp audit --limit 20
+```
+
+---
+
 ## Setting a password and managing API tokens
 
 Set your password from the command line — there's no web sign-up form, and no email involved:
@@ -588,6 +630,8 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | `bodger categories reparent <category> [--parent]` | Move a category under a different one, or to the top level |
 | `bodger categories archive <category>` | Archive a category |
 | `bodger serve` | Start the REST API server |
+| `bodger mcp [--allow-destructive]` | Start the MCP server for an AI assistant or agent, over stdio |
+| `bodger mcp audit [--limit]` | List what an assistant connected over MCP has actually changed |
 | `bodger auth set-password` | Set or change your password |
 | `bodger auth token create <name> [--expires]` | Create a new API token |
 | `bodger auth token list` | List your API tokens |

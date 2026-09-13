@@ -109,6 +109,15 @@ type Service struct {
 	// use-case method — CRUD (#242) and actuals/reporting (#243) are
 	// separate, later issues.
 	Budgets ports.BudgetRepository
+
+	// MCPToolCalls is issue #259's repository port over mcp_tool_call
+	// (ADR-0013): the audit trail of every write- and destructive-tier
+	// MCP tool invocation. Following the ImportBatches/ImportRecords
+	// precedent above, this is wired in ahead of any real tool that
+	// writes through it — issue #259 itself only ships a read-tier
+	// "whoami" tool to prove the transport; the financial tools that
+	// actually populate this table are #260/#261/#262.
+	MCPToolCalls ports.MCPToolCallRepository
 }
 
 // NewService constructs a Service from its dependencies, rejecting a nil
@@ -133,6 +142,7 @@ func NewService(
 	importCommits ports.ImportCommitRepository,
 	snapshots ports.SnapshotRepository,
 	budgets ports.BudgetRepository,
+	mcpToolCalls ports.MCPToolCallRepository,
 ) (*Service, error) {
 	switch {
 	case clk == nil:
@@ -167,6 +177,8 @@ func NewService(
 		return nil, missingDependency("snapshot repository")
 	case budgets == nil:
 		return nil, missingDependency("budget repository")
+	case mcpToolCalls == nil:
+		return nil, missingDependency("MCP tool call repository")
 	}
 
 	return &Service{
@@ -187,6 +199,7 @@ func NewService(
 		ImportCommits: importCommits,
 		Snapshots:     snapshots,
 		Budgets:       budgets,
+		MCPToolCalls:  mcpToolCalls,
 	}, nil
 }
 

@@ -159,6 +159,13 @@ func (fakeBudgets) Get(context.Context, string, string) (budgeting.Budget, error
 func (fakeBudgets) List(context.Context, string) ([]budgeting.Budget, error) { return nil, nil }
 func (fakeBudgets) Update(context.Context, string, budgeting.Budget) error   { return nil }
 
+type fakeMCPToolCalls struct{}
+
+func (fakeMCPToolCalls) Create(context.Context, string, ports.MCPToolCall) error { return nil }
+func (fakeMCPToolCalls) List(context.Context, string, int) ([]ports.MCPToolCall, error) {
+	return nil, nil
+}
+
 // TestNewService_RejectsMissingDependencies checks both halves of
 // ADR-0011's safe/internal split for a mis-wired container: the caller gets
 // an *errs.Error coded Internal (so a surface has an exit code and a
@@ -189,6 +196,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 		importCommits ports.ImportCommitRepository
 		snapshots     ports.SnapshotRepository
 		budgets       ports.BudgetRepository
+		mcpToolCalls  ports.MCPToolCallRepository
 		wantCause     string
 	}{
 		{
@@ -209,6 +217,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: fakeImportCommits{},
 			snapshots:     fakeSnapshots{},
 			budgets:       fakeBudgets{},
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "clock",
 		},
 		{
@@ -229,6 +238,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: fakeImportCommits{},
 			snapshots:     fakeSnapshots{},
 			budgets:       fakeBudgets{},
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "id generator",
 		},
 		{
@@ -249,6 +259,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: fakeImportCommits{},
 			snapshots:     fakeSnapshots{},
 			budgets:       fakeBudgets{},
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "account repository",
 		},
 		{
@@ -269,6 +280,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: fakeImportCommits{},
 			snapshots:     fakeSnapshots{},
 			budgets:       fakeBudgets{},
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "category repository",
 		},
 		{
@@ -289,6 +301,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: fakeImportCommits{},
 			snapshots:     fakeSnapshots{},
 			budgets:       fakeBudgets{},
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "transaction repository",
 		},
 		{
@@ -309,6 +322,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: fakeImportCommits{},
 			snapshots:     fakeSnapshots{},
 			budgets:       fakeBudgets{},
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "tag repository",
 		},
 		{
@@ -329,6 +343,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: fakeImportCommits{},
 			snapshots:     fakeSnapshots{},
 			budgets:       fakeBudgets{},
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "user repository",
 		},
 		{
@@ -349,6 +364,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: fakeImportCommits{},
 			snapshots:     fakeSnapshots{},
 			budgets:       fakeBudgets{},
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "session repository",
 		},
 		{
@@ -369,6 +385,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: fakeImportCommits{},
 			snapshots:     fakeSnapshots{},
 			budgets:       fakeBudgets{},
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "API token repository",
 		},
 		{
@@ -389,6 +406,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: fakeImportCommits{},
 			snapshots:     fakeSnapshots{},
 			budgets:       fakeBudgets{},
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "FX rate repository",
 		},
 		{
@@ -409,6 +427,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: fakeImportCommits{},
 			snapshots:     fakeSnapshots{},
 			budgets:       fakeBudgets{},
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "FX rate provider",
 		},
 		{
@@ -429,6 +448,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: fakeImportCommits{},
 			snapshots:     fakeSnapshots{},
 			budgets:       fakeBudgets{},
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "import batch repository",
 		},
 		{
@@ -449,6 +469,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: fakeImportCommits{},
 			snapshots:     fakeSnapshots{},
 			budgets:       fakeBudgets{},
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "import record repository",
 		},
 		{
@@ -469,6 +490,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: nil,
 			snapshots:     fakeSnapshots{},
 			budgets:       fakeBudgets{},
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "import commit repository",
 		},
 		{
@@ -489,6 +511,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: fakeImportCommits{},
 			snapshots:     nil,
 			budgets:       fakeBudgets{},
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "snapshot repository",
 		},
 		{
@@ -509,7 +532,29 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			importCommits: fakeImportCommits{},
 			snapshots:     fakeSnapshots{},
 			budgets:       nil,
+			mcpToolCalls:  fakeMCPToolCalls{},
 			wantCause:     "budget repository",
+		},
+		{
+			name:          "nil MCP tool call repository",
+			clk:           clk,
+			ids:           ids,
+			accounts:      fakeAccounts{},
+			categories:    fakeCategories{},
+			transactions:  fakeTransactions{},
+			tags:          fakeTags{},
+			users:         fakeUsers{},
+			sessions:      fakeSessions{},
+			apiTokens:     fakeAPITokens{},
+			fxRates:       fakeFxRates{},
+			fxProvider:    fakeFxProvider{},
+			importBatches: fakeImportBatches{},
+			importRecords: fakeImportRecords{},
+			importCommits: fakeImportCommits{},
+			snapshots:     fakeSnapshots{},
+			budgets:       fakeBudgets{},
+			mcpToolCalls:  nil,
+			wantCause:     "MCP tool call repository",
 		},
 	}
 
@@ -518,7 +563,7 @@ func TestNewService_RejectsMissingDependencies(t *testing.T) {
 			_, err := app.NewService(
 				tt.clk, cfg, tt.ids, tt.accounts, tt.categories, tt.transactions, tt.tags,
 				tt.users, tt.sessions, tt.apiTokens, tt.fxRates, tt.fxProvider,
-				tt.importBatches, tt.importRecords, tt.importCommits, tt.snapshots, tt.budgets,
+				tt.importBatches, tt.importRecords, tt.importCommits, tt.snapshots, tt.budgets, tt.mcpToolCalls,
 			)
 			if err == nil {
 				t.Fatalf("NewService(...) returned no error, want one caused by a nil %s", tt.wantCause)
@@ -552,7 +597,7 @@ func TestNewService_BuildsWithEveryDependency(t *testing.T) {
 	svc, err := app.NewService(
 		clk, cfg, ids, fakeAccounts{}, fakeCategories{}, fakeTransactions{}, fakeTags{},
 		fakeUsers{}, fakeSessions{}, fakeAPITokens{}, fakeFxRates{}, fakeFxProvider{},
-		fakeImportBatches{}, fakeImportRecords{}, fakeImportCommits{}, fakeSnapshots{}, fakeBudgets{},
+		fakeImportBatches{}, fakeImportRecords{}, fakeImportCommits{}, fakeSnapshots{}, fakeBudgets{}, fakeMCPToolCalls{},
 	)
 	if err != nil {
 		t.Fatalf("NewService(...) unexpected error: %v", err)
@@ -584,6 +629,9 @@ func TestNewService_BuildsWithEveryDependency(t *testing.T) {
 	if svc.Budgets == nil {
 		t.Error("Service.Budgets should be non-nil after a successful NewService call")
 	}
+	if svc.MCPToolCalls == nil {
+		t.Error("Service.MCPToolCalls should be non-nil after a successful NewService call")
+	}
 }
 
 // TestService_UsesInjectedClockNotWallClock is a light guard that Service
@@ -598,7 +646,7 @@ func TestService_UsesInjectedClockNotWallClock(t *testing.T) {
 	svc, err := app.NewService(
 		clk, config.Defaults, idgen.NewSequence("t"), fakeAccounts{}, fakeCategories{}, fakeTransactions{}, fakeTags{},
 		fakeUsers{}, fakeSessions{}, fakeAPITokens{}, fakeFxRates{}, fakeFxProvider{},
-		fakeImportBatches{}, fakeImportRecords{}, fakeImportCommits{}, fakeSnapshots{}, fakeBudgets{},
+		fakeImportBatches{}, fakeImportRecords{}, fakeImportCommits{}, fakeSnapshots{}, fakeBudgets{}, fakeMCPToolCalls{},
 	)
 	if err != nil {
 		t.Fatalf("NewService(...) unexpected error: %v", err)

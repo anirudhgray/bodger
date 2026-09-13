@@ -2022,6 +2022,114 @@
         }
       ],
       "def": "CREATE TABLE budget_lines (\n    id           TEXT NOT NULL PRIMARY KEY,\n    budget_id    TEXT NOT NULL REFERENCES budgets (id) ON DELETE CASCADE,\n    category_id  TEXT NOT NULL REFERENCES categories (id),\n    amount_minor INTEGER NOT NULL,\n    -- Reserved for a later milestone (data-model.md §13): leaving the\n    -- column out now would cost a migration later, and adding it now\n    -- costs nothing. Nothing reads or interprets it yet.\n    rollover     INTEGER NOT NULL DEFAULT 0 CHECK (rollover IN (0, 1)),\n    -- One line per category per budget -- data-model.md §10 has no notion\n    -- of \"the\" actual/remaining for a category split across two lines of\n    -- the same budget.\n    UNIQUE (budget_id, category_id)\n)"
+    },
+    {
+      "name": "mcp_tool_call",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "tool_name",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "tier",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "arguments",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "confirmation_token",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "result",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "called_at",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_mcp_tool_call_user_id_called_at",
+          "def": "CREATE INDEX idx_mcp_tool_call_user_id_called_at ON mcp_tool_call (user_id, called_at DESC)",
+          "table": "mcp_tool_call",
+          "columns": [
+            "user_id",
+            "called_at"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_mcp_tool_call_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "mcp_tool_call",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "mcp_tool_call",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "mcp_tool_call",
+          "referenced_table": "users",
+          "columns": [
+            "user_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_mcp_tool_call_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "mcp_tool_call",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (tier IN ('read', 'write', 'destructive'))",
+          "table": "mcp_tool_call",
+          "columns": [
+            "tier"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE mcp_tool_call (\n    id                 TEXT NOT NULL PRIMARY KEY,\n    user_id            TEXT NOT NULL REFERENCES users (id),\n    tool_name          TEXT NOT NULL,\n    tier               TEXT NOT NULL CHECK (tier IN ('read', 'write', 'destructive')),\n    arguments          TEXT NOT NULL,\n    confirmation_token TEXT,\n    result             TEXT NOT NULL,\n    called_at          TEXT NOT NULL\n)"
     }
   ],
   "relations": [
@@ -2429,6 +2537,19 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (budget_id) REFERENCES budgets (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+    },
+    {
+      "table": "mcp_tool_call",
+      "columns": [
+        "user_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "users",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
     }
   ],
   "driver": {
