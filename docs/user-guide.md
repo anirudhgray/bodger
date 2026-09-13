@@ -539,6 +539,21 @@ Once connected, your assistant can call bodger's tools the same way you'd run a 
 
   Even then, nothing happens on the first request — your assistant gets back a plain description of what it's about to do, along with a one-time confirmation code. Only a second request, carrying that exact code, actually makes the change. If your assistant tries the same request again with an old code, or with anything changed, it's turned down and has to ask again.
 
+### Look-things-up tools
+
+These are always available, need no confirmation, and aren't recorded in `bodger mcp audit` — nothing you look up ever changes anything.
+
+| Tool | What it does |
+| --- | --- |
+| `get_account_balances` | Every account's balance as of a date, optionally converted into one currency — the same as `bodger balance`. |
+| `list_transactions` | Recorded transactions, filtered by account, category, type, date range, currency, amount range, description, or tags — the same as `bodger transactions list`. |
+| `get_category_breakdown` | Spending and income grouped by top-level category over a filtered set of transactions — the same as `bodger report category-breakdown`. |
+| `get_budget_actuals` | One budget's plan-vs-actual for a single period — the same as `bodger budgets actuals`. |
+| `get_budget_history` | One budget's plan-vs-actual repeated over a range of consecutive months — the same as `bodger budgets history`. |
+| `list_fx_rates` | The exchange rate between two currencies, from bodger's own stored rates (never a network fetch), optionally converting an amount — the same as `bodger fx rates list`. |
+
+There's also `whoami`, which just reports the identity bodger's MCP server is acting as.
+
 ### Reviewing what an assistant has done
 
 `bodger mcp audit` lists what an assistant has actually changed — every "make a change" or "undo/bulk change" request it made, most recent first. Looking things up isn't listed here, since nothing you look up ever changes anything.
