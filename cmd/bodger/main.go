@@ -164,6 +164,7 @@ func bootstrap(ctx context.Context) (*app.Service, func() error, error) {
 		sqlite.NewImportRecordRepository(db),
 		sqlite.NewImportCommitRepository(db),
 		sqlite.NewSnapshotRepository(db),
+		sqlite.NewBudgetRepository(db),
 	)
 	if err != nil {
 		_ = db.Close()

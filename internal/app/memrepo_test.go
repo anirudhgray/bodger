@@ -9,6 +9,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/anirudhgray/bodger/internal/domain"
+	"github.com/anirudhgray/bodger/internal/domain/budgeting"
 	"github.com/anirudhgray/bodger/internal/domain/fx"
 	"github.com/anirudhgray/bodger/internal/domain/importing"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
@@ -1039,3 +1040,64 @@ func (m *memImportCommits) Rollback(ctx context.Context, actorID string, batch i
 }
 
 var _ ports.ImportCommitRepository = (*memImportCommits)(nil)
+
+// memBudgets is an in-memory ports.BudgetRepository (issue #241) for
+// future use-case tests, enforcing the same actor-scoping contract
+// (ADR-0006) every other mem* fixture above does. newTestService wires it
+// in now, ahead of any use-case method using it, the same precedent
+// memImportBatches/memImportRecords set for ImportBatches/ImportRecords.
+type memBudgets struct {
+	byID map[string]budgeting.Budget
+	seq  map[string]int
+	next int
+}
+
+func newMemBudgets() *memBudgets {
+	return &memBudgets{byID: map[string]budgeting.Budget{}, seq: map[string]int{}}
+}
+
+func (m *memBudgets) Create(_ context.Context, actorID string, b budgeting.Budget) error {
+	if b.UserID() != actorID {
+		return errs.New(errs.NotAllowed)
+	}
+	m.next++
+	m.byID[b.ID()] = b
+	m.seq[b.ID()] = m.next
+	return nil
+}
+
+func (m *memBudgets) Get(_ context.Context, actorID, id string) (budgeting.Budget, error) {
+	b, ok := m.byID[id]
+	if !ok || b.UserID() != actorID {
+		return budgeting.Budget{}, errs.New(errs.NotFound).Explain("No budget with ID %q.", id).Field("id")
+	}
+	return b, nil
+}
+
+// List returns actorID's own budgets, most recently created first —
+// mirroring the real adapter's ORDER BY created_at DESC using insertion
+// sequence, since this fixture has no created_at column to sort by.
+func (m *memBudgets) List(_ context.Context, actorID string) ([]budgeting.Budget, error) {
+	var out []budgeting.Budget
+	for _, b := range m.byID {
+		if b.UserID() == actorID {
+			out = append(out, b)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return m.seq[out[i].ID()] > m.seq[out[j].ID()] })
+	return out, nil
+}
+
+func (m *memBudgets) Update(_ context.Context, actorID string, b budgeting.Budget) error {
+	existing, ok := m.byID[b.ID()]
+	if !ok || existing.UserID() != actorID {
+		return errs.New(errs.NotFound).Explain("No budget with ID %q.", b.ID()).Field("id")
+	}
+	if b.UserID() != actorID {
+		return errs.New(errs.NotAllowed)
+	}
+	m.byID[b.ID()] = b
+	return nil
+}
+
+var _ ports.BudgetRepository = (*memBudgets)(nil)
