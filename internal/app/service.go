@@ -101,6 +101,14 @@ type Service struct {
 	// ImportBatches/ImportRecords above, this one is wired in with its
 	// first use-case method already using it, not ahead of one.
 	Snapshots ports.SnapshotRepository
+
+	// Budgets is issue #241's repository port over budgets/budget_lines
+	// (data-model.md §10): a Budget as a plan, kept strictly separate
+	// from what actually happened. Following the ImportBatches/
+	// ImportRecords precedent above, this is wired in ahead of its first
+	// use-case method — CRUD (#242) and actuals/reporting (#243) are
+	// separate, later issues.
+	Budgets ports.BudgetRepository
 }
 
 // NewService constructs a Service from its dependencies, rejecting a nil
@@ -124,6 +132,7 @@ func NewService(
 	importRecords ports.ImportRecordRepository,
 	importCommits ports.ImportCommitRepository,
 	snapshots ports.SnapshotRepository,
+	budgets ports.BudgetRepository,
 ) (*Service, error) {
 	switch {
 	case clk == nil:
@@ -156,6 +165,8 @@ func NewService(
 		return nil, missingDependency("import commit repository")
 	case snapshots == nil:
 		return nil, missingDependency("snapshot repository")
+	case budgets == nil:
+		return nil, missingDependency("budget repository")
 	}
 
 	return &Service{
@@ -175,6 +186,7 @@ func NewService(
 		ImportRecords: importRecords,
 		ImportCommits: importCommits,
 		Snapshots:     snapshots,
+		Budgets:       budgets,
 	}, nil
 }
 
