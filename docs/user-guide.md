@@ -582,6 +582,15 @@ These are always available, need no confirmation, and aren't recorded in `bodger
 | `get_budget_actuals` | One budget's plan-vs-actual for a single period — the same as `bodger budgets actuals`. |
 | `get_budget_history` | One budget's plan-vs-actual repeated over a range of consecutive months — the same as `bodger budgets history`. |
 | `list_fx_rates` | The exchange rate between two currencies, from bodger's own stored rates (never a network fetch), optionally converting an amount — the same as `bodger fx rates list`. |
+| `get_balance_totals` | The overall net balance across every account, by account category and by currency — the same as `bodger balance totals`. |
+| `get_net_worth_over_time` | The total balance across every account, plotted at each period boundary within a date range — the same as `bodger balance net-worth`. |
+| `get_cash_flow` | Inflow vs. outflow over a filtered set of transactions, bucketed by period — the same as `bodger report cash-flow`. |
+| `get_trends` | The current period vs. the immediately preceding one, for inflow, outflow, and net — the same as `bodger report trends`. |
+| `get_savings_rate` | (Income minus outflow) divided by income, over a filtered set of transactions — the same as `bodger report savings-rate`. |
+| `get_top_transactions` | The largest transactions matching a filter, by absolute amount — the same as `bodger report top-transactions`. |
+| `get_average_transaction_size` | The mean transaction amount, overall and by top-level category — the same as `bodger report average-transaction-size`. |
+| `get_category_trends` | Each top-level category's spending/income change between the current period and the preceding one — the same as `bodger report category-trends`. |
+| `get_transaction` | A single recorded transaction by ID — distinct from `list_transactions`' list/filter, the same as `GET /api/v1/transactions/{id}`. |
 
 There's also `whoami`, which just reports the identity bodger's MCP server is acting as.
 
