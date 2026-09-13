@@ -55,12 +55,38 @@ type BudgetLineActuals struct {
 	Utilisation float64
 }
 
+// BudgetOverallActuals is the same plan-vs-actual shape BudgetLineActuals
+// reports per line, summed across every line of the budget it belongs to.
+// Safe to sum directly in minor units: every BudgetLineActuals.Budgeted/
+// Actual is already denominated in the budget's own currency (see
+// BudgetLineActuals' own doc comment), so this is plain addition, not a
+// second conversion.
+type BudgetOverallActuals struct {
+	Budgeted    money.Money
+	Actual      money.Money
+	Remaining   money.Money
+	Utilisation float64
+}
+
 // BudgetActualsResult is BudgetActuals' result: one BudgetLineActuals per
 // line of Budget, for the calendar month [From, To].
 type BudgetActualsResult struct {
 	Budget   budgeting.Budget
 	From, To domain.Date
-	Lines    []BudgetLineActuals
+	// AsOf is today, resolved once in the actor's configured timezone the
+	// same way AccountBalancesResult.AsOf is (internal/app/balances.go) --
+	// a caller compares it against [From, To] to tell whether this period
+	// is the current one, a past one, or (reachable via BudgetActualsQuery/
+	// BudgetHistoryQuery's own Period field, which resolveBudgetPeriod only
+	// clamps on the *early* side) a future one, rather than computing its
+	// own idea of "today" independently per surface.
+	AsOf domain.Date
+	// Overall is Lines summed into one plan-vs-actual figure for the whole
+	// budget, computed here rather than left for a caller to add up itself
+	// (ADR-0009's "the web UI does no maths" rule, the same one
+	// AccountBalancesResult's per-kind/per-currency totals follow).
+	Overall BudgetOverallActuals
+	Lines   []BudgetLineActuals
 	// Unconverted names every posting a line's conversion couldn't cover,
 	// pooled across all of Budget's lines -- the same "report it, don't
 	// drop it" contract AccountBalancesResult.Unconverted and every M5
@@ -98,7 +124,12 @@ func (s *Service) BudgetActuals(ctx context.Context, q BudgetActualsQuery) (Budg
 		return BudgetActualsResult{}, err
 	}
 
-	return s.budgetActualsForPeriod(ctx, q.ActorID, budget, from, to)
+	today, err := normalize.DateOf("", s.Clock, s.Config.UserTimezone)
+	if err != nil {
+		return BudgetActualsResult{}, errs.New(errs.Internal).Wrap(err)
+	}
+
+	return s.budgetActualsForPeriod(ctx, q.ActorID, budget, from, to, today)
 }
 
 // BudgetHistoryQuery asks for BudgetActuals repeated over Months
@@ -150,6 +181,11 @@ func (s *Service) BudgetHistory(ctx context.Context, q BudgetHistoryQuery) (Budg
 		return BudgetHistoryResult{}, errs.New(errs.Internal).Wrap(err)
 	}
 
+	today, err := normalize.DateOf("", s.Clock, s.Config.UserTimezone)
+	if err != nil {
+		return BudgetHistoryResult{}, errs.New(errs.Internal).Wrap(err)
+	}
+
 	// Walk backward from ref's month so the StartsOn clamp is a simple
 	// "stop early" check, then reverse once at the end -- simpler than
 	// computing how many months exist ahead of time and walking forward.
@@ -163,7 +199,7 @@ func (s *Service) BudgetHistory(ctx context.Context, q BudgetHistoryQuery) (Budg
 		if from.Before(startsOnFrom) {
 			break
 		}
-		result, err := s.budgetActualsForPeriod(ctx, q.ActorID, budget, from, to)
+		result, err := s.budgetActualsForPeriod(ctx, q.ActorID, budget, from, to, today)
 		if err != nil {
 			return BudgetHistoryResult{}, err
 		}
@@ -213,7 +249,7 @@ func (s *Service) resolveBudgetPeriod(period string, startsOn domain.Date) (doma
 // by BudgetActuals (one call) and BudgetHistory (one call per month) so
 // the two use cases can never compute a period's actuals two different
 // ways.
-func (s *Service) budgetActualsForPeriod(ctx context.Context, actorID string, budget budgeting.Budget, from, to domain.Date) (BudgetActualsResult, error) {
+func (s *Service) budgetActualsForPeriod(ctx context.Context, actorID string, budget budgeting.Budget, from, to, today domain.Date) (BudgetActualsResult, error) {
 	categories, err := s.Categories.List(ctx, actorID)
 	if err != nil {
 		return BudgetActualsResult{}, err
@@ -236,7 +272,59 @@ func (s *Service) budgetActualsForPeriod(ctx context.Context, actorID string, bu
 		unconverted = append(unconverted, lineUnconverted...)
 	}
 
-	return BudgetActualsResult{Budget: budget, From: from, To: to, Lines: lines, Unconverted: unconverted}, nil
+	overall, err := sumBudgetLineActuals(budget.Currency(), lines)
+	if err != nil {
+		return BudgetActualsResult{}, err
+	}
+
+	return BudgetActualsResult{
+		Budget:      budget,
+		From:        from,
+		To:          to,
+		AsOf:        today,
+		Overall:     overall,
+		Lines:       lines,
+		Unconverted: unconverted,
+	}, nil
+}
+
+// sumBudgetLineActuals folds every line's Budgeted/Actual into one
+// BudgetOverallActuals for the whole budget -- see BudgetOverallActuals's
+// own doc comment for why plain addition (not a second conversion) is
+// correct here.
+func sumBudgetLineActuals(currency string, lines []BudgetLineActuals) (BudgetOverallActuals, error) {
+	budgeted, err := money.NewMoney(0, currency)
+	if err != nil {
+		return BudgetOverallActuals{}, errs.New(errs.Internal).Wrap(err)
+	}
+	actual := budgeted
+	for _, l := range lines {
+		if budgeted, err = budgeted.Add(l.Budgeted); err != nil {
+			return BudgetOverallActuals{}, errs.New(errs.Internal).Wrap(err)
+		}
+		if actual, err = actual.Add(l.Actual); err != nil {
+			return BudgetOverallActuals{}, errs.New(errs.Internal).Wrap(err)
+		}
+	}
+	remaining, err := budgeted.Subtract(actual)
+	if err != nil {
+		return BudgetOverallActuals{}, errs.New(errs.Internal).Wrap(err)
+	}
+
+	// Zero when Budgeted is zero (an empty budget, with no lines yet) --
+	// guarded the same defensive way BudgetLineActuals.Utilisation is,
+	// rather than dividing by zero.
+	var utilisation float64
+	if budgeted.AmountMinor() != 0 {
+		utilisation = float64(actual.AmountMinor()) / float64(budgeted.AmountMinor())
+	}
+
+	return BudgetOverallActuals{
+		Budgeted:    budgeted,
+		Actual:      actual,
+		Remaining:   remaining,
+		Utilisation: utilisation,
+	}, nil
 }
 
 // budgetLineActuals computes one line's actual/remaining/utilisation.

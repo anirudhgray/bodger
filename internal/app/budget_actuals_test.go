@@ -201,6 +201,86 @@ func TestBudgetActuals_NoActualsYet(t *testing.T) {
 	}
 }
 
+func TestBudgetActuals_AsOfIsTodayNotTheRequestedPeriod(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	food := mustCategoryFixture(t, svc, "Food", "expense")
+	budget := mustCreateBudget(t, svc, "USD", "2026-01-01", app.BudgetLineInput{CategoryRef: food.Category.ID(), Amount: "500.00"})
+
+	// Asking for a past period (July) must not change AsOf -- it's always
+	// the service clock's own "today", regardless of which period was
+	// requested.
+	result, err := svc.BudgetActuals(ctx, app.BudgetActualsQuery{ActorID: testActorID, BudgetID: budget.Budget.ID(), Period: "2026-07-15"})
+	if err != nil {
+		t.Fatalf("BudgetActuals: %v", err)
+	}
+	if want := mustDate(t, 2026, time.August, 20); !result.AsOf.Equal(want) {
+		t.Errorf("AsOf = %s, want %s (today, not July)", result.AsOf, want)
+	}
+}
+
+func TestBudgetActuals_OverallSumsAllLines(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "Checking", "bank", "USD")
+	food := mustCategoryFixture(t, svc, "Food", "expense")
+	transport := mustCategoryFixture(t, svc, "Transport", "expense")
+	budget := mustCreateBudget(t, svc, "USD", "2026-08-01",
+		app.BudgetLineInput{CategoryRef: food.Category.ID(), Amount: "500.00"},
+		app.BudgetLineInput{CategoryRef: transport.Category.ID(), Amount: "200.00"},
+	)
+
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), CategoryRef: food.Category.ID(),
+		Amount: "120.00", Date: "2026-08-05", Description: "Groceries",
+	}); err != nil {
+		t.Fatalf("RecordOutflow: %v", err)
+	}
+	// Deliberately over its own line's budget (250 vs 200), so Overall's
+	// blended utilisation (below 1.0) can be checked against each line's
+	// own, and shown to mask the fact one line is individually over.
+	if _, err := svc.RecordOutflow(ctx, app.RecordOutflowCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), CategoryRef: transport.Category.ID(),
+		Amount: "250.00", Date: "2026-08-06", Description: "Cab",
+	}); err != nil {
+		t.Fatalf("RecordOutflow: %v", err)
+	}
+
+	result, err := svc.BudgetActuals(ctx, app.BudgetActualsQuery{ActorID: testActorID, BudgetID: budget.Budget.ID(), Period: "2026-08-15"})
+	if err != nil {
+		t.Fatalf("BudgetActuals: %v", err)
+	}
+	if got := result.Overall.Budgeted.AmountMinor(); got != 70000 {
+		t.Errorf("Overall.Budgeted = %d, want 70000 (50000 + 20000)", got)
+	}
+	if got := result.Overall.Actual.AmountMinor(); got != 37000 {
+		t.Errorf("Overall.Actual = %d, want 37000 (12000 + 25000)", got)
+	}
+	if got := result.Overall.Remaining.AmountMinor(); got != 33000 {
+		t.Errorf("Overall.Remaining = %d, want 33000 (70000 - 37000)", got)
+	}
+	if want := 37000.0 / 70000.0; result.Overall.Utilisation != want {
+		t.Errorf("Overall.Utilisation = %v, want %v (blended -- masks that Transport alone is over budget)", result.Overall.Utilisation, want)
+	}
+}
+
+func TestBudgetActuals_OverallZeroWhenNoLines(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	budget := mustCreateBudget(t, svc, "USD", "2026-08-01")
+
+	result, err := svc.BudgetActuals(ctx, app.BudgetActualsQuery{ActorID: testActorID, BudgetID: budget.Budget.ID(), Period: "2026-08-15"})
+	if err != nil {
+		t.Fatalf("BudgetActuals: %v", err)
+	}
+	if got := result.Overall.Utilisation; got != 0 {
+		t.Errorf("Overall.Utilisation = %v, want 0 (no lines, nothing budgeted)", got)
+	}
+	if got := result.Overall.Budgeted.AmountMinor(); got != 0 {
+		t.Errorf("Overall.Budgeted = %d, want 0", got)
+	}
+}
+
 func TestBudgetActuals_RejectsPeriodBeforeBudgetStart(t *testing.T) {
 	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
 	ctx := context.Background()
