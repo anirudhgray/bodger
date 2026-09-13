@@ -13,6 +13,7 @@ import {
 import { AppLayout } from '@/App'
 import { AnalyticsPage } from '@/pages/Analytics'
 import { BalancesPage } from '@/pages/Balances'
+import { BudgetsPage } from '@/pages/Budgets'
 import { ExportPage } from '@/pages/data/Export'
 import { ImportExportLayout } from '@/pages/data/ImportExportLayout'
 import { ImportPage } from '@/pages/data/Import'
@@ -91,6 +92,12 @@ export const routes: RouteObject[] = [
         // issue #189 — analytics and charts screen
         path: 'analytics',
         element: <AnalyticsPage />,
+      },
+      {
+        // issue #245 — budgets: create/edit a budget and its lines,
+        // actual-vs-budget with utilisation, and period navigation.
+        path: 'budgets',
+        element: <BudgetsPage />,
       },
       {
         // issue #214 — import wizard, export/backup, and restore-from-

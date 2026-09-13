@@ -782,6 +782,144 @@ export async function downloadExportCSV(
   saveBlob(blob, 'bodger-export.csv')
 }
 
+// --- Budgets (issue #245, wrapping #244's REST surface) --------------------
+//
+// A monthly category budget plans an amount per category, kept separate
+// from what actually happened (data-model.md §10) so the two can be
+// compared. Thin wrappers over #244's routes only — every actual-vs-budget,
+// remaining, and utilisation figure below is exactly what the server
+// computed (app.BudgetActuals/BudgetLineActuals), never re-derived or
+// summed here (ADR-0009's "the web UI does no maths" rule applies just as
+// much here as it does to Analytics).
+
+export type Budget = components['schemas']['Budget']
+export type BudgetLine = components['schemas']['BudgetLine']
+export type BudgetActuals = components['schemas']['BudgetActuals']
+export type BudgetLineActuals = components['schemas']['BudgetLineActuals']
+export type BudgetHistory = components['schemas']['BudgetHistory']
+
+export function listBudgets(): Promise<Budget[]> {
+  return apiFetch<Budget[]>('/api/v1/budgets')
+}
+
+export function getBudget(id: string): Promise<Budget> {
+  return apiFetch<Budget>(`/api/v1/budgets/${id}`)
+}
+
+export type BudgetLineInput = {
+  categoryRef: string
+  amount: string
+  rollover?: boolean
+}
+
+export type CreateBudgetInput = {
+  name: string
+  currency?: string
+  startsOn?: string
+  lines?: BudgetLineInput[]
+}
+
+function budgetLineRequestBody(line: BudgetLineInput) {
+  return {
+    category_ref: line.categoryRef,
+    amount: line.amount,
+    rollover: line.rollover,
+  }
+}
+
+export function createBudget(input: CreateBudgetInput): Promise<Budget> {
+  return apiFetch<Budget>('/api/v1/budgets', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: input.name,
+      currency: input.currency || undefined,
+      starts_on: input.startsOn || undefined,
+      lines: input.lines?.map(budgetLineRequestBody),
+    }),
+  })
+}
+
+// updateBudget is a full replacement of both name and startsOn (mirroring
+// PATCH /api/v1/budgets/{id}'s own contract) — omitting startsOn resolves
+// it to today, not to the budget's existing value, so a caller that only
+// means to rename must send the budget's current starts_on back explicitly.
+export function updateBudget(
+  id: string,
+  input: { name: string; startsOn?: string },
+): Promise<Budget> {
+  return apiFetch<Budget>(`/api/v1/budgets/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      name: input.name,
+      starts_on: input.startsOn || undefined,
+    }),
+  })
+}
+
+export function archiveBudget(id: string): Promise<Budget> {
+  return apiFetch<Budget>(`/api/v1/budgets/${id}`, { method: 'DELETE' })
+}
+
+export function addBudgetLine(
+  budgetId: string,
+  line: BudgetLineInput,
+): Promise<Budget> {
+  return apiFetch<Budget>(`/api/v1/budgets/${budgetId}/lines`, {
+    method: 'POST',
+    body: JSON.stringify(budgetLineRequestBody(line)),
+  })
+}
+
+// A budget line's category can't change once created (#244's own
+// constraint) — only amount/rollover are editable here.
+export function updateBudgetLine(
+  budgetId: string,
+  lineId: string,
+  input: { amount: string; rollover?: boolean },
+): Promise<Budget> {
+  return apiFetch<Budget>(`/api/v1/budgets/${budgetId}/lines/${lineId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ amount: input.amount, rollover: input.rollover }),
+  })
+}
+
+export function removeBudgetLine(
+  budgetId: string,
+  lineId: string,
+): Promise<Budget> {
+  return apiFetch<Budget>(`/api/v1/budgets/${budgetId}/lines/${lineId}`, {
+    method: 'DELETE',
+  })
+}
+
+// getBudgetActuals fetches one period's plan-vs-actual. period is any date
+// within the target month; omitted, the server resolves it to the current
+// month (normalise-once — this file never guesses "today" itself).
+export function getBudgetActuals(
+  id: string,
+  period?: string,
+): Promise<BudgetActuals> {
+  return apiFetch<BudgetActuals>(
+    `/api/v1/budgets/${id}/actuals${buildQuery({ period })}`,
+  )
+}
+
+// getBudgetHistory fetches `months` consecutive periods (server default 6)
+// ending at the month `period` falls in (server default: the current
+// month), oldest first.
+export function getBudgetHistory(
+  id: string,
+  period?: string,
+  months?: number,
+): Promise<BudgetHistory> {
+  return apiFetch<BudgetHistory>(
+    `/api/v1/budgets/${id}/history${buildQuery({
+      period,
+      months: months ? String(months) : undefined,
+    })}`,
+  )
+}
+
 export type RestoreSnapshotResult = components['schemas']['RestoreSnapshot']
 
 // restoreSnapshot is POST /api/v1/restore: wipes and reloads the actor's

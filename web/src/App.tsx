@@ -4,6 +4,7 @@ import {
   BarChart3,
   ChevronRight,
   Moon,
+  PiggyBank,
   Receipt,
   Settings as SettingsIcon,
   Sun,
@@ -43,14 +44,15 @@ import { SETTINGS_SECTIONS } from '@/pages/settings/shared'
 
 // Each item's icon matches the one its own screen already uses for its
 // empty state (TransactionsList.tsx's Receipt, Balances.tsx's Wallet,
-// Analytics.tsx's BarChart3) — reusing that vocabulary rather than
-// picking new icons for the same concept. Import & export and Settings
-// are both rendered separately below, as collapsible groups rather than
-// plain links — see AppSidebar's comment for why.
+// Analytics.tsx's BarChart3, Budgets.tsx's PiggyBank) — reusing that
+// vocabulary rather than picking new icons for the same concept. Import &
+// export and Settings are both rendered separately below, as collapsible
+// groups rather than plain links — see AppSidebar's comment for why.
 const navItems = [
   { to: '/transactions', label: 'Transactions', icon: Receipt },
   { to: '/balances', label: 'Balances', icon: Wallet },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/budgets', label: 'Budgets', icon: PiggyBank },
 ]
 
 // AppLayout is the routing skeleton's shell: a sidebar nav, a header, and
