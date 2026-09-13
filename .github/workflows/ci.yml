@@ -32,6 +32,10 @@ jobs:
   # is listed under both filters: it's what generates openapi.json, which
   # web/src/lib/api-types.ts is checked against (npm run check:api-types, part
   # of `make check-web`) — a Go-only change there can make that file stale.
+  # `internal/adapters/sqlite/migrations/**`, `.tbls.yml`, and `docs/schema/**`
+  # are listed under `go` for the same reason: they're what `make check-erd`
+  # (part of `check-go`, issue #248) checks docs/schema against, and none of
+  # those paths match `**/*.go`.
   changes:
     name: detect changes
     runs-on: ubuntu-latest
@@ -59,6 +63,10 @@ jobs:
               - '.tool-versions'
               - 'Makefile'
               - 'internal/surface/http/**'
+              - 'internal/adapters/sqlite/migrations/**'
+              - '.tbls.yml'
+              - 'docs/schema/**'
+              - 'scripts/install-tbls.sh'
               - '.github/workflows/ci.yml'
             web:
               - 'web/**'

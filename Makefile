@@ -194,9 +194,41 @@ seed-dev: build-bin
 release-dry-run:
 	goreleaser release --snapshot --clean --skip=publish
 
+# tbls (https://github.com/k1LoW/tbls) has no asdf/mise plugin, so it isn't
+# pinned in .tool-versions the way golangci-lint is - scripts/install-tbls.sh
+# downloads a pinned release binary instead (see that script's own doc
+# comment for why not `go install`). This rule fetches it on first use, in
+# either erd or check-erd, and is skipped on repeat runs since the file
+# already exists.
+$(BIN_DIR)/tbls:
+	@scripts/install-tbls.sh $@
+
+## erd: regenerate docs/schema (issue #248) from a scratch, fully-migrated database
+.PHONY: erd
+erd: $(BIN_DIR)/tbls
+ifneq ($(HAS_GO),)
+	@tmpdb=$$(mktemp -u /tmp/bodger-erd-XXXXXX.db); \
+	trap 'rm -f "$$tmpdb"' EXIT; \
+	go run ./cmd/erdgen -db "$$tmpdb" && \
+	$(BIN_DIR)/tbls doc -c .tbls.yml --dsn "sqlite:///$$tmpdb" --rm-dist
+endif
+
+## check-erd: fail if docs/schema is stale relative to internal/adapters/sqlite/migrations
+.PHONY: check-erd
+check-erd: $(BIN_DIR)/tbls
+ifneq ($(HAS_GO),)
+	@tmpdb=$$(mktemp -u /tmp/bodger-erd-XXXXXX.db); \
+	trap 'rm -f "$$tmpdb"' EXIT; \
+	go run ./cmd/erdgen -db "$$tmpdb" && \
+	if ! $(BIN_DIR)/tbls diff -c .tbls.yml "sqlite:///$$tmpdb" docs/schema; then \
+	  echo "docs/schema is stale - run 'make erd' and commit the result"; \
+	  exit 1; \
+	fi
+endif
+
 ## check-go: everything CI runs for a Go change - format, vet, lint, test
 .PHONY: check-go
-check-go: fmt-check-go vet lint-go test-go
+check-go: fmt-check-go vet lint-go test-go check-erd
 
 ## check-web: everything CI runs for a web change - format, lint, test
 .PHONY: check-web
