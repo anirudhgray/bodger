@@ -121,6 +121,19 @@ func (o analyticsOptionsArgs) options() app.AnalyticsOptions {
 	}
 }
 
+// granularitySchemaProperty is the JSON Schema fragment for a single
+// "granularity" argument (app.Granularity), shared by every issue #267
+// tool that buckets or compares periods (get_cash_flow, get_trends,
+// get_net_worth_over_time, get_category_trends) rather than each
+// declaring the same enum separately.
+func granularitySchemaProperty() map[string]any {
+	return map[string]any{
+		"type":        "string",
+		"enum":        []string{"week", "month", "year", "custom"},
+		"description": "How to bucket/compare periods. Defaults to \"month\".",
+	}
+}
+
 // analyticsOptionsSchemaProperties is the JSON Schema "properties"
 // fragment matching analyticsOptionsArgs field for field.
 func analyticsOptionsSchemaProperties() map[string]any {
