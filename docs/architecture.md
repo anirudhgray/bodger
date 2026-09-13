@@ -813,22 +813,14 @@ reference, and `restoreCategories` inserts categories in parent-before-
 child topological order rather than the document's own (ID-sorted) array
 order. With both merged, M6 is complete.
 
-**M7 · Gondor is in progress** — see the
-[M7 milestone](https://github.com/anirudhgray/bodger/milestone/7) for its
-issues. [#241](https://github.com/anirudhgray/bodger/issues/241) lands the
-foundation everything else in the milestone reads or writes through
-(data-model.md §10): `internal/domain/budgeting`'s `Budget` (embedding its
-own `[]BudgetLine` as a single aggregate, the same shape
-`ledger.Transaction` embeds `[]Posting`), `PeriodType` (a closed, validated
-string type with only `PeriodTypeMonthly` for now), migration
-`00014_add_budget_tables.sql` (`budgets`/`budget_lines`, next sequential
-prefix per ADR-0007), and `BudgetRepository` in
-`internal/ports`/`internal/adapters/sqlite`, wired into `Service.Budgets`
-the same way `ImportBatches`/`ImportRecords` were wired in ahead of their
-own first use-case method. CRUD (#242), actuals/reporting (#243), and
-surface/web wiring (#244/#245) are separate, later issues that write to
-this foundation; extending export/restore to cover budgets (#246) is
-independent and can proceed in parallel.
+**M7 · Gondor is in progress** — see the [M7 milestone](https://github.com/anirudhgray/bodger/milestone/7) for its issues. [#241](https://github.com/anirudhgray/bodger/issues/241) lands the foundation everything else in the milestone reads or writes through (data-model.md §10): `internal/domain/budgeting`'s `Budget` (embedding its own `[]BudgetLine` as a single aggregate, the same shape `ledger.Transaction` embeds `[]Posting`), `PeriodType` (a closed, validated string type with only `PeriodTypeMonthly` for now), migration `00014_add_budget_tables.sql` (`budgets`/`budget_lines`, next sequential prefix per ADR-0007), and `BudgetRepository` in `internal/ports`/`internal/adapters/sqlite`, wired into `Service.Budgets` the same way `ImportBatches`/`ImportRecords` were wired in ahead of their own first use-case method. [#242](https://github.com/anirudhgray/bodger/issues/242) landed the CRUD use cases on top of it (`internal/app/budgets.go`): `CreateBudget`, `UpdateBudget`, `ArchiveBudget`, `GetBudget`, `ListBudgets`, `AddBudgetLine`, `UpdateBudgetLine`, and `RemoveBudgetLine` — a budget's currency and period type are fixed at creation (no workflow changes either, the same reasoning `SetOpeningBalance` gives for an account's fixed currency), and a line's category is likewise fixed once added (changing it is indistinguishable from removing one line and adding another). [#243](https://github.com/anirudhgray/bodger/issues/243) landed `BudgetActuals`/`BudgetHistory` (`internal/app/budget_actuals.go`): for each line, actual is net spend against its category subtree over the resolved period, converted into the budget's own currency via `ConvertAmount` under `PolicyTransactionDate` (a historical figure is looked up at its own transaction's date, not today), with remaining (budgeted − actual) and utilisation (actual ÷ budgeted) alongside it; `BudgetHistory` repeats this over a range of months, clamped at the budget's own `StartsOn` rather than erroring for a budget that hasn't existed that long.
+
+[#244](https://github.com/anirudhgray/bodger/issues/244) wires both of those onto REST and CLI. REST: `GET`/`POST /api/v1/budgets`, `GET`/`PATCH`/`DELETE /api/v1/budgets/{id}`, `POST /api/v1/budgets/{id}/lines`, `PATCH`/`DELETE /api/v1/budgets/{id}/lines/{lineId}`, `GET /api/v1/budgets/{id}/actuals`, and `GET /api/v1/budgets/{id}/history`. CLI: `bodger budgets add`/`list`/`show`/`update`/`archive`, `bodger budgets lines add`/`update`/`remove`, `bodger budgets actuals`, and `bodger budgets history`. `internal/surface/conformance/budgets_conformance_test.go` extends ADR-0005's CLI/HTTP agreement suite across the whole lifecycle. Two things worth recording here:
+
+- `UpdateBudgetCommand.StartsOn` has no "leave this alone" option — like `CreateBudgetCommand`, an empty `starts_on` always resolves to today, never to the budget's existing value. A surface that renamed a budget without also resending its current `starts_on` would therefore silently move it. Rather than having either surface paper over this with a fetch-then-default that ADR-0005 would call reimplementing normalization, both the REST `PATCH` and the CLI's `budgets update` document the actual behavior plainly; loosening the application-layer contract itself (a real partial-update semantics) is a candidate for its own future issue, not something decided here.
+- The conformance suite caught a genuine CLI/HTTP divergence before this landed: CLI's `budgetViewFrom` initially left a budget's `Lines` field a nil slice when it had none, which encodes as JSON `null`, while the HTTP surface's own view initialized it to `[]` — `TestBudgetSurfacesConformance`'s create, remove-line, and archive steps all failed on exactly that mismatch until CLI's view was changed to match. Left as a demonstration, the same way #9's own hostile-instant regression is documented in `internal/surface/conformance/cases_test.go`, of why this suite exists.
+
+Surface wiring for the web UI ([#245](https://github.com/anirudhgray/bodger/issues/245)) and extending export/restore to cover budgets ([#246](https://github.com/anirudhgray/bodger/issues/246)) remain open.
 
 | Milestone | Status |
 | --- | --- |

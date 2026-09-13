@@ -340,6 +340,45 @@ The web UI's **Import** page (under the sidebar's **Import & export** entry) wal
 
 ---
 
+## Managing budgets
+
+A budget plans an amount for a category over a monthly cycle, kept separate from what you actually spend so you can compare the two. Create one with a name, a currency, and the date its periods are computed from:
+
+```sh
+bodger budgets add "Groceries Budget" --currency USD --starts-on 2026-08-01
+```
+
+This creates an empty budget — add lines to it one at a time, each planning an amount for one category:
+
+```sh
+bodger budgets lines add <budget-id> groceries 500
+```
+
+A line's category can't change once created; remove it and add a new one instead if you need to plan a different category. `--rollover` marks a line's unspent (or overspent) amount to carry into the next period — recorded today, but not yet acted on by anything (a future release will use it).
+
+`bodger budgets list` lists every budget you have, archived ones included; `bodger budgets show <budget-id>` shows one budget and its lines. `bodger budgets update <budget-id> <name> [--starts-on]` renames a budget and sets its starts-on date together in one call — if you leave off `--starts-on`, it resolves to today, not to the budget's existing date, so pass the current one back explicitly if you only mean to rename. `bodger budgets archive <budget-id>` hides a budget from listings while keeping its history — including past actuals — fully queryable. A budget's currency and period type (monthly, the only kind today) are fixed once created.
+
+See how actual spending compares to what you planned for a period — defaulting to the current month:
+
+```sh
+bodger budgets actuals <budget-id>
+bodger budgets actuals <budget-id> --period 2026-07-15   # any date in July
+```
+
+For each line, this reports the budgeted amount, actual net spend against that category (and everything nested under it) for the period, what's remaining, and utilisation (actual ÷ budgeted). Actual spend already converts a different-currency transaction into the budget's own currency using the rate as of its own transaction date; anything that couldn't be converted is listed under `unconverted` rather than silently dropped. `bodger budgets history <budget-id> [--period] [--months]` repeats this over several consecutive months (6 by default) ending at `--period`'s month, oldest first — a budget's own starts-on date clamps how far back this goes, so a budget that hasn't existed that long reports fewer months rather than erroring.
+
+The REST API offers the same operations: `GET /api/v1/budgets`, `POST /api/v1/budgets` (optionally with an initial batch of lines in the request body, alongside adding them one at a time afterward), `GET /api/v1/budgets/{id}`, `PATCH /api/v1/budgets/{id}`, `DELETE /api/v1/budgets/{id}` (archive), `POST /api/v1/budgets/{id}/lines`, `PATCH /api/v1/budgets/{id}/lines/{lineId}`, `DELETE /api/v1/budgets/{id}/lines/{lineId}`, `GET /api/v1/budgets/{id}/actuals`, and `GET /api/v1/budgets/{id}/history`.
+
+```sh
+curl -X POST -H 'Authorization: Bearer bdg_...' \
+  http://127.0.0.1:8080/api/v1/budgets \
+  -d '{"name":"Groceries Budget","currency":"USD","starts_on":"2026-08-01"}'
+```
+
+There's no web UI for budgets yet — the CLI and REST API are the only surfaces for now.
+
+---
+
 ## Running the REST API
 
 `bodger serve` starts a REST API server backed by the same database and the same application logic as the command line — nothing about how a transaction is recorded or validated differs between the two.
@@ -557,6 +596,16 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | `bodger fx rates list --from <currency> --to <currency> --policy <policy> [--transaction-date] [--pinned-date] [--amount]` | Look up the exchange rate between two currencies under a given conversion policy, optionally converting an amount |
 | `bodger config reporting-currency get` | See your configured reporting currency |
 | `bodger config reporting-currency set <currency>` | Set your reporting currency |
+| `bodger budgets list` | List your budgets |
+| `bodger budgets show <budget-id>` | Show one budget and its lines |
+| `bodger budgets add <name> [--currency] [--starts-on]` | Create a new (empty) budget |
+| `bodger budgets update <budget-id> <name> [--starts-on]` | Rename a budget and set its starts-on date together — omitting `--starts-on` resets it to today |
+| `bodger budgets archive <budget-id>` | Archive a budget |
+| `bodger budgets lines add <budget-id> <category> <amount> [--rollover]` | Add a line to a budget |
+| `bodger budgets lines update <budget-id> <line-id> <amount> [--rollover]` | Update a budget line's amount and rollover flag |
+| `bodger budgets lines remove <budget-id> <line-id>` | Remove a line from a budget |
+| `bodger budgets actuals <budget-id> [--period]` | Actual spend against a budget's lines for a period (defaults to the current month) |
+| `bodger budgets history <budget-id> [--period] [--months]` | Actual-vs-budget over several consecutive months (defaults to 6) |
 
 `<account>` and `<category>` accept either the name you gave it (case-insensitive) or its ID. If a name matches more than one of your accounts or categories, `bodger` lists the candidates instead of guessing. `<id>` is a transaction's own ID, which `bodger transactions list` shows in its last column.
 
@@ -569,4 +618,4 @@ All commands default to plain-text output; add `--json` to any of them for machi
 - **What does it store, and what do the words mean?** → [`data-model.md`](data-model.md)
 - **How do I build it?** → [`contributing.md`](contributing.md)
 
-The web UI, multi-currency, reports, budgets, and the MCP server all land here in the same PR that ships them, per [`contributing.md`](contributing.md) — not in a catch-up pass afterwards.
+The budgets web UI and the MCP server land here in the same PR that ships them, per [`contributing.md`](contributing.md) — not in a catch-up pass afterwards.
