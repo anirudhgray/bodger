@@ -1,0 +1,22 @@
+# tbls config (issue #248): generates docs/schema's entity-relationship
+# documentation and Mermaid ER diagram directly from the real SQLite
+# schema, rather than a hand-drawn diagram that can drift from
+# internal/adapters/sqlite/migrations. See docs/contributing.md's
+# "Regenerating the schema ERD" for how and when to run this.
+#
+# The DSN is passed on the command line (`--dsn sqlite:///<path>`) by
+# `make erd`/`make check-erd`, not set here: it points at a scratch
+# database built fresh by cmd/erdgen for each run, so there's nothing
+# stable to commit to config.
+name: bodger
+
+docPath: docs/schema
+
+# goose_db_version is migration-runner bookkeeping, not a domain table --
+# excluded so the generated diagram documents the schema this project's
+# own code and ADRs describe, per issue #248's own "schema-only" scope.
+exclude:
+  - goose_db_version
+
+er:
+  format: mermaid
