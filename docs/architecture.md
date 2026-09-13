@@ -228,8 +228,8 @@ The staged import pipeline, CSV import with column mapping, duplicate detection,
 ### M7 · Gondor — Budgets
 Monthly category budgets, actual vs budget, remaining, utilisation, history. Rollover stays deferred. Named for the Stewards of Gondor, who administered the realm's resources on behalf of a plan, disciplined and kept strictly apart from the throne's own authority — a fitting name for the milestone where a budget is explicitly "a plan, kept strictly separate from what actually happened" (data-model.md §10).
 
-### M8 — MCP server
-`bodger mcp` over stdio. Read, write, and destructive tool tiers with confirmation and audit.
+### M8 · Moria — MCP server
+`bodger mcp` over stdio. Read, write, and destructive tool tiers with confirmation and audit ([ADR-0013](decisions/0013-mcp-server-design.md)). Named for the Doors of Durin, which open to nothing but the correct word spoken by someone entitled to know it — a fitting name for the milestone where an agent's access to the ledger is granted tool by tool, tier by tier, and never silently.
 
 ### M9 — Recurring transactions
 Rules, scheduled occurrences, materialisation, forecasting. Occurrences never touch a balance.
