@@ -117,5 +117,6 @@ func Tools() []ToolDef {
 		getTopTransactionsTool(),
 		getAverageTransactionSizeTool(),
 		getCategoryTrendsTool(),
+		getTransactionTool(),
 	}
 }
