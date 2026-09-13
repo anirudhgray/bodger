@@ -55,11 +55,22 @@ type budgetLineActualsConformanceView struct {
 	Utilisation float64 `json:"utilisation"`
 }
 
+// budgetOverallActualsConformanceView is every line's plan-vs-actual
+// summed into one figure for the whole budget.
+type budgetOverallActualsConformanceView struct {
+	Budgeted    string  `json:"budgeted"`
+	Actual      string  `json:"actual"`
+	Remaining   string  `json:"remaining"`
+	Utilisation float64 `json:"utilisation"`
+}
+
 type budgetActualsConformanceView struct {
-	Currency string                             `json:"currency"`
-	From     string                             `json:"from"`
-	To       string                             `json:"to"`
-	Lines    []budgetLineActualsConformanceView `json:"lines"`
+	Currency string                              `json:"currency"`
+	From     string                              `json:"from"`
+	To       string                              `json:"to"`
+	AsOf     string                              `json:"as_of"`
+	Overall  budgetOverallActualsConformanceView `json:"overall"`
+	Lines    []budgetLineActualsConformanceView  `json:"lines"`
 }
 
 type budgetHistoryConformanceView struct {
