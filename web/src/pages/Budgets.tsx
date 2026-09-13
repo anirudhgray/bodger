@@ -97,8 +97,14 @@ function daysBetween(a: string, b: string): number {
   return Math.round((toUTCDays(b) - toUTCDays(a)) / 86_400_000)
 }
 
-// monthProgressPercent returns how far through a period's own [from, to]
-// range `as_of` falls, as 0-100 — null when as_of is outside that range
+// MonthProgress is how far through a period's own [from, to] range
+// `as_of` falls — percent (0-100) drives the marker's position, and
+// elapsedDays/totalDays back its hover title (see the Progress
+// component's own markerTitle doc comment for why a plain title rather
+// than a Tooltip).
+type MonthProgress = { percent: number; elapsedDays: number; totalDays: number }
+
+// monthProgress returns null when as_of is outside the period's range
 // entirely (a past period, already fully elapsed, or a future one nobody
 // has reached yet), since the marker is only meaningful for whichever
 // period is actually in progress right now. This is date arithmetic on
@@ -106,11 +112,15 @@ function daysBetween(a: string, b: string): number {
 // screen is computing itself — the same category of client-side math
 // shiftMonth above already does, distinct from ADR-0009's "no summing,
 // converting, or rolling up" rule for money.
-function monthProgressPercent(period: BudgetActuals): number | null {
+function monthProgress(period: BudgetActuals): MonthProgress | null {
   const totalDays = daysBetween(period.from, period.to) + 1
   const elapsedDays = daysBetween(period.from, period.as_of) + 1
   if (elapsedDays < 1 || elapsedDays > totalDays) return null
-  return (elapsedDays / totalDays) * 100
+  return { percent: (elapsedDays / totalDays) * 100, elapsedDays, totalDays }
+}
+
+function monthProgressTitle(progress: MonthProgress): string {
+  return `Day ${progress.elapsedDays} of ${progress.totalDays} in this period (${Math.round(progress.percent)}%) — compare against the fill to see if spending is ahead of or behind pace.`
 }
 
 type UtilisationStatus = 'under' | 'at' | 'over'
@@ -146,15 +156,19 @@ function utilisationTextClassName(status: UtilisationStatus): string {
 // UtilisationBar is the bar + percentage + under/at/over label shared by
 // the per-budget Overall row and every per-line row below it — the same
 // three-piece rendering, just fed a different utilisation figure. marker
-// (see monthProgressPercent above) is the same value for the Overall bar
-// and every line's bar within one period, since it depends only on the
-// period's own from/to/as_of, never on a line's own numbers.
+// (see monthProgress above) is the same value for the Overall bar and
+// every line's bar within one period, since it depends only on the
+// period's own from/to/as_of, never on a line's own numbers. Its hover
+// title carries the explanation (day X of Y) rather than a persistent
+// caption under every bar — the marker itself (tall, accent-colored, with
+// a background ring so it stays visible over either fill color) is meant
+// to draw a first look on its own.
 function UtilisationBar({
   utilisation,
   marker,
 }: {
   utilisation: number
-  marker: number | null
+  marker: MonthProgress | null
 }) {
   const status = utilisationStatus(utilisation)
   return (
@@ -163,7 +177,8 @@ function UtilisationBar({
         <Progress
           value={Math.min(utilisation * 100, 100)}
           indicatorClassName={utilisationBarClassName(status)}
-          marker={marker ?? undefined}
+          marker={marker?.percent}
+          markerTitle={marker ? monthProgressTitle(marker) : undefined}
           className="flex-1"
         />
         <span className="text-xs tabular-nums whitespace-nowrap">
@@ -184,7 +199,7 @@ function BudgetPeriodTable({
   actuals: BudgetActuals
   categoriesByID: Map<string, string>
 }) {
-  const marker = monthProgressPercent(actuals)
+  const marker = monthProgress(actuals)
 
   return (
     <>
@@ -200,12 +215,6 @@ function BudgetPeriodTable({
           utilisation={actuals.overall.utilisation}
           marker={marker}
         />
-        {marker !== null && (
-          <p className="text-muted-foreground text-xs">
-            The marker (│) shows how far through the period we are —{' '}
-            {Math.round(marker)}% of the way through.
-          </p>
-        )}
       </div>
 
       {actuals.lines.length === 0 ? (
