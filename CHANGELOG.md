@@ -9,6 +9,19 @@ sync with each GitHub Release.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-13
+
+### Added
+
+* [ddf58ae9](https://github.com/anirudhgray/bodger/commit/ddf58ae9): feat(api,cli): budget surfaces — REST/CLI wiring and conformance (#254) (@anirudhgray)
+* [6eeb649b](https://github.com/anirudhgray/bodger/commit/6eeb649b): feat(app): budget CRUD use cases (#251) (@anirudhgray)
+* [631061c8](https://github.com/anirudhgray/bodger/commit/631061c8): feat(app): budget actuals, remaining, utilisation, and period history (#252) (@anirudhgray)
+* [5b3aa758](https://github.com/anirudhgray/bodger/commit/5b3aa758): feat(app,api,cli,web): budget overall total and month-progress marker (#256) (@anirudhgray)
+* [44fe7673](https://github.com/anirudhgray/bodger/commit/44fe7673): feat(app,persistence): include budgets and FX rates in export/restore (#264) (@anirudhgray)
+* [497e38ae](https://github.com/anirudhgray/bodger/commit/497e38ae): feat(docs,infra): auto-generated ERD from schema, checked for staleness in CI (#250) (@anirudhgray)
+* [a0611bf9](https://github.com/anirudhgray/bodger/commit/a0611bf9): feat(domain,persistence): Budget and BudgetLine model, migration, repositories (#249) (@anirudhgray)
+* [8b9d75e2](https://github.com/anirudhgray/bodger/commit/8b9d75e2): feat(web): budgets screen (#255) (@anirudhgray)
+
 ## [0.6.0] - 2026-09-13
 
 ### Added
@@ -153,7 +166,8 @@ sync with each GitHub Release.
 * 5ae7d547: fix(infra): make lint fail loudly on an incompatible golangci-lint (#23)
 * c76bd7e7: fix(infra): pre-push hook executable bit, worktree hygiene (#14)
 
-[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/anirudhgray/bodger/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/anirudhgray/bodger/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/anirudhgray/bodger/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/anirudhgray/bodger/compare/v0.3.0...v0.4.0
