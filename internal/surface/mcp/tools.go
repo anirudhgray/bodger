@@ -84,10 +84,21 @@ type ToolDef struct {
 // synthetic tools used to exercise the dispatcher's confirmation-token
 // and audit paths (issue #259's own scope: "tested against synthetic
 // tools in this issue, not real ones") are registered directly against a
-// Dispatcher in dispatcher_test.go, never listed here — the real
-// financial tools that will be are #260/#261/#262, not this issue.
+// Dispatcher in dispatcher_test.go, never listed here.
+//
+// Every tool below whoami is issue #260's read-tier wiring: one tool per
+// existing read-only app-layer method (account balances, transaction
+// list/filter, category spending reports, budget actuals & history, FX
+// rate lookup), always allowed and never audited (ADR-0013). Write and
+// destructive tools are #261/#262, not this file.
 func Tools() []ToolDef {
 	return []ToolDef{
 		whoAmITool(),
+		getAccountBalancesTool(),
+		listTransactionsTool(),
+		getCategoryBreakdownTool(),
+		getBudgetActualsTool(),
+		getBudgetHistoryTool(),
+		listFxRatesTool(),
 	}
 }

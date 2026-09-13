@@ -527,6 +527,37 @@ Point your MCP client at the command rather than a network address — most clie
 
 (The exact place you paste this depends on your client — check its own documentation for "add an MCP server" or "add a tool.")
 
+### Trying it with sample data
+
+Want to see this working before pointing it at your real ledger? Build the binary and seed a disposable database with realistic sample data instead of using your own:
+
+```sh
+make build
+BODGER_DB_PATH=/tmp/bodger-dev.db make seed-dev
+```
+
+Then point your MCP client at that build, with `BODGER_DB_PATH` set the same way so it reads the sample data instead of your real one. Most clients let you set environment variables alongside the command:
+
+```json
+{
+  "mcpServers": {
+    "bodger": {
+      "command": "/path/to/bin/bodger",
+      "args": ["mcp"],
+      "env": { "BODGER_DB_PATH": "/tmp/bodger-dev.db" }
+    }
+  }
+}
+```
+
+If your client is Claude Code itself, its own CLI does this in one line:
+
+```sh
+claude mcp add bodger-dev -e BODGER_DB_PATH=/tmp/bodger-dev.db -- /path/to/bin/bodger mcp
+```
+
+Once it's connected, ask your assistant something like "what are my account balances" or "list my last 10 transactions" — that calls `get_account_balances` and `list_transactions` from the table below, against the sample data rather than anything real. Delete `/tmp/bodger-dev.db` (and re-run `make seed-dev`) any time you want a clean slate; a scratch database at a different path never touches your real one at the default location.
+
 Once connected, your assistant can call bodger's tools the same way you'd run a command yourself. Tools are grouped into three levels of trust:
 
 - **Look things up** — checking balances, listing transactions, running reports. Always available, and nothing you do this way changes anything.
@@ -538,6 +569,21 @@ Once connected, your assistant can call bodger's tools the same way you'd run a 
   ```
 
   Even then, nothing happens on the first request — your assistant gets back a plain description of what it's about to do, along with a one-time confirmation code. Only a second request, carrying that exact code, actually makes the change. If your assistant tries the same request again with an old code, or with anything changed, it's turned down and has to ask again.
+
+### Look-things-up tools
+
+These are always available, need no confirmation, and aren't recorded in `bodger mcp audit` — nothing you look up ever changes anything.
+
+| Tool | What it does |
+| --- | --- |
+| `get_account_balances` | Every account's balance as of a date, optionally converted into one currency — the same as `bodger balance`. |
+| `list_transactions` | Recorded transactions, filtered by account, category, type, date range, currency, amount range, description, or tags — the same as `bodger transactions list`. |
+| `get_category_breakdown` | Spending and income grouped by top-level category over a filtered set of transactions — the same as `bodger report category-breakdown`. |
+| `get_budget_actuals` | One budget's plan-vs-actual for a single period — the same as `bodger budgets actuals`. |
+| `get_budget_history` | One budget's plan-vs-actual repeated over a range of consecutive months — the same as `bodger budgets history`. |
+| `list_fx_rates` | The exchange rate between two currencies, from bodger's own stored rates (never a network fetch), optionally converting an amount — the same as `bodger fx rates list`. |
+
+There's also `whoami`, which just reports the identity bodger's MCP server is acting as.
 
 ### Reviewing what an assistant has done
 
