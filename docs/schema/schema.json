@@ -1763,6 +1763,265 @@
         }
       ],
       "def": "CREATE TABLE import_record (\n    id                                TEXT NOT NULL PRIMARY KEY,\n    import_batch_id                   TEXT NOT NULL REFERENCES import_batch (id) ON DELETE CASCADE,\n    user_id                           TEXT NOT NULL REFERENCES users (id),\n    -- The untouched source row, exactly as the parser received it (CSV\n    -- text, a JSON object, ...). This package has no opinion on its shape.\n    raw_payload                       TEXT NOT NULL,\n    -- The parser's already-normalised output (ADR-0008: \"a parser's only\n    -- job is to turn bytes into normalised ImportRecord fields\") —\n    -- data-model.md §9's booked_date/posted_date split applies here the\n    -- same way it does on transactions.\n    booked_date                       TEXT NOT NULL,\n    posted_date                       TEXT,\n    description                       TEXT NOT NULL,\n    amount_minor                      INTEGER NOT NULL,\n    currency                          TEXT NOT NULL REFERENCES currencies (code),\n    -- The source system's own transaction ID, if it has one — ADR-0008's\n    -- tier-1 exact-duplicate key is (account_id, external_id), checked\n    -- against resolved_account_id once mapping (a later issue) has run.\n    external_id                       TEXT,\n    -- Written by the mapping stage (a later, out-of-scope issue); NULL\n    -- until then.\n    resolved_account_id               TEXT REFERENCES accounts (id),\n    resolved_category_id              TEXT REFERENCES categories (id),\n    -- The duplicate-detection candidate (a later, out-of-scope issue) this\n    -- row matched against, if any. Both columns are NULL together or set\n    -- together — there is no match without a matched transaction, and vice\n    -- versa.\n    duplicate_tier                    TEXT CHECK (duplicate_tier IN ('exact', 'suspected_duplicate')),\n    duplicate_matched_transaction_id  TEXT REFERENCES transactions (id),\n    -- The user's decision on that match (ADR-0008: \"the decision is\n    -- recorded on the ImportRecord for auditability\"). Defaults to\n    -- 'pending' rather than NULL because a row with no match at all is\n    -- still, trivially, \"no decision made\" — the same value a matched-but-\n    -- not-yet-reviewed row holds.\n    duplicate_resolution              TEXT NOT NULL DEFAULT 'pending'\n                                          CHECK (duplicate_resolution IN ('pending', 'confirmed_duplicate', 'not_duplicate')),\n    -- importing.ImportRecordStatus's four values: pending is the only\n    -- branching point (pending -\u003e ready or pending -\u003e excluded), then\n    -- ready -\u003e committed. See import_batch.status above for why the state\n    -- machine itself isn't expressed as a CHECK.\n    status                            TEXT NOT NULL CHECK (status IN ('pending', 'ready', 'excluded', 'committed')),\n    -- The transaction this row produced, once its batch commits (a later,\n    -- out-of-scope issue). Required exactly when status = 'committed'.\n    transaction_id                    TEXT REFERENCES transactions (id),\n    -- Preserves the source file's row order — display and processing\n    -- order only, the same role posting.sort_order plays for a\n    -- transaction's postings.\n    sort_order                        INTEGER NOT NULL DEFAULT 0,\n    created_at                        TEXT NOT NULL,\n    updated_at                        TEXT NOT NULL, transfer_candidate_record_id TEXT REFERENCES import_record (id),\n    -- Table-level constraints must come after every column definition\n    -- (SQLite syntax) — both cross-column invariants live here rather\n    -- than inline next to the columns they mention.\n    CHECK ((duplicate_tier IS NULL) = (duplicate_matched_transaction_id IS NULL)),\n    CHECK (status != 'committed' OR transaction_id IS NOT NULL)\n)"
+    },
+    {
+      "name": "budgets",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "period_type",
+          "type": "TEXT",
+          "nullable": false,
+          "default": "'monthly'"
+        },
+        {
+          "name": "currency",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "starts_on",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "archived_at",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_budgets_user_id",
+          "def": "CREATE INDEX idx_budgets_user_id ON budgets (user_id)",
+          "table": "budgets",
+          "columns": [
+            "user_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_budgets_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "budgets",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "budgets",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "budgets",
+          "referenced_table": "currencies",
+          "columns": [
+            "currency"
+          ],
+          "referenced_columns": [
+            "code"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "budgets",
+          "referenced_table": "users",
+          "columns": [
+            "user_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_budgets_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "budgets",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (period_type IN ('monthly'))",
+          "table": "budgets",
+          "columns": [
+            "period_type"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE budgets (\n    id          TEXT NOT NULL PRIMARY KEY,\n    user_id     TEXT NOT NULL REFERENCES users (id),\n    name        TEXT NOT NULL,\n    -- budgeting.PeriodType's only value today (data-model.md §10:\n    -- \"monthly initially\"). The state machine itself, if this ever grows\n    -- one, would live in the domain package, not here -- this CHECK only\n    -- guards against a value outside the known set ever reaching the\n    -- column, the same role the import_batch.status CHECK plays.\n    period_type TEXT NOT NULL DEFAULT 'monthly' CHECK (period_type IN ('monthly')),\n    currency    TEXT NOT NULL REFERENCES currencies (code),\n    starts_on   TEXT NOT NULL,\n    archived_at TEXT,\n    created_at  TEXT NOT NULL,\n    updated_at  TEXT NOT NULL\n)"
+    },
+    {
+      "name": "budget_lines",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "budget_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "category_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "amount_minor",
+          "type": "INTEGER",
+          "nullable": false
+        },
+        {
+          "name": "rollover",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "0"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_budget_lines_category_id",
+          "def": "CREATE INDEX idx_budget_lines_category_id ON budget_lines (category_id)",
+          "table": "budget_lines",
+          "columns": [
+            "category_id"
+          ]
+        },
+        {
+          "name": "idx_budget_lines_budget_id",
+          "def": "CREATE INDEX idx_budget_lines_budget_id ON budget_lines (budget_id)",
+          "table": "budget_lines",
+          "columns": [
+            "budget_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_budget_lines_2",
+          "def": "UNIQUE (budget_id, category_id)",
+          "table": "budget_lines",
+          "columns": [
+            "budget_id",
+            "category_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_budget_lines_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "budget_lines",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "budget_lines",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "budget_lines",
+          "referenced_table": "categories",
+          "columns": [
+            "category_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (budget_id) REFERENCES budgets (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
+          "table": "budget_lines",
+          "referenced_table": "budgets",
+          "columns": [
+            "budget_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_budget_lines_2",
+          "type": "UNIQUE",
+          "def": "UNIQUE (budget_id, category_id)",
+          "table": "budget_lines",
+          "columns": [
+            "budget_id",
+            "category_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_budget_lines_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "budget_lines",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (rollover IN (0, 1))",
+          "table": "budget_lines",
+          "columns": [
+            "rollover"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE budget_lines (\n    id           TEXT NOT NULL PRIMARY KEY,\n    budget_id    TEXT NOT NULL REFERENCES budgets (id) ON DELETE CASCADE,\n    category_id  TEXT NOT NULL REFERENCES categories (id),\n    amount_minor INTEGER NOT NULL,\n    -- Reserved for a later milestone (data-model.md §13): leaving the\n    -- column out now would cost a migration later, and adding it now\n    -- costs nothing. Nothing reads or interprets it yet.\n    rollover     INTEGER NOT NULL DEFAULT 0 CHECK (rollover IN (0, 1)),\n    -- One line per category per budget -- data-model.md §10 has no notion\n    -- of \"the\" actual/remaining for a category split across two lines of\n    -- the same budget.\n    UNIQUE (budget_id, category_id)\n)"
     }
   ],
   "relations": [
@@ -2118,6 +2377,58 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (import_batch_id) REFERENCES import_batch (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+    },
+    {
+      "table": "budgets",
+      "columns": [
+        "currency"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "currencies",
+      "parent_columns": [
+        "code"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "budgets",
+      "columns": [
+        "user_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "users",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "budget_lines",
+      "columns": [
+        "category_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "categories",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "budget_lines",
+      "columns": [
+        "budget_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "budgets",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (budget_id) REFERENCES budgets (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
     }
   ],
   "driver": {

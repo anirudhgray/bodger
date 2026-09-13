@@ -20,7 +20,7 @@ CREATE TABLE currencies (
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| code | TEXT |  | true | [postings](postings.md) [accounts](accounts.md) [import_record](import_record.md) |  |  |
+| code | TEXT |  | true | [postings](postings.md) [accounts](accounts.md) [import_record](import_record.md) [budgets](budgets.md) |  |  |
 | name | TEXT |  | false |  |  |  |
 | symbol | TEXT |  | false |  |  |  |
 | minor_unit_exponent | INTEGER |  | false |  |  |  |
@@ -46,6 +46,7 @@ erDiagram
 "postings" }o--|| "currencies" : "FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "accounts" }o--|| "currencies" : "FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_record" }o--|| "currencies" : "FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"budgets" }o--|| "currencies" : "FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 
 "currencies" {
   TEXT code PK
@@ -98,6 +99,17 @@ erDiagram
   TEXT created_at
   TEXT updated_at
   TEXT transfer_candidate_record_id FK
+}
+"budgets" {
+  TEXT id PK
+  TEXT user_id FK
+  TEXT name
+  TEXT period_type
+  TEXT currency FK
+  TEXT starts_on
+  TEXT archived_at
+  TEXT created_at
+  TEXT updated_at
 }
 ```
 

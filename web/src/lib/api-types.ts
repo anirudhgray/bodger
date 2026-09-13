@@ -371,6 +371,133 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/budgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every budget.
+         * @description Includes archived budgets, the same as GET /api/v1/accounts includes archived accounts - filtering to "current" is left to the caller.
+         */
+        get: operations["listBudgets"];
+        put?: never;
+        /**
+         * Create a budget.
+         * @description Optionally with an initial batch of lines - a line can also be added afterward via POST .../lines. The budget's period type is always monthly today.
+         */
+        post: operations["createBudget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/budgets/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch one budget by ID. */
+        get: operations["getBudget"];
+        put?: never;
+        post?: never;
+        /**
+         * Archive a budget.
+         * @description This hides the budget from listings; its history (including past actuals) remains fully queryable.
+         */
+        delete: operations["archiveBudget"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a budget and set its starts-on date.
+         * @description This is a full replacement of both fields, not a partial patch: omitting "starts_on" resolves it to today, not to the budget's existing value - send its current value back explicitly to change only the name. A budget's currency and period type can't change.
+         */
+        patch: operations["patchBudget"];
+        trace?: never;
+    };
+    "/api/v1/budgets/{id}/actuals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Actual spend against a budget's lines, for one period.
+         * @description For each line, actual is net spend against its category subtree over the resolved period (spending minus any inflow, e.g. a refund, in the same subtree), converted into the budget's own currency. remaining is budgeted minus actual; utilisation is actual / budgeted.
+         */
+        get: operations["getBudgetActuals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/budgets/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Actual-vs-budget over several consecutive months.
+         * @description A repeated actuals computation over "months" consecutive calendar months ending at "period"'s month, oldest first. A budget's own starts_on clamps how far back this goes, so the result may hold fewer than "months" entries for a budget that hasn't existed that long.
+         */
+        get: operations["getBudgetHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/budgets/{id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a line to a budget. */
+        post: operations["addBudgetLine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/budgets/{id}/lines/{lineId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a line from a budget. */
+        delete: operations["removeBudgetLine"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a budget line's amount and rollover flag.
+         * @description A line's category can't change - remove it and add a new one for a different category instead.
+         */
+        patch: operations["patchBudgetLine"];
+        trace?: never;
+    };
     "/api/v1/categories": {
         parameters: {
             query?: never;
@@ -870,6 +997,94 @@ export interface components {
         BalancesEnvelope: {
             data: components["schemas"]["Balances"];
         };
+        Budget: {
+            archived: boolean;
+            /**
+             * Format: date
+             * @description Set only once the budget is archived.
+             */
+            archived_at?: string;
+            currency: string;
+            id: string;
+            lines: components["schemas"]["BudgetLine"][];
+            name: string;
+            /** @enum {string} */
+            period_type: "monthly";
+            /** Format: date */
+            starts_on: string;
+        };
+        BudgetActuals: {
+            budget_id: string;
+            currency: string;
+            /** Format: date */
+            from: string;
+            lines: components["schemas"]["BudgetLineActuals"][];
+            /** Format: date */
+            to: string;
+            unconverted?: components["schemas"]["UnconvertedPosting"][];
+        };
+        BudgetActualsEnvelope: {
+            data: components["schemas"]["BudgetActuals"];
+        };
+        BudgetEnvelope: {
+            data: components["schemas"]["Budget"];
+        };
+        BudgetHistory: {
+            budget_id: string;
+            periods: components["schemas"]["BudgetActuals"][];
+        };
+        BudgetHistoryEnvelope: {
+            data: components["schemas"]["BudgetHistory"];
+        };
+        BudgetLine: {
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            amount: string;
+            category_id: string;
+            id: string;
+            rollover: boolean;
+        };
+        BudgetLineActuals: {
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            actual: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            budgeted: string;
+            category_id: string;
+            line_id: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            remaining: string;
+            /**
+             * Format: double
+             * @description Actual / Budgeted. Zero when Budgeted is zero.
+             */
+            utilisation: number;
+        };
+        /** @description An initial batch of lines to create alongside the budget. Optional — lines can also be added afterward via POST .../lines. */
+        BudgetLineRequest: {
+            /**
+             * Format: money
+             * @description The planned amount, in the budget's own currency.
+             */
+            amount: string;
+            /** @description The category this line plans an amount for, by ID or unique name. */
+            category_ref: string;
+            /** @description Carry an unspent (or overspent) amount into the next period. */
+            rollover?: boolean;
+        };
+        BudgetListEnvelope: {
+            data: components["schemas"]["Budget"][];
+        };
         CashFlow: {
             currency: string;
             points: components["schemas"]["CashFlowPoint"][];
@@ -1032,6 +1247,18 @@ export interface components {
             sort_order?: number;
             /** @enum {string} */
             type: "bank" | "cash" | "credit_card" | "wallet" | "investment" | "loan" | "other";
+        };
+        CreateBudgetRequest: {
+            /** @description Defaults to your reporting currency, then your instance default. */
+            currency?: string;
+            /** @description An initial batch of lines to create alongside the budget. Optional — lines can also be added afterward via POST .../lines. */
+            lines?: components["schemas"]["BudgetLineRequest"][];
+            name: string;
+            /**
+             * Format: date
+             * @description The date the budget's periods are computed from. Defaults to today.
+             */
+            starts_on?: string;
         };
         CreateCategoryRequest: {
             name: string;
@@ -1324,6 +1551,22 @@ export interface components {
              * @description The date the new opening balance is stated as of. Only read alongside opening_balance.
              */
             opening_balance_date?: string | null;
+        };
+        PatchBudgetLineRequest: {
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            amount: string;
+            rollover?: boolean;
+        };
+        PatchBudgetRequest: {
+            name: string;
+            /**
+             * Format: date
+             * @description Defaults to today when omitted - not to the budget's existing starts_on.
+             */
+            starts_on?: string;
         };
         PatchCategoryRequest: {
             /** @description The category's new name. */
@@ -2285,6 +2528,268 @@ export interface operations {
                     "application/json": components["schemas"]["BalanceTotalsEnvelope"];
                 };
             };
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    listBudgets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every budget, most recently created first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetListEnvelope"];
+                };
+            };
+        };
+    };
+    createBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description The created budget. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetEnvelope"];
+                };
+            };
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    getBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's ID, or (for an account or category) its unique name. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The budget, with its lines. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    archiveBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's ID, or (for an account or category) its unique name. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The archived budget. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    patchBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's ID, or (for an account or category) its unique name. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated budget. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    getBudgetActuals: {
+        parameters: {
+            query?: {
+                /** @description Any date within the target month. Defaults to the current month. */
+                period?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The resource's ID, or (for an account or category) its unique name. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The resolved period and each line's plan-vs-actual. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetActualsEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    getBudgetHistory: {
+        parameters: {
+            query?: {
+                /** @description Any date within the most recent month to include. Defaults to the current month. */
+                period?: string;
+                /** @description How many consecutive months to include. Defaults to 6. */
+                months?: number;
+            };
+            header?: never;
+            path: {
+                /** @description The resource's ID, or (for an account or category) its unique name. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One period per month, ascending. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetHistoryEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    addBudgetLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's ID, or (for an account or category) its unique name. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BudgetLineRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated budget, with its new line. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    removeBudgetLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's ID, or (for an account or category) its unique name. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The updated budget, with the line removed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    patchBudgetLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's ID, or (for an account or category) its unique name. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchBudgetLineRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated budget. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
             422: components["responses"]["InvalidInput"];
         };
     };

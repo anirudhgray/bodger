@@ -417,6 +417,243 @@
         ],
         "type": "object"
       },
+      "Budget": {
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          },
+          "archived_at": {
+            "description": "Set only once the budget is archived.",
+            "format": "date",
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/BudgetLine"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "period_type": {
+            "enum": [
+              "monthly"
+            ],
+            "type": "string"
+          },
+          "starts_on": {
+            "format": "date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "period_type",
+          "currency",
+          "starts_on",
+          "archived",
+          "lines"
+        ],
+        "type": "object"
+      },
+      "BudgetActuals": {
+        "properties": {
+          "budget_id": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "from": {
+            "format": "date",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/BudgetLineActuals"
+            },
+            "type": "array"
+          },
+          "to": {
+            "format": "date",
+            "type": "string"
+          },
+          "unconverted": {
+            "items": {
+              "$ref": "#/components/schemas/UnconvertedPosting"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "budget_id",
+          "currency",
+          "from",
+          "to",
+          "lines"
+        ],
+        "type": "object"
+      },
+      "BudgetActualsEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/BudgetActuals"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "BudgetEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Budget"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "BudgetHistory": {
+        "properties": {
+          "budget_id": {
+            "type": "string"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/BudgetActuals"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "budget_id",
+          "periods"
+        ],
+        "type": "object"
+      },
+      "BudgetHistoryEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/BudgetHistory"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "BudgetLine": {
+        "properties": {
+          "amount": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "category_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "rollover": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "category_id",
+          "amount",
+          "rollover"
+        ],
+        "type": "object"
+      },
+      "BudgetLineActuals": {
+        "properties": {
+          "actual": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "budgeted": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "category_id": {
+            "type": "string"
+          },
+          "line_id": {
+            "type": "string"
+          },
+          "remaining": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "utilisation": {
+            "description": "Actual / Budgeted. Zero when Budgeted is zero.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "line_id",
+          "category_id",
+          "budgeted",
+          "actual",
+          "remaining",
+          "utilisation"
+        ],
+        "type": "object"
+      },
+      "BudgetLineRequest": {
+        "description": "An initial batch of lines to create alongside the budget. Optional — lines can also be added afterward via POST .../lines.",
+        "properties": {
+          "amount": {
+            "description": "The planned amount, in the budget's own currency.",
+            "format": "money",
+            "type": "string"
+          },
+          "category_ref": {
+            "description": "The category this line plans an amount for, by ID or unique name.",
+            "type": "string"
+          },
+          "rollover": {
+            "description": "Carry an unspent (or overspent) amount into the next period.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "category_ref",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "BudgetListEnvelope": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Budget"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "CashFlow": {
         "properties": {
           "currency": {
@@ -853,6 +1090,33 @@
         "required": [
           "name",
           "type"
+        ],
+        "type": "object"
+      },
+      "CreateBudgetRequest": {
+        "properties": {
+          "currency": {
+            "description": "Defaults to your reporting currency, then your instance default.",
+            "type": "string"
+          },
+          "lines": {
+            "description": "An initial batch of lines to create alongside the budget. Optional — lines can also be added afterward via POST .../lines.",
+            "items": {
+              "$ref": "#/components/schemas/BudgetLineRequest"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "starts_on": {
+            "description": "The date the budget's periods are computed from. Defaults to today.",
+            "format": "date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
         ],
         "type": "object"
       },
@@ -1655,6 +1919,38 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "PatchBudgetLineRequest": {
+        "properties": {
+          "amount": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "rollover": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "amount"
+        ],
+        "type": "object"
+      },
+      "PatchBudgetRequest": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "starts_on": {
+            "description": "Defaults to today when omitted - not to the budget's existing starts_on.",
+            "format": "date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
         "type": "object"
       },
       "PatchCategoryRequest": {
@@ -3795,6 +4091,334 @@
           }
         },
         "summary": "Totals overview: overall net balance, per category, per currency."
+      }
+    },
+    "/api/v1/budgets": {
+      "get": {
+        "description": "Includes archived budgets, the same as GET /api/v1/accounts includes archived accounts - filtering to \"current\" is left to the caller.",
+        "operationId": "listBudgets",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetListEnvelope"
+                }
+              }
+            },
+            "description": "Every budget, most recently created first."
+          }
+        },
+        "summary": "List every budget."
+      },
+      "post": {
+        "description": "Optionally with an initial batch of lines - a line can also be added afterward via POST .../lines. The budget's period type is always monthly today.",
+        "operationId": "createBudget",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBudgetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetEnvelope"
+                }
+              }
+            },
+            "description": "The created budget."
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Create a budget."
+      }
+    },
+    "/api/v1/budgets/{id}": {
+      "delete": {
+        "description": "This hides the budget from listings; its history (including past actuals) remains fully queryable.",
+        "operationId": "archiveBudget",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetEnvelope"
+                }
+              }
+            },
+            "description": "The archived budget."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Archive a budget."
+      },
+      "get": {
+        "operationId": "getBudget",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetEnvelope"
+                }
+              }
+            },
+            "description": "The budget, with its lines."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Fetch one budget by ID."
+      },
+      "patch": {
+        "description": "This is a full replacement of both fields, not a partial patch: omitting \"starts_on\" resolves it to today, not to the budget's existing value - send its current value back explicitly to change only the name. A budget's currency and period type can't change.",
+        "operationId": "patchBudget",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchBudgetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetEnvelope"
+                }
+              }
+            },
+            "description": "The updated budget."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Rename a budget and set its starts-on date."
+      }
+    },
+    "/api/v1/budgets/{id}/actuals": {
+      "get": {
+        "description": "For each line, actual is net spend against its category subtree over the resolved period (spending minus any inflow, e.g. a refund, in the same subtree), converted into the budget's own currency. remaining is budgeted minus actual; utilisation is actual / budgeted.",
+        "operationId": "getBudgetActuals",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          },
+          {
+            "description": "Any date within the target month. Defaults to the current month.",
+            "in": "query",
+            "name": "period",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetActualsEnvelope"
+                }
+              }
+            },
+            "description": "The resolved period and each line's plan-vs-actual."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Actual spend against a budget's lines, for one period."
+      }
+    },
+    "/api/v1/budgets/{id}/history": {
+      "get": {
+        "description": "A repeated actuals computation over \"months\" consecutive calendar months ending at \"period\"'s month, oldest first. A budget's own starts_on clamps how far back this goes, so the result may hold fewer than \"months\" entries for a budget that hasn't existed that long.",
+        "operationId": "getBudgetHistory",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          },
+          {
+            "description": "Any date within the most recent month to include. Defaults to the current month.",
+            "in": "query",
+            "name": "period",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "How many consecutive months to include. Defaults to 6.",
+            "in": "query",
+            "name": "months",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetHistoryEnvelope"
+                }
+              }
+            },
+            "description": "One period per month, ascending."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Actual-vs-budget over several consecutive months."
+      }
+    },
+    "/api/v1/budgets/{id}/lines": {
+      "post": {
+        "operationId": "addBudgetLine",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetLineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetEnvelope"
+                }
+              }
+            },
+            "description": "The updated budget, with its new line."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Add a line to a budget."
+      }
+    },
+    "/api/v1/budgets/{id}/lines/{lineId}": {
+      "delete": {
+        "operationId": "removeBudgetLine",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetEnvelope"
+                }
+              }
+            },
+            "description": "The updated budget, with the line removed."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Remove a line from a budget."
+      },
+      "patch": {
+        "description": "A line's category can't change - remove it and add a new one for a different category instead.",
+        "operationId": "patchBudgetLine",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchBudgetLineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetEnvelope"
+                }
+              }
+            },
+            "description": "The updated budget."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Update a budget line's amount and rollover flag."
       }
     },
     "/api/v1/categories": {

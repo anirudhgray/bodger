@@ -644,6 +644,110 @@ var routeTable = []route{
 		Request: resolveImportRecordRequest{}, Response: importRecordView{},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity, http.StatusPreconditionFailed},
 	},
+
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/budgets",
+		Handler: func(h *handlers) http.HandlerFunc { return h.listBudgets },
+
+		OperationID: "listBudgets", Summary: "List every budget.",
+		Description:   "Includes archived budgets, the same as GET /api/v1/accounts includes archived accounts - filtering to \"current\" is left to the caller.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "Every budget, most recently created first.",
+		Response: []budgetView{},
+	},
+	{
+		Method: http.MethodPost, Pattern: "/api/v1/budgets",
+		Handler: func(h *handlers) http.HandlerFunc { return h.createBudget },
+
+		OperationID: "createBudget", Summary: "Create a budget.",
+		Description:   "Optionally with an initial batch of lines - a line can also be added afterward via POST .../lines. The budget's period type is always monthly today.",
+		SuccessStatus: http.StatusCreated, SuccessDescription: "The created budget.",
+		Request: createBudgetRequest{}, Response: budgetView{},
+		Errors: []int{http.StatusUnprocessableEntity},
+	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/budgets/{id}",
+		Handler: func(h *handlers) http.HandlerFunc { return h.getBudget },
+
+		OperationID: "getBudget", Summary: "Fetch one budget by ID.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The budget, with its lines.",
+		Response: budgetView{},
+		Errors:   []int{http.StatusNotFound},
+	},
+	{
+		Method: http.MethodPatch, Pattern: "/api/v1/budgets/{id}",
+		Handler: func(h *handlers) http.HandlerFunc { return h.patchBudget },
+
+		OperationID: "patchBudget", Summary: "Rename a budget and set its starts-on date.",
+		Description:   `This is a full replacement of both fields, not a partial patch: omitting "starts_on" resolves it to today, not to the budget's existing value - send its current value back explicitly to change only the name. A budget's currency and period type can't change.`,
+		SuccessStatus: http.StatusOK, SuccessDescription: "The updated budget.",
+		Request: patchBudgetRequest{}, Response: budgetView{},
+		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
+	},
+	{
+		Method: http.MethodDelete, Pattern: "/api/v1/budgets/{id}",
+		Handler: func(h *handlers) http.HandlerFunc { return h.archiveBudget },
+
+		OperationID: "archiveBudget", Summary: "Archive a budget.",
+		Description:   "This hides the budget from listings; its history (including past actuals) remains fully queryable.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The archived budget.",
+		Response: budgetView{},
+		Errors:   []int{http.StatusNotFound},
+	},
+	{
+		Method: http.MethodPost, Pattern: "/api/v1/budgets/{id}/lines",
+		Handler: func(h *handlers) http.HandlerFunc { return h.addBudgetLine },
+
+		OperationID: "addBudgetLine", Summary: "Add a line to a budget.",
+		SuccessStatus: http.StatusCreated, SuccessDescription: "The updated budget, with its new line.",
+		Request: budgetLineRequest{}, Response: budgetView{},
+		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
+	},
+	{
+		Method: http.MethodPatch, Pattern: "/api/v1/budgets/{id}/lines/{lineId}",
+		Handler: func(h *handlers) http.HandlerFunc { return h.patchBudgetLine },
+
+		OperationID: "patchBudgetLine", Summary: "Update a budget line's amount and rollover flag.",
+		Description:   "A line's category can't change - remove it and add a new one for a different category instead.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The updated budget.",
+		Request: patchBudgetLineRequest{}, Response: budgetView{},
+		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
+	},
+	{
+		Method: http.MethodDelete, Pattern: "/api/v1/budgets/{id}/lines/{lineId}",
+		Handler: func(h *handlers) http.HandlerFunc { return h.removeBudgetLine },
+
+		OperationID: "removeBudgetLine", Summary: "Remove a line from a budget.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The updated budget, with the line removed.",
+		Response: budgetView{},
+		Errors:   []int{http.StatusNotFound},
+	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/budgets/{id}/actuals",
+		Handler: func(h *handlers) http.HandlerFunc { return h.getBudgetActuals },
+
+		OperationID: "getBudgetActuals", Summary: "Actual spend against a budget's lines, for one period.",
+		Description:   "For each line, actual is net spend against its category subtree over the resolved period (spending minus any inflow, e.g. a refund, in the same subtree), converted into the budget's own currency. remaining is budgeted minus actual; utilisation is actual / budgeted.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The resolved period and each line's plan-vs-actual.",
+		Response: budgetActualsView{},
+		Errors:   []int{http.StatusNotFound, http.StatusUnprocessableEntity},
+		Query: []queryParam{
+			{Name: "period", Description: "Any date within the target month. Defaults to the current month.", Type: "string", Format: "date"},
+		},
+	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/budgets/{id}/history",
+		Handler: func(h *handlers) http.HandlerFunc { return h.getBudgetHistory },
+
+		OperationID: "getBudgetHistory", Summary: "Actual-vs-budget over several consecutive months.",
+		Description:   "A repeated actuals computation over \"months\" consecutive calendar months ending at \"period\"'s month, oldest first. A budget's own starts_on clamps how far back this goes, so the result may hold fewer than \"months\" entries for a budget that hasn't existed that long.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "One period per month, ascending.",
+		Response: budgetHistoryView{},
+		Errors:   []int{http.StatusNotFound, http.StatusUnprocessableEntity},
+		Query: []queryParam{
+			{Name: "period", Description: "Any date within the most recent month to include. Defaults to the current month.", Type: "string", Format: "date"},
+			{Name: "months", Description: "How many consecutive months to include. Defaults to 6.", Type: "integer", Min: intPtr(1)},
+		},
+	},
 }
 
 // importUploadQueryParams is POST /api/v1/imports' own query string: the
