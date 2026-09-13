@@ -89,23 +89,30 @@ func (r *SnapshotRepository) Replace(ctx context.Context, actorID string, snapsh
 // transactions through tx, in the one order that satisfies every foreign
 // key involved:
 //
-//  1. transaction_revisions first — it has no ON DELETE CASCADE from
+//  1. import_batch first (cascading import_record via migration 00012's
+//     ON DELETE CASCADE) — a batch's target_account_id and a record's
+//     transaction_id are plain, non-cascading REFERENCES into
+//     accounts/transactions with no cascade of their own, and neither
+//     column is cleared by committing, excluding, or rolling back a batch
+//     (rollback only soft-deletes the transaction a record points at, per
+//     ADR-0008's "provenance stays queryable" guarantee). A restore is a
+//     full-ledger replace, so actorID's entire import history — staged,
+//     committed, or rolled back — goes with it rather than surviving as
+//     orphaned provenance for accounts/transactions that no longer exist
+//     (issue #236).
+//  2. transaction_revisions — it has no ON DELETE CASCADE from
 //     transactions (unlike postings and transaction_tags, which do), so a
 //     revision row referencing a transaction actorID is about to lose would
 //     otherwise leave a dangling reference.
-//  2. transactions — cascades postings and transaction_tags automatically
+//  3. transactions — cascades postings and transaction_tags automatically
 //     (migrations 00006 and 00007's ON DELETE CASCADE).
-//  3. categories, then accounts — nothing above references either by the
+//  4. categories, then accounts — nothing above references either by the
 //     time this runs, since every posting that could have was already
 //     removed by transactions' own cascade.
-//
-// A staged-but-uncommitted import batch or record referencing one of
-// actorID's accounts/categories/transactions (internal/domain/importing,
-// out of this issue's scope) has no cascade of its own here and will make
-// the delete that would orphan it fail with a foreign-key error instead of
-// silently succeeding — which, inside this same transaction, means the
-// whole restore rolls back rather than leaving a half-wiped ledger.
 func wipeActorLedger(ctx context.Context, tx execer, actorID string) *errs.Error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM import_batch WHERE user_id = ?`, actorID); err != nil {
+		return wrapWriteError(err).Explain("Couldn't clear existing import history before restoring.")
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM transaction_revisions WHERE user_id = ?`, actorID); err != nil {
 		return errs.New(errs.Internal).Wrap(err)
 	}
