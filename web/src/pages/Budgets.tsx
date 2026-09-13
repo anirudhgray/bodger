@@ -83,6 +83,36 @@ function formatMonthLabel(isoDate: string): string {
   })
 }
 
+// daysBetween counts whole calendar days from ISO date `a` to ISO date
+// `b`, via UTC millis so a DST transition in the viewer's own local
+// timezone can't shift the count by one — the dates themselves already
+// came from the server pre-resolved in the actor's own configured
+// timezone (BudgetActualsResult.From/To/AsOf), so this is pure calendar
+// arithmetic on values already fixed, not a second timezone resolution.
+function daysBetween(a: string, b: string): number {
+  const toUTCDays = (iso: string) => {
+    const [y, m, d] = iso.split('-').map(Number)
+    return Date.UTC(y, m - 1, d)
+  }
+  return Math.round((toUTCDays(b) - toUTCDays(a)) / 86_400_000)
+}
+
+// monthProgressPercent returns how far through a period's own [from, to]
+// range `as_of` falls, as 0-100 — null when as_of is outside that range
+// entirely (a past period, already fully elapsed, or a future one nobody
+// has reached yet), since the marker is only meaningful for whichever
+// period is actually in progress right now. This is date arithmetic on
+// three dates the server already resolved, not a financial figure this
+// screen is computing itself — the same category of client-side math
+// shiftMonth above already does, distinct from ADR-0009's "no summing,
+// converting, or rolling up" rule for money.
+function monthProgressPercent(period: BudgetActuals): number | null {
+  const totalDays = daysBetween(period.from, period.to) + 1
+  const elapsedDays = daysBetween(period.from, period.as_of) + 1
+  if (elapsedDays < 1 || elapsedDays > totalDays) return null
+  return (elapsedDays / totalDays) * 100
+}
+
 type UtilisationStatus = 'under' | 'at' | 'over'
 
 // utilisationStatus buckets a line's actual/budgeted ratio into the three
@@ -113,6 +143,40 @@ function utilisationTextClassName(status: UtilisationStatus): string {
   return status === 'over' ? 'text-destructive' : 'text-muted-foreground'
 }
 
+// UtilisationBar is the bar + percentage + under/at/over label shared by
+// the per-budget Overall row and every per-line row below it — the same
+// three-piece rendering, just fed a different utilisation figure. marker
+// (see monthProgressPercent above) is the same value for the Overall bar
+// and every line's bar within one period, since it depends only on the
+// period's own from/to/as_of, never on a line's own numbers.
+function UtilisationBar({
+  utilisation,
+  marker,
+}: {
+  utilisation: number
+  marker: number | null
+}) {
+  const status = utilisationStatus(utilisation)
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <Progress
+          value={Math.min(utilisation * 100, 100)}
+          indicatorClassName={utilisationBarClassName(status)}
+          marker={marker ?? undefined}
+          className="flex-1"
+        />
+        <span className="text-xs tabular-nums whitespace-nowrap">
+          {Math.round(utilisation * 100)}%
+        </span>
+      </div>
+      <p className={`text-xs ${utilisationTextClassName(status)}`}>
+        {UTILISATION_LABEL[status]}
+      </p>
+    </>
+  )
+}
+
 function BudgetPeriodTable({
   actuals,
   categoriesByID,
@@ -120,30 +184,47 @@ function BudgetPeriodTable({
   actuals: BudgetActuals
   categoriesByID: Map<string, string>
 }) {
-  if (actuals.lines.length === 0) {
-    return (
-      <p className="text-muted-foreground text-sm">
-        No lines yet — edit this budget to plan an amount for a category.
-      </p>
-    )
-  }
+  const marker = monthProgressPercent(actuals)
 
   return (
     <>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Category</TableHead>
-            <TableHead className="text-right">Budgeted</TableHead>
-            <TableHead className="text-right">Actual</TableHead>
-            <TableHead className="text-right">Remaining</TableHead>
-            <TableHead className="w-40">Utilisation</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {actuals.lines.map((line) => {
-            const status = utilisationStatus(line.utilisation)
-            return (
+      <div className="mb-4 flex flex-col gap-1 border-b pb-4">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">Overall</span>
+          <span className="text-muted-foreground text-sm tabular-nums">
+            {actuals.overall.actual} / {actuals.overall.budgeted}{' '}
+            {actuals.currency}
+          </span>
+        </div>
+        <UtilisationBar
+          utilisation={actuals.overall.utilisation}
+          marker={marker}
+        />
+        {marker !== null && (
+          <p className="text-muted-foreground text-xs">
+            The marker (│) shows how far through the period we are —{' '}
+            {Math.round(marker)}% of the way through.
+          </p>
+        )}
+      </div>
+
+      {actuals.lines.length === 0 ? (
+        <p className="text-muted-foreground text-sm">
+          No lines yet — edit this budget to plan an amount for a category.
+        </p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Category</TableHead>
+              <TableHead className="text-right">Budgeted</TableHead>
+              <TableHead className="text-right">Actual</TableHead>
+              <TableHead className="text-right">Remaining</TableHead>
+              <TableHead className="w-40">Utilisation</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {actuals.lines.map((line) => (
               <TableRow key={line.line_id}>
                 <TableCell>
                   {categoriesByID.get(line.category_id) ?? line.category_id}
@@ -158,25 +239,16 @@ function BudgetPeriodTable({
                   {line.remaining} {actuals.currency}
                 </TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Progress
-                      value={Math.min(line.utilisation * 100, 100)}
-                      indicatorClassName={utilisationBarClassName(status)}
-                      className="flex-1"
-                    />
-                    <span className="text-xs tabular-nums whitespace-nowrap">
-                      {Math.round(line.utilisation * 100)}%
-                    </span>
-                  </div>
-                  <p className={`text-xs ${utilisationTextClassName(status)}`}>
-                    {UTILISATION_LABEL[status]}
-                  </p>
+                  <UtilisationBar
+                    utilisation={line.utilisation}
+                    marker={marker}
+                  />
                 </TableCell>
               </TableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
+            ))}
+          </TableBody>
+        </Table>
+      )}
       {actuals.unconverted && actuals.unconverted.length > 0 && (
         <div className="mt-3 flex flex-col gap-1">
           {actuals.unconverted.map((u, i) => (
