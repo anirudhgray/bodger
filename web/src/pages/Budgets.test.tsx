@@ -76,8 +76,8 @@ const household: Budget = {
 }
 
 // asOf defaults to `from`, outside most tests' concern — pass it
-// explicitly to exercise the month-progress marker (monthProgressPercent
-// in Budgets.tsx), which only renders when as_of falls within [from, to].
+// explicitly to exercise the month-progress marker (monthProgress in
+// Budgets.tsx), which only renders when as_of falls within [from, to].
 function historyFor(
   budget: Budget,
   from: string,
@@ -171,7 +171,7 @@ describe('BudgetsPage', () => {
     expect(mockedGetBudgetHistory).toHaveBeenCalledWith('b1', undefined, 1)
   })
 
-  it('shows the month-progress marker when the period is the current one', async () => {
+  it('shows the month-progress marker (with its hover title) when the period is the current one', async () => {
     mockedListBudgets.mockResolvedValue([household])
     // 13th of a 30-day September: 13/30 = 43.3%, rounds to 43%.
     mockedGetBudgetHistory.mockResolvedValue(
@@ -179,10 +179,22 @@ describe('BudgetsPage', () => {
     )
 
     renderPage()
+    // Wait for the line-level data itself, not just "Household" — that
+    // renders a step ahead of the per-period getBudgetHistory fetch the
+    // marker's title comes from (same race the first test's own comment
+    // above warns about).
+    await screen.findByText('Groceries')
 
+    // The marker's explanation lives in a native `title` attribute (see
+    // components/ui/progress.tsx's own doc comment for why, over a Radix
+    // Tooltip), not visible text — rendered once for the Overall bar and
+    // once for the one line, since with a single line they cover the same
+    // period.
     expect(
-      await screen.findByText(/43% of the way through/),
-    ).toBeInTheDocument()
+      screen.getAllByTitle(
+        'Day 13 of 30 in this period (43%) — compare against the fill to see if spending is ahead of or behind pace.',
+      ),
+    ).toHaveLength(2)
   })
 
   it('hides the month-progress marker for a period that is not the current one', async () => {
@@ -195,8 +207,8 @@ describe('BudgetsPage', () => {
 
     renderPage()
 
-    await screen.findByText('Household')
-    expect(screen.queryByText(/of the way through/)).not.toBeInTheDocument()
+    await screen.findByText('Groceries')
+    expect(screen.queryAllByTitle(/in this period/)).toHaveLength(0)
   })
 
   it('shows an empty state with a call to action when there are no budgets', async () => {
