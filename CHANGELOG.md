@@ -9,6 +9,30 @@ sync with each GitHub Release.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-13
+
+### Added
+
+* [3268fc94](https://github.com/anirudhgray/bodger/commit/3268fc94): feat(api,cli): export surface — JSON backup and CSV download (#224) (@anirudhgray)
+* [6b30a7ba](https://github.com/anirudhgray/bodger/commit/6b30a7ba): feat(api,cli): import surface — upload, review, commit, rollback (#231) (@anirudhgray)
+* [6b5056de](https://github.com/anirudhgray/bodger/commit/6b5056de): feat(api,cli): snapshot restore surface — REST/CLI wiring (#232) (@anirudhgray)
+* [a3aa98c3](https://github.com/anirudhgray/bodger/commit/a3aa98c3): feat(app): canonical JSON and CSV export (#223) (@anirudhgray)
+* [65b47aed](https://github.com/anirudhgray/bodger/commit/65b47aed): feat(app): canonical JSON snapshot restore (#230) (@anirudhgray)
+* [a50dd883](https://github.com/anirudhgray/bodger/commit/a50dd883): feat(app): import commit and rollback (#229) (@anirudhgray)
+* [2915fdf4](https://github.com/anirudhgray/bodger/commit/2915fdf4): feat(app): import staging pipeline — CSV parser, mapping, duplicate detection (#225) (@anirudhgray)
+* [e276d020](https://github.com/anirudhgray/bodger/commit/e276d020): feat(domain,persistence): import batch and record model (#222) (@anirudhgray)
+* [cba52e0a](https://github.com/anirudhgray/bodger/commit/cba52e0a): feat(web): import and export UI (#238) (@anirudhgray)
+
+### Changed
+
+* [38312d12](https://github.com/anirudhgray/bodger/commit/38312d12): perf(web): lazy-load the date picker to shrink the initial bundle (#218) (@anirudhgray)
+
+### Fixed
+
+* [8d4d9bbc](https://github.com/anirudhgray/bodger/commit/8d4d9bbc): fix(api): remove ADR citation from balances route description (#217) (@anirudhgray)
+* [f4d49a73](https://github.com/anirudhgray/bodger/commit/f4d49a73): fix(app): insert restored categories in topological order (#240) (@anirudhgray)
+* [696d62ea](https://github.com/anirudhgray/bodger/commit/696d62ea): fix(sqlite): clear import history before wiping actor's ledger on restore (#239) (@anirudhgray)
+
 ## [0.5.0] - 2026-09-12
 
 ### Added
@@ -129,7 +153,8 @@ sync with each GitHub Release.
 * 5ae7d547: fix(infra): make lint fail loudly on an incompatible golangci-lint (#23)
 * c76bd7e7: fix(infra): pre-push hook executable bit, worktree hygiene (#14)
 
-[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/anirudhgray/bodger/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/anirudhgray/bodger/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/anirudhgray/bodger/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/anirudhgray/bodger/compare/v0.2.0...v0.3.0
