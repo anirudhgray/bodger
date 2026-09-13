@@ -96,7 +96,16 @@ type ToolDef struct {
 // #261's write-tier wiring: recording/editing transactions and budget/line
 // CRUD, allowed and audited via mcp_tool_call (ADR-0013). archiveBudgetTool
 // is registered here as write, not destructive -- see its own doc comment
-// for the reasoning. Destructive tools are #262, not this file.
+// for the reasoning.
+//
+// Every tool from deleteTransactionTool through restoreSnapshotTool is
+// issue #262's destructive-tier wiring: soft-deleting a transaction,
+// committing or rolling back a staged import, and restoring a full backup
+// document. Each declares a non-nil Describe (ToolDescribeFunc), so
+// Dispatcher.Register's own panic guard is satisfied, and each is only
+// ever registered when the dispatcher was constructed with
+// allowDestructive (ADR-0013's --allow-destructive gate, enforced
+// generically by Dispatcher.Register -- nothing here re-implements it).
 func Tools() []ToolDef {
 	return []ToolDef{
 		whoAmITool(),
@@ -116,5 +125,9 @@ func Tools() []ToolDef {
 		updateBudgetLineTool(),
 		removeBudgetLineTool(),
 		archiveBudgetTool(),
+		deleteTransactionTool(),
+		commitImportTool(),
+		rollbackImportTool(),
+		restoreSnapshotTool(),
 	}
 }
