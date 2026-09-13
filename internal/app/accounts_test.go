@@ -53,6 +53,7 @@ func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
 		importBatches, importRecords, newMemImportCommits(importBatches, importRecords, transactions),
 		newMemSnapshots(accounts, categories, transactions, budgets),
 		budgets,
+		newMemMCPToolCalls(),
 	)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)

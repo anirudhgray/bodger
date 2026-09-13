@@ -1143,3 +1143,45 @@ func (m *memBudgets) Update(_ context.Context, actorID string, b budgeting.Budge
 }
 
 var _ ports.BudgetRepository = (*memBudgets)(nil)
+
+// memMCPToolCalls is an in-memory ports.MCPToolCallRepository, the
+// memBudgets/memImportBatches equivalent for issue #259's mcp_tool_call
+// audit trail.
+type memMCPToolCalls struct {
+	byID map[string]ports.MCPToolCall
+	seq  map[string]int
+	next int
+}
+
+func newMemMCPToolCalls() *memMCPToolCalls {
+	return &memMCPToolCalls{byID: map[string]ports.MCPToolCall{}, seq: map[string]int{}}
+}
+
+func (m *memMCPToolCalls) Create(_ context.Context, actorID string, call ports.MCPToolCall) error {
+	if call.UserID != actorID {
+		return errs.New(errs.NotAllowed)
+	}
+	m.next++
+	m.byID[call.ID] = call
+	m.seq[call.ID] = m.next
+	return nil
+}
+
+// List returns actorID's own calls, most recently called first —
+// mirroring the real adapter's ORDER BY called_at DESC using insertion
+// sequence, since this fixture has no called_at index to sort by.
+func (m *memMCPToolCalls) List(_ context.Context, actorID string, limit int) ([]ports.MCPToolCall, error) {
+	var out []ports.MCPToolCall
+	for _, c := range m.byID {
+		if c.UserID == actorID {
+			out = append(out, c)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return m.seq[out[i].ID] > m.seq[out[j].ID] })
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+var _ ports.MCPToolCallRepository = (*memMCPToolCalls)(nil)

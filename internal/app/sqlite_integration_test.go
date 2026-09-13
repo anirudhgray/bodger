@@ -77,6 +77,7 @@ func newSQLiteTestService(t *testing.T, frozenAt time.Time, tz string) (svc *app
 		sqlite.NewImportBatchRepository(db), sqlite.NewImportRecordRepository(db), sqlite.NewImportCommitRepository(db),
 		sqlite.NewSnapshotRepository(db),
 		sqlite.NewBudgetRepository(db),
+		sqlite.NewMCPToolCallRepository(db),
 	)
 	if err != nil {
 		t.Fatalf("app.NewService: %v", err)
