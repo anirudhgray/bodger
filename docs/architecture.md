@@ -225,8 +225,8 @@ The shared query/filter model ([ADR-0009](decisions/0009-query-and-analytics-mod
 ### M6 · Fangorn — Import and export
 The staged import pipeline, CSV import with column mapping, duplicate detection, preview and commit. Canonical versioned JSON export and full backup ([ADR-0008](decisions/0008-import-export-architecture.md)). Export lands before or with import: backup is what makes import safe to attempt. Named for the old forest that outlasts everything built around it — a fitting name for the milestone where the ledger's own history, not just its present state, becomes something you can carry out and bring back in.
 
-### M7 — Budgets
-Monthly category budgets, actual vs budget, remaining, utilisation, history. Rollover stays deferred.
+### M7 · Gondor — Budgets
+Monthly category budgets, actual vs budget, remaining, utilisation, history. Rollover stays deferred. Named for the Stewards of Gondor, who administered the realm's resources on behalf of a plan, disciplined and kept strictly apart from the throne's own authority — a fitting name for the milestone where a budget is explicitly "a plan, kept strictly separate from what actually happened" (data-model.md §10).
 
 ### M8 — MCP server
 `bodger mcp` over stdio. Read, write, and destructive tool tiers with confirmation and audit.
@@ -813,6 +813,23 @@ reference, and `restoreCategories` inserts categories in parent-before-
 child topological order rather than the document's own (ID-sorted) array
 order. With both merged, M6 is complete.
 
+**M7 · Gondor is in progress** — see the
+[M7 milestone](https://github.com/anirudhgray/bodger/milestone/7) for its
+issues. [#241](https://github.com/anirudhgray/bodger/issues/241) lands the
+foundation everything else in the milestone reads or writes through
+(data-model.md §10): `internal/domain/budgeting`'s `Budget` (embedding its
+own `[]BudgetLine` as a single aggregate, the same shape
+`ledger.Transaction` embeds `[]Posting`), `PeriodType` (a closed, validated
+string type with only `PeriodTypeMonthly` for now), migration
+`00014_add_budget_tables.sql` (`budgets`/`budget_lines`, next sequential
+prefix per ADR-0007), and `BudgetRepository` in
+`internal/ports`/`internal/adapters/sqlite`, wired into `Service.Budgets`
+the same way `ImportBatches`/`ImportRecords` were wired in ahead of their
+own first use-case method. CRUD (#242), actuals/reporting (#243), and
+surface/web wiring (#244/#245) are separate, later issues that write to
+this foundation; extending export/restore to cover budgets (#246) is
+independent and can proceed in parallel.
+
 | Milestone | Status |
 | --- | --- |
 | M0 — Architecture, docs, toolchain, CI | ✅ Complete |
@@ -822,7 +839,7 @@ order. With both merged, M6 is complete.
 | M4 · The Grey Havens — Multi-currency and FX | ✅ Complete |
 | M5 · Orthanc — Analytics and charts | ✅ Complete |
 | M6 · Fangorn — Import and export | ✅ Complete (v0.6.0) |
-| M7 — Budgets | ⬜ Not started |
+| M7 · Gondor — Budgets | 🚧 In progress |
 | M8 — MCP server | ⬜ Not started |
 | M9 — Recurring transactions | ⬜ Not started |
 
