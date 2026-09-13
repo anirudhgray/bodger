@@ -20,6 +20,7 @@
 | [import_record](import_record.md) | 21 |  | table |
 | [budgets](budgets.md) | 9 |  | table |
 | [budget_lines](budget_lines.md) | 5 |  | table |
+| [mcp_tool_call](mcp_tool_call.md) | 8 |  | table |
 
 ## Relations
 
@@ -57,6 +58,7 @@ erDiagram
 "budgets" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "budget_lines" }o--|| "categories" : "FOREIGN KEY (category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "budget_lines" }o--|| "budgets" : "FOREIGN KEY (budget_id) REFERENCES budgets (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+"mcp_tool_call" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 
 "users" {
   TEXT id PK
@@ -215,6 +217,16 @@ erDiagram
   TEXT category_id FK
   INTEGER amount_minor
   INTEGER rollover
+}
+"mcp_tool_call" {
+  TEXT id PK
+  TEXT user_id FK
+  TEXT tool_name
+  TEXT tier
+  TEXT arguments
+  TEXT confirmation_token
+  TEXT result
+  TEXT called_at
 }
 ```
 
