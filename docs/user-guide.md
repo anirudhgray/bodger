@@ -594,6 +594,23 @@ These are always available, need no confirmation, and aren't recorded in `bodger
 
 There's also `whoami`, which just reports the identity bodger's MCP server is acting as.
 
+### Make-changes tools
+
+These are available by default (no `--allow-destructive` needed), run immediately with no confirmation step, and are recorded in `bodger mcp audit`.
+
+| Tool | What it does |
+| --- | --- |
+| `record_outflow` | Record money leaving an account, optionally attributed to a category — the same as `bodger spend`. |
+| `record_inflow` | Record money arriving in an account, optionally attributed to a category — the same as `bodger receive`. |
+| `record_transfer` | Record a transfer of money from one account to another — the same as `bodger move`. |
+| `edit_transaction` | Replace an existing transaction's fields (a full replacement, not a partial patch) — the same as `bodger transactions edit`. |
+| `create_budget` | Create a new monthly budget, optionally with an initial batch of category lines — the same as `bodger budgets add`. |
+| `update_budget` | Update a budget's name and start date (a full replacement of both) — the same as `bodger budgets update`. |
+| `add_budget_line` | Add one new category line to an existing budget — the same as `bodger budgets lines add`. |
+| `update_budget_line` | Update an existing budget line's amount and rollover flag — the same as `bodger budgets lines update`. |
+| `remove_budget_line` | Remove one line from an existing budget — the same as `bodger budgets lines remove`. |
+| `archive_budget` | Archive a budget: it stops appearing in current listings and creation flows, but its history stays fully queryable and archiving is fully reversible — the same as `bodger budgets archive`. |
+
 ### Reviewing what an assistant has done
 
 `bodger mcp audit` lists what an assistant has actually changed — every "make a change" or "undo/bulk change" request it made, most recent first. Looking things up isn't listed here, since nothing you look up ever changes anything.
