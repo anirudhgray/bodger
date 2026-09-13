@@ -696,12 +696,18 @@ transaction/posting with freshly generated IDs, remapping every internal
 reference (a posting's account/category, a category's parent, a
 transaction's related transaction) to the newly generated ones before
 handing the result to `SnapshotRepository.Replace`. Budgets/budget lines
-and FX rates are still absent from a restore for the same reason
-`ExportSnapshot` doesn't emit them yet (#209's own scope note): no budget
-domain type exists before M7, and no port method enumerates every stored
-`fx_rate` row. #227 (REST/CLI wiring behind a confirmation step) and
-#214's web restore flow are still open; #215's round-trip test can now
-build on #226 as its dependency note expected.
+were absent from a restore at the time this was written, for the same
+reason `ExportSnapshot` didn't emit them yet (#209's own scope note): no
+budget domain type existed before M7. As of
+[#221](https://github.com/anirudhgray/bodger/issues/221) and
+[#246](https://github.com/anirudhgray/bodger/issues/246), budgets and
+their lines are exported and restored the same way every other entity
+here is; FX rates are exported (#221) but deliberately never restored,
+since `fx_rates` carries no actor/user scoping at all (ADR-0004) and a
+restore is defined per-actor — see #221/#246's own notes for the full
+reasoning. #227 (REST/CLI wiring behind a confirmation step) and #214's
+web restore flow are still open; #215's round-trip test can now build on
+#226 as its dependency note expected.
 
 **#227 wires that restore use case onto REST and CLI, both refusing to
 run without an explicit confirmation.** `POST /api/v1/restore` takes the
@@ -824,7 +830,9 @@ order. With both merged, M6 is complete.
 
 A follow-up built on top of #244/#245 added two more figures to actuals/history, on user feedback that a single utilisation percentage doesn't say whether spending is actually on pace for the month: `BudgetActualsResult` (and both surfaces' `actuals`/`history` responses) gained `AsOf` (today, resolved once in the actor's timezone the same way `AccountBalancesResult.AsOf` already is) and `Overall` (every line's budgeted/actual/remaining/utilisation summed into one figure for the whole budget — still server-computed, per ADR-0009). The web UI renders `Overall` as its own bar above the per-line table, and — only for whichever period is actually in progress right now, computed from `AsOf` falling within `[From, To]` — draws a marker on every bar for how far through the month today is, so a line running ahead of that marker reads as a pace problem even while its own percentage still says "under budget." The marker is drawn taller and wider than the track itself, in the accent color with a background-colored ring around it so it stays legible over either fill color (a same-color marker over a same-color fill would otherwise disappear exactly when it matters most), and its day-count explanation lives in a native `title` attribute rather than a persistent caption or a Radix `Tooltip` — `docs/design-system.md`'s "Balances: rate-provenance detail row" section already worked through why `Tooltip` doesn't fit a mobile-reachable screen with no app-wide `TooltipProvider` mounted; a plain `title` sidesteps that without reintroducing it. `components/ui/progress.tsx` gained `marker`/`markerTitle` props alongside its existing `indicatorClassName` one for this.
 
-Extending export/restore to cover budgets ([#246](https://github.com/anirudhgray/bodger/issues/246)) remains open.
+[#246](https://github.com/anirudhgray/bodger/issues/246) extends export/restore to cover budgets. `ExportSnapshot`/`toJSONEnvelope` gained a `Budgets` field (`internal/domain/budgeting.Budget`, sorted by ID ascending the same way accounts/categories already are — `BudgetRepository.List`'s own most-recently-created-first order isn't the deterministic order export needs) and a nested `lines` array per budget in the wire format, mirroring how a transaction's postings nest under `postings` rather than a sibling top-level `budget_lines` array. `RestoreSnapshot` gained a matching `restoreBudgets`, following `restoreAccounts`/`restoreCategories`'s shape: a fresh ID per budget and per line, each line's `category_id` remapped through the same `categoryIDs` map `restorePostings` already resolves a posting's category through, and a dangling reference is rejected the same way. `SnapshotRepository.Replace`/`wipeActorLedger` insert budgets after categories and delete them before categories — `budget_lines.category_id` has a plain `REFERENCES categories(id)` with no cascade (migration `00014_add_budget_tables.sql`), so either ordering mistake trips a FOREIGN KEY constraint error, reusing `insertBudgetRow`/`insertBudgetLines` from `budget_repo.go` rather than duplicating the SQL. `internal/app/roundtrip_test.go`'s fixture now includes a budget with a line against an existing category, with `canonicalizeExport` extended to reorder budgets by name (their own stable business key, alongside a new ID-normalizer prefix for budgets and one for lines) and remap each line's `category_id` the same way a posting's is remapped.
+
+[#221](https://github.com/anirudhgray/bodger/issues/221) closes the other export gap: `ports.FxRateRepository` gained `ListAll` (the one method on that interface with no actor scoping, consistent with the rest of it — `fx_rates` carries no actor/user scoping at all, ADR-0004), returning every stored row ordered by `(base, quote, rate_date, source)` for a deterministic export. `ExportSnapshot`/`toJSONEnvelope` gained an `FxRates` field populated from it. Unlike budgets, FX rates are export-only, deliberately: `RestoreSnapshot`/`SnapshotRepository.Replace` both operate per-actor, and there's no per-actor ownership check that would make sense for a globally-shared table — a restore simply never touches `fx_rates`, so any rows present before a restore remain present, untouched, after it. `ports.Snapshot` and `RestoreSnapshot`'s own doc comments spell out this asymmetry so it reads as a deliberate design choice, not a gap. With #221 and #246 both closed, the export/restore gaps ADR-0008 anticipated for budgets and FX rates are resolved; see the milestone table below for M7's overall status.
 
 | Milestone | Status |
 | --- | --- |
