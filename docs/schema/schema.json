@@ -1,0 +1,2127 @@
+{
+  "name": "bodger",
+  "tables": [
+    {
+      "name": "users",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "password_hash",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "reporting_currency",
+          "type": "TEXT",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "sqlite_autoindex_users_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "users",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "users",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_users_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "users",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE users (\n    id         TEXT PRIMARY KEY,\n    created_at TEXT NOT NULL\n, password_hash TEXT, reporting_currency TEXT)"
+    },
+    {
+      "name": "currencies",
+      "type": "table",
+      "columns": [
+        {
+          "name": "code",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "symbol",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "minor_unit_exponent",
+          "type": "INTEGER",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "sqlite_autoindex_currencies_1",
+          "def": "PRIMARY KEY (code)",
+          "table": "currencies",
+          "columns": [
+            "code"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "code",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (code)",
+          "table": "currencies",
+          "columns": [
+            "code"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_currencies_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (code)",
+          "table": "currencies",
+          "columns": [
+            "code"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE currencies (\n    code                TEXT PRIMARY KEY,\n    name                TEXT NOT NULL,\n    symbol              TEXT NOT NULL,\n    minor_unit_exponent INTEGER NOT NULL\n)"
+    },
+    {
+      "name": "transactions",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "kind",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "booked_date",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "posted_date",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "notes",
+          "type": "TEXT",
+          "nullable": false,
+          "default": "''"
+        },
+        {
+          "name": "deleted_at",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "import_record_id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "external_id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "related_transaction_id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "fx_rate_used",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "fx_rate_source",
+          "type": "TEXT",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_transactions_related",
+          "def": "CREATE INDEX idx_transactions_related ON transactions (related_transaction_id)",
+          "table": "transactions",
+          "columns": [
+            "related_transaction_id"
+          ]
+        },
+        {
+          "name": "idx_transactions_user_deleted_booked",
+          "def": "CREATE INDEX idx_transactions_user_deleted_booked\n    ON transactions (user_id, deleted_at, booked_date)",
+          "table": "transactions",
+          "columns": [
+            "user_id",
+            "deleted_at",
+            "booked_date"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_transactions_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "transactions",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "transactions",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (related_transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "transactions",
+          "referenced_table": "transactions",
+          "columns": [
+            "related_transaction_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "transactions",
+          "referenced_table": "users",
+          "columns": [
+            "user_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_transactions_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "transactions",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (kind IN ('outflow', 'inflow', 'transfer'))",
+          "table": "transactions",
+          "columns": [
+            "kind"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE transactions (\n    id                      TEXT PRIMARY KEY,\n    user_id                 TEXT NOT NULL REFERENCES users (id),\n    kind                    TEXT NOT NULL CHECK (kind IN ('outflow', 'inflow', 'transfer')),\n    booked_date             TEXT NOT NULL,\n    posted_date             TEXT,\n    description             TEXT NOT NULL,\n    notes                   TEXT NOT NULL DEFAULT '',\n    deleted_at              TEXT,\n    import_record_id        TEXT,\n    external_id             TEXT,\n    related_transaction_id  TEXT REFERENCES transactions (id),\n    created_at              TEXT NOT NULL,\n    updated_at              TEXT NOT NULL\n, fx_rate_used TEXT, fx_rate_source TEXT)"
+    },
+    {
+      "name": "postings",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "transaction_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "account_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "amount_minor",
+          "type": "INTEGER",
+          "nullable": false
+        },
+        {
+          "name": "currency",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "category_id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "sort_order",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "0"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_postings_category_id",
+          "def": "CREATE INDEX idx_postings_category_id ON postings (category_id)",
+          "table": "postings",
+          "columns": [
+            "category_id"
+          ]
+        },
+        {
+          "name": "idx_postings_account_id",
+          "def": "CREATE INDEX idx_postings_account_id ON postings (account_id)",
+          "table": "postings",
+          "columns": [
+            "account_id"
+          ]
+        },
+        {
+          "name": "idx_postings_transaction_id",
+          "def": "CREATE INDEX idx_postings_transaction_id ON postings (transaction_id)",
+          "table": "postings",
+          "columns": [
+            "transaction_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_postings_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "postings",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "postings",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "postings",
+          "referenced_table": "categories",
+          "columns": [
+            "category_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "postings",
+          "referenced_table": "currencies",
+          "columns": [
+            "currency"
+          ],
+          "referenced_columns": [
+            "code"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 2)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "postings",
+          "referenced_table": "accounts",
+          "columns": [
+            "account_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 3)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
+          "table": "postings",
+          "referenced_table": "transactions",
+          "columns": [
+            "transaction_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_postings_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "postings",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE postings (\n    id           TEXT PRIMARY KEY,\n    transaction_id TEXT NOT NULL REFERENCES transactions (id) ON DELETE CASCADE,\n    account_id   TEXT NOT NULL REFERENCES accounts (id),\n    amount_minor INTEGER NOT NULL,\n    currency     TEXT NOT NULL REFERENCES currencies (code),\n    category_id  TEXT REFERENCES categories (id),\n    sort_order   INTEGER NOT NULL DEFAULT 0\n)"
+    },
+    {
+      "name": "tags",
+      "type": "table",
+      "columns": [
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "value",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "sqlite_autoindex_tags_1",
+          "def": "PRIMARY KEY (user_id, value)",
+          "table": "tags",
+          "columns": [
+            "user_id",
+            "value"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "user_id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (user_id)",
+          "table": "tags",
+          "columns": [
+            "user_id"
+          ]
+        },
+        {
+          "name": "value",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (value)",
+          "table": "tags",
+          "columns": [
+            "value"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "tags",
+          "referenced_table": "users",
+          "columns": [
+            "user_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_tags_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (user_id, value)",
+          "table": "tags",
+          "columns": [
+            "user_id",
+            "value"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE tags (\n    user_id    TEXT NOT NULL REFERENCES users (id),\n    value      TEXT NOT NULL,\n    created_at TEXT NOT NULL,\n    PRIMARY KEY (user_id, value)\n)"
+    },
+    {
+      "name": "transaction_tags",
+      "type": "table",
+      "columns": [
+        {
+          "name": "transaction_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "tag_value",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_transaction_tags_user_tag",
+          "def": "CREATE INDEX idx_transaction_tags_user_tag ON transaction_tags (user_id, tag_value)",
+          "table": "transaction_tags",
+          "columns": [
+            "user_id",
+            "tag_value"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_transaction_tags_1",
+          "def": "PRIMARY KEY (transaction_id, tag_value)",
+          "table": "transaction_tags",
+          "columns": [
+            "transaction_id",
+            "tag_value"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "transaction_id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (transaction_id)",
+          "table": "transaction_tags",
+          "columns": [
+            "transaction_id"
+          ]
+        },
+        {
+          "name": "tag_value",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (tag_value)",
+          "table": "transaction_tags",
+          "columns": [
+            "tag_value"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (user_id, tag_value) REFERENCES tags (user_id, value) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "transaction_tags",
+          "referenced_table": "tags",
+          "columns": [
+            "user_id",
+            "tag_value"
+          ],
+          "referenced_columns": [
+            "user_id",
+            "value"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
+          "table": "transaction_tags",
+          "referenced_table": "transactions",
+          "columns": [
+            "transaction_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_transaction_tags_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (transaction_id, tag_value)",
+          "table": "transaction_tags",
+          "columns": [
+            "transaction_id",
+            "tag_value"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE transaction_tags (\n    transaction_id TEXT NOT NULL REFERENCES transactions (id) ON DELETE CASCADE,\n    user_id        TEXT NOT NULL,\n    tag_value      TEXT NOT NULL,\n    PRIMARY KEY (transaction_id, tag_value),\n    FOREIGN KEY (user_id, tag_value) REFERENCES tags (user_id, value)\n)"
+    },
+    {
+      "name": "transaction_revisions",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": true
+        },
+        {
+          "name": "transaction_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "previous_state",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_transaction_revisions_transaction_id",
+          "def": "CREATE INDEX idx_transaction_revisions_transaction_id ON transaction_revisions (transaction_id)",
+          "table": "transaction_revisions",
+          "columns": [
+            "transaction_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "transaction_revisions",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "transaction_revisions",
+          "referenced_table": "users",
+          "columns": [
+            "user_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "transaction_revisions",
+          "referenced_table": "transactions",
+          "columns": [
+            "transaction_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE transaction_revisions (\n    id             INTEGER PRIMARY KEY AUTOINCREMENT,\n    transaction_id TEXT NOT NULL REFERENCES transactions (id),\n    user_id        TEXT NOT NULL REFERENCES users (id),\n    previous_state TEXT NOT NULL,\n    created_at     TEXT NOT NULL\n)"
+    },
+    {
+      "name": "accounts",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "kind",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "currency",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "institution",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "opening_balance_minor",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "opening_balance_date",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "archived_at",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "sort_order",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_accounts_user_id",
+          "def": "CREATE INDEX idx_accounts_user_id ON accounts (user_id)",
+          "table": "accounts",
+          "columns": [
+            "user_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_accounts_2",
+          "def": "UNIQUE (user_id, name)",
+          "table": "accounts",
+          "columns": [
+            "user_id",
+            "name"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_accounts_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "accounts",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "accounts",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "accounts",
+          "referenced_table": "currencies",
+          "columns": [
+            "currency"
+          ],
+          "referenced_columns": [
+            "code"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "accounts",
+          "referenced_table": "users",
+          "columns": [
+            "user_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_accounts_2",
+          "type": "UNIQUE",
+          "def": "UNIQUE (user_id, name)",
+          "table": "accounts",
+          "columns": [
+            "user_id",
+            "name"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_accounts_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "accounts",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (kind IN ('bank', 'cash', 'credit_card', 'wallet', 'investment', 'loan', 'other'))",
+          "table": "accounts",
+          "columns": [
+            "kind"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE \"accounts\" (\n    id                     TEXT PRIMARY KEY,\n    user_id                TEXT NOT NULL REFERENCES users (id),\n    name                   TEXT NOT NULL,\n    kind                   TEXT NOT NULL CHECK (kind IN ('bank', 'cash', 'credit_card', 'wallet', 'investment', 'loan', 'other')),\n    currency               TEXT NOT NULL REFERENCES currencies (code),\n    institution            TEXT,\n    opening_balance_minor  INTEGER NOT NULL DEFAULT 0,\n    opening_balance_date   TEXT,\n    archived_at            TEXT,\n    sort_order             INTEGER NOT NULL DEFAULT 0,\n    created_at             TEXT NOT NULL,\n    updated_at             TEXT NOT NULL,\n    UNIQUE (user_id, name)\n)"
+    },
+    {
+      "name": "categories",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "parent_id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "kind",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "archived_at",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "sort_order",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_categories_unique_sibling_name",
+          "def": "CREATE UNIQUE INDEX idx_categories_unique_sibling_name\n    ON categories (user_id, parent_id, name)\n    WHERE parent_id IS NOT NULL",
+          "table": "categories",
+          "columns": [
+            "user_id",
+            "parent_id",
+            "name"
+          ]
+        },
+        {
+          "name": "idx_categories_unique_top_level_name",
+          "def": "CREATE UNIQUE INDEX idx_categories_unique_top_level_name\n    ON categories (user_id, name)\n    WHERE parent_id IS NULL",
+          "table": "categories",
+          "columns": [
+            "user_id",
+            "name"
+          ]
+        },
+        {
+          "name": "idx_categories_parent_id",
+          "def": "CREATE INDEX idx_categories_parent_id ON categories (parent_id)",
+          "table": "categories",
+          "columns": [
+            "parent_id"
+          ]
+        },
+        {
+          "name": "idx_categories_user_id",
+          "def": "CREATE INDEX idx_categories_user_id ON categories (user_id)",
+          "table": "categories",
+          "columns": [
+            "user_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_categories_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "categories",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "categories",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (parent_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "categories",
+          "referenced_table": "categories",
+          "columns": [
+            "parent_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "categories",
+          "referenced_table": "users",
+          "columns": [
+            "user_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_categories_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "categories",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (kind IN ('expense', 'income'))",
+          "table": "categories",
+          "columns": [
+            "kind"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE \"categories\" (\n    id         TEXT PRIMARY KEY,\n    user_id    TEXT NOT NULL REFERENCES users (id),\n    parent_id  TEXT REFERENCES categories (id),\n    name       TEXT NOT NULL,\n    kind       TEXT NOT NULL CHECK (kind IN ('expense', 'income')),\n    archived_at TEXT,\n    sort_order INTEGER NOT NULL DEFAULT 0,\n    created_at TEXT NOT NULL,\n    updated_at TEXT NOT NULL\n)"
+    },
+    {
+      "name": "sessions",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "token_hash",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "last_used_at",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "expires_at",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_sessions_user_id",
+          "def": "CREATE INDEX idx_sessions_user_id ON sessions (user_id)",
+          "table": "sessions",
+          "columns": [
+            "user_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_sessions_2",
+          "def": "UNIQUE (token_hash)",
+          "table": "sessions",
+          "columns": [
+            "token_hash"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_sessions_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "sessions",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "sessions",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "sessions",
+          "referenced_table": "users",
+          "columns": [
+            "user_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_sessions_2",
+          "type": "UNIQUE",
+          "def": "UNIQUE (token_hash)",
+          "table": "sessions",
+          "columns": [
+            "token_hash"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_sessions_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "sessions",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE sessions (\n    id           TEXT PRIMARY KEY,\n    user_id      TEXT NOT NULL REFERENCES users (id),\n    token_hash   TEXT NOT NULL UNIQUE,\n    created_at   TEXT NOT NULL,\n    last_used_at TEXT NOT NULL,\n    expires_at   TEXT NOT NULL\n)"
+    },
+    {
+      "name": "api_tokens",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "token_hash",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "last_used_at",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "expires_at",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "revoked_at",
+          "type": "TEXT",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_api_tokens_user_id",
+          "def": "CREATE INDEX idx_api_tokens_user_id ON api_tokens (user_id)",
+          "table": "api_tokens",
+          "columns": [
+            "user_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_api_tokens_2",
+          "def": "UNIQUE (token_hash)",
+          "table": "api_tokens",
+          "columns": [
+            "token_hash"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_api_tokens_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "api_tokens",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "api_tokens",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "api_tokens",
+          "referenced_table": "users",
+          "columns": [
+            "user_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_api_tokens_2",
+          "type": "UNIQUE",
+          "def": "UNIQUE (token_hash)",
+          "table": "api_tokens",
+          "columns": [
+            "token_hash"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_api_tokens_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "api_tokens",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE api_tokens (\n    id           TEXT PRIMARY KEY,\n    user_id      TEXT NOT NULL REFERENCES users (id),\n    token_hash   TEXT NOT NULL UNIQUE,\n    name         TEXT NOT NULL,\n    created_at   TEXT NOT NULL,\n    last_used_at TEXT,\n    expires_at   TEXT,\n    revoked_at   TEXT\n)"
+    },
+    {
+      "name": "fx_rates",
+      "type": "table",
+      "columns": [
+        {
+          "name": "base",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "quote",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "rate_date",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "rate",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "source",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "fetched_at",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "sqlite_autoindex_fx_rates_1",
+          "def": "PRIMARY KEY (base, quote, rate_date, source)",
+          "table": "fx_rates",
+          "columns": [
+            "base",
+            "quote",
+            "rate_date",
+            "source"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "base",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (base)",
+          "table": "fx_rates",
+          "columns": [
+            "base"
+          ]
+        },
+        {
+          "name": "quote",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (quote)",
+          "table": "fx_rates",
+          "columns": [
+            "quote"
+          ]
+        },
+        {
+          "name": "rate_date",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (rate_date)",
+          "table": "fx_rates",
+          "columns": [
+            "rate_date"
+          ]
+        },
+        {
+          "name": "source",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (source)",
+          "table": "fx_rates",
+          "columns": [
+            "source"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_fx_rates_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (base, quote, rate_date, source)",
+          "table": "fx_rates",
+          "columns": [
+            "base",
+            "quote",
+            "rate_date",
+            "source"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE fx_rates (\n    base       TEXT NOT NULL,\n    quote      TEXT NOT NULL,\n    rate_date  TEXT NOT NULL,\n    rate       TEXT NOT NULL,\n    source     TEXT NOT NULL,\n    fetched_at TEXT NOT NULL,\n    PRIMARY KEY (base, quote, rate_date, source)\n)"
+    },
+    {
+      "name": "import_batch",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "source_format",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "filename",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "file_hash",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "target_account_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_import_batch_user_id",
+          "def": "CREATE INDEX idx_import_batch_user_id ON import_batch (user_id)",
+          "table": "import_batch",
+          "columns": [
+            "user_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_import_batch_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "import_batch",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "import_batch",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (target_account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "import_batch",
+          "referenced_table": "accounts",
+          "columns": [
+            "target_account_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "import_batch",
+          "referenced_table": "users",
+          "columns": [
+            "user_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_import_batch_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "import_batch",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "check       (e.g. refusing to re-stage an already-imported file)",
+          "table": "import_batch"
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (status IN ('staged', 'reviewed', 'committed', 'rolled_back'))",
+          "table": "import_batch",
+          "columns": [
+            "status"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE import_batch (\n    id                TEXT NOT NULL PRIMARY KEY,\n    user_id           TEXT NOT NULL REFERENCES users (id),\n    -- Free-text label identifying which parser produced this batch's\n    -- records (e.g. \"csv\", \"ofx\") — not CHECK-constrained to a known list,\n    -- because recognising formats is the parser registry's job (a later,\n    -- out-of-scope issue), not this migration's.\n    source_format     TEXT NOT NULL,\n    filename          TEXT NOT NULL,\n    -- Content hash of the source file, for an idempotency check a later\n    -- issue may add (e.g. refusing to re-stage an already-imported file).\n    file_hash         TEXT NOT NULL,\n    target_account_id TEXT NOT NULL REFERENCES accounts (id),\n    -- importing.ImportBatchStatus's four values, in ADR-0008's linear\n    -- staged -\u003e reviewed -\u003e committed -\u003e rolled_back order. The state\n    -- machine itself (which transitions are legal) lives in the domain\n    -- package, not here — this CHECK only guards against a value outside\n    -- the known set ever reaching the column.\n    status            TEXT NOT NULL CHECK (status IN ('staged', 'reviewed', 'committed', 'rolled_back')),\n    created_at        TEXT NOT NULL,\n    updated_at        TEXT NOT NULL\n)"
+    },
+    {
+      "name": "import_record",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "import_batch_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "raw_payload",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "booked_date",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "posted_date",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "amount_minor",
+          "type": "INTEGER",
+          "nullable": false
+        },
+        {
+          "name": "currency",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "external_id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "resolved_account_id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "resolved_category_id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "duplicate_tier",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "duplicate_matched_transaction_id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "duplicate_resolution",
+          "type": "TEXT",
+          "nullable": false,
+          "default": "'pending'"
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "transaction_id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "sort_order",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "transfer_candidate_record_id",
+          "type": "TEXT",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_import_record_user_id",
+          "def": "CREATE INDEX idx_import_record_user_id ON import_record (user_id)",
+          "table": "import_record",
+          "columns": [
+            "user_id"
+          ]
+        },
+        {
+          "name": "idx_import_record_batch_id",
+          "def": "CREATE INDEX idx_import_record_batch_id ON import_record (import_batch_id)",
+          "table": "import_record",
+          "columns": [
+            "import_batch_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_import_record_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "import_record",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "import_record",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (transfer_candidate_record_id) REFERENCES import_record (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "import_record",
+          "referenced_table": "import_record",
+          "columns": [
+            "transfer_candidate_record_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "import_record",
+          "referenced_table": "transactions",
+          "columns": [
+            "transaction_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 2)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (duplicate_matched_transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "import_record",
+          "referenced_table": "transactions",
+          "columns": [
+            "duplicate_matched_transaction_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 3)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (resolved_category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "import_record",
+          "referenced_table": "categories",
+          "columns": [
+            "resolved_category_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 4)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (resolved_account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "import_record",
+          "referenced_table": "accounts",
+          "columns": [
+            "resolved_account_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 5)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "import_record",
+          "referenced_table": "currencies",
+          "columns": [
+            "currency"
+          ],
+          "referenced_columns": [
+            "code"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 6)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "import_record",
+          "referenced_table": "users",
+          "columns": [
+            "user_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 7)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (import_batch_id) REFERENCES import_batch (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
+          "table": "import_record",
+          "referenced_table": "import_batch",
+          "columns": [
+            "import_batch_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_import_record_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "import_record",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (duplicate_tier IN ('exact', 'suspected_duplicate'))",
+          "table": "import_record",
+          "columns": [
+            "duplicate_tier"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (duplicate_resolution IN ('pending', 'confirmed_duplicate', 'not_duplicate'))",
+          "table": "import_record",
+          "columns": [
+            "duplicate_resolution"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (status IN ('pending', 'ready', 'excluded', 'committed'))",
+          "table": "import_record",
+          "columns": [
+            "status"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK ((duplicate_tier IS NULL) = (duplicate_matched_transaction_id IS NULL))",
+          "table": "import_record",
+          "columns": [
+            "id",
+            "duplicate_tier",
+            "duplicate_matched_transaction_id",
+            "transaction_id"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (status != 'committed' OR transaction_id IS NOT NULL)",
+          "table": "import_record",
+          "columns": [
+            "id",
+            "status",
+            "transaction_id"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE import_record (\n    id                                TEXT NOT NULL PRIMARY KEY,\n    import_batch_id                   TEXT NOT NULL REFERENCES import_batch (id) ON DELETE CASCADE,\n    user_id                           TEXT NOT NULL REFERENCES users (id),\n    -- The untouched source row, exactly as the parser received it (CSV\n    -- text, a JSON object, ...). This package has no opinion on its shape.\n    raw_payload                       TEXT NOT NULL,\n    -- The parser's already-normalised output (ADR-0008: \"a parser's only\n    -- job is to turn bytes into normalised ImportRecord fields\") —\n    -- data-model.md §9's booked_date/posted_date split applies here the\n    -- same way it does on transactions.\n    booked_date                       TEXT NOT NULL,\n    posted_date                       TEXT,\n    description                       TEXT NOT NULL,\n    amount_minor                      INTEGER NOT NULL,\n    currency                          TEXT NOT NULL REFERENCES currencies (code),\n    -- The source system's own transaction ID, if it has one — ADR-0008's\n    -- tier-1 exact-duplicate key is (account_id, external_id), checked\n    -- against resolved_account_id once mapping (a later issue) has run.\n    external_id                       TEXT,\n    -- Written by the mapping stage (a later, out-of-scope issue); NULL\n    -- until then.\n    resolved_account_id               TEXT REFERENCES accounts (id),\n    resolved_category_id              TEXT REFERENCES categories (id),\n    -- The duplicate-detection candidate (a later, out-of-scope issue) this\n    -- row matched against, if any. Both columns are NULL together or set\n    -- together — there is no match without a matched transaction, and vice\n    -- versa.\n    duplicate_tier                    TEXT CHECK (duplicate_tier IN ('exact', 'suspected_duplicate')),\n    duplicate_matched_transaction_id  TEXT REFERENCES transactions (id),\n    -- The user's decision on that match (ADR-0008: \"the decision is\n    -- recorded on the ImportRecord for auditability\"). Defaults to\n    -- 'pending' rather than NULL because a row with no match at all is\n    -- still, trivially, \"no decision made\" — the same value a matched-but-\n    -- not-yet-reviewed row holds.\n    duplicate_resolution              TEXT NOT NULL DEFAULT 'pending'\n                                          CHECK (duplicate_resolution IN ('pending', 'confirmed_duplicate', 'not_duplicate')),\n    -- importing.ImportRecordStatus's four values: pending is the only\n    -- branching point (pending -\u003e ready or pending -\u003e excluded), then\n    -- ready -\u003e committed. See import_batch.status above for why the state\n    -- machine itself isn't expressed as a CHECK.\n    status                            TEXT NOT NULL CHECK (status IN ('pending', 'ready', 'excluded', 'committed')),\n    -- The transaction this row produced, once its batch commits (a later,\n    -- out-of-scope issue). Required exactly when status = 'committed'.\n    transaction_id                    TEXT REFERENCES transactions (id),\n    -- Preserves the source file's row order — display and processing\n    -- order only, the same role posting.sort_order plays for a\n    -- transaction's postings.\n    sort_order                        INTEGER NOT NULL DEFAULT 0,\n    created_at                        TEXT NOT NULL,\n    updated_at                        TEXT NOT NULL, transfer_candidate_record_id TEXT REFERENCES import_record (id),\n    -- Table-level constraints must come after every column definition\n    -- (SQLite syntax) — both cross-column invariants live here rather\n    -- than inline next to the columns they mention.\n    CHECK ((duplicate_tier IS NULL) = (duplicate_matched_transaction_id IS NULL)),\n    CHECK (status != 'committed' OR transaction_id IS NOT NULL)\n)"
+    }
+  ],
+  "relations": [
+    {
+      "table": "transactions",
+      "columns": [
+        "related_transaction_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "transactions",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (related_transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "transactions",
+      "columns": [
+        "user_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "users",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "postings",
+      "columns": [
+        "category_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "categories",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "postings",
+      "columns": [
+        "currency"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "currencies",
+      "parent_columns": [
+        "code"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "postings",
+      "columns": [
+        "account_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "accounts",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "postings",
+      "columns": [
+        "transaction_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "transactions",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+    },
+    {
+      "table": "tags",
+      "columns": [
+        "user_id"
+      ],
+      "cardinality": "zero_or_one",
+      "parent_table": "users",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "transaction_tags",
+      "columns": [
+        "user_id",
+        "tag_value"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "tags",
+      "parent_columns": [
+        "user_id",
+        "value"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (user_id, tag_value) REFERENCES tags (user_id, value) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "transaction_tags",
+      "columns": [
+        "transaction_id"
+      ],
+      "cardinality": "zero_or_one",
+      "parent_table": "transactions",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+    },
+    {
+      "table": "transaction_revisions",
+      "columns": [
+        "user_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "users",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "transaction_revisions",
+      "columns": [
+        "transaction_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "transactions",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "accounts",
+      "columns": [
+        "currency"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "currencies",
+      "parent_columns": [
+        "code"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "accounts",
+      "columns": [
+        "user_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "users",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "categories",
+      "columns": [
+        "parent_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "categories",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (parent_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "categories",
+      "columns": [
+        "user_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "users",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "sessions",
+      "columns": [
+        "user_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "users",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "api_tokens",
+      "columns": [
+        "user_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "users",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "import_batch",
+      "columns": [
+        "target_account_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "accounts",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (target_account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "import_batch",
+      "columns": [
+        "user_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "users",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "import_record",
+      "columns": [
+        "transfer_candidate_record_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "import_record",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (transfer_candidate_record_id) REFERENCES import_record (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "import_record",
+      "columns": [
+        "transaction_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "transactions",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "import_record",
+      "columns": [
+        "duplicate_matched_transaction_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "transactions",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (duplicate_matched_transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "import_record",
+      "columns": [
+        "resolved_category_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "categories",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (resolved_category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "import_record",
+      "columns": [
+        "resolved_account_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "accounts",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (resolved_account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "import_record",
+      "columns": [
+        "currency"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "currencies",
+      "parent_columns": [
+        "code"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "import_record",
+      "columns": [
+        "user_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "users",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "import_record",
+      "columns": [
+        "import_batch_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "import_batch",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (import_batch_id) REFERENCES import_batch (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+    }
+  ],
+  "driver": {
+    "name": "sqlite",
+    "database_version": "3.53.4"
+  }
+}
