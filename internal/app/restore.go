@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/anirudhgray/bodger/internal/domain"
@@ -162,6 +163,18 @@ func restoreAccounts(ids idgen.Generator, actorID string, raw []jsonAccount) ([]
 // real CategoryRepository.Create/Update normally make with a live SQL query
 // against already-stored rows that don't exist yet here, since a restore
 // installs an entire tree in one pass rather than one category at a time.
+//
+// The returned slice is ordered so every category comes after its own
+// parent (a topological order), regardless of raw's own array order —
+// issue #237: ExportSnapshot sorts categories by ID for deterministic
+// export output (ADR-0008), which has nothing to do with parent/child
+// topology, so a child can easily land before its parent in the document.
+// SnapshotRepository.Replace inserts categories one row at a time and
+// categories.parent_id is a foreign key to categories.id, so handing it a
+// child before its parent trips a FOREIGN KEY constraint error.
+// checkNoCategoryCycles has already proven raw's parent chains all
+// terminate, which is exactly the precondition topologicalCategoryOrder's
+// depth-based reordering needs.
 func restoreCategories(ids idgen.Generator, actorID string, raw []jsonCategory) ([]ledger.Category, map[string]string, error) {
 	if err := checkNoCategoryCycles(raw); err != nil {
 		return nil, nil, err
@@ -172,8 +185,10 @@ func restoreCategories(ids idgen.Generator, actorID string, raw []jsonCategory) 
 		categoryIDs[jc.ID] = ids.NewID()
 	}
 
+	ordered := topologicalCategoryOrder(raw)
+
 	categories := make([]ledger.Category, 0, len(raw))
-	for _, jc := range raw {
+	for _, jc := range ordered {
 		var newParentID *string
 		if jc.ParentID != nil {
 			resolved, ok := categoryIDs[*jc.ParentID]
@@ -234,6 +249,57 @@ func checkNoCategoryCycles(raw []jsonCategory) error {
 		}
 	}
 	return nil
+}
+
+// topologicalCategoryOrder returns raw reordered so every category comes
+// after its own parent (parents-before-children), preserving raw's own
+// relative order otherwise (a stable sort by parent-chain depth) — the
+// fix for issue #237: SnapshotRepository.Replace inserts categories one
+// row at a time in whatever order it's handed, and
+// categories.parent_id REFERENCES categories(id), so a child inserted
+// before its parent row exists fails with a FOREIGN KEY constraint
+// error. The document's own array order (raw) carries no such guarantee
+// — ExportSnapshot sorts by ID for deterministic export output
+// (ADR-0008), unrelated to parent/child topology. This only needs to run
+// after checkNoCategoryCycles has already proven every parent chain in
+// raw terminates: a category with a longer chain always sorts after
+// every category on that chain, which is exactly parents-before-children.
+func topologicalCategoryOrder(raw []jsonCategory) []jsonCategory {
+	parentOf := make(map[string]*string, len(raw))
+	for _, jc := range raw {
+		parentOf[jc.ID] = jc.ParentID
+	}
+
+	depth := make(map[string]int, len(raw))
+	for _, jc := range raw {
+		depth[jc.ID] = categoryDepth(jc.ID, parentOf)
+	}
+
+	ordered := make([]jsonCategory, len(raw))
+	copy(ordered, raw)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return depth[ordered[i].ID] < depth[ordered[j].ID]
+	})
+	return ordered
+}
+
+// categoryDepth counts the hops from id up to the root of its parent
+// chain (0 for a top-level category, 1 for a direct child, and so on),
+// walking parentOf the same way checkNoCategoryCycles does. It's only
+// ever called after checkNoCategoryCycles has already proven every chain
+// in the document terminates, so this walk doesn't need its own cycle
+// guard.
+func categoryDepth(id string, parentOf map[string]*string) int {
+	depth := 0
+	current := id
+	for {
+		parent := parentOf[current]
+		if parent == nil {
+			return depth
+		}
+		depth++
+		current = *parent
+	}
 }
 
 // restoreTransactions rebuilds every transaction (and its postings and

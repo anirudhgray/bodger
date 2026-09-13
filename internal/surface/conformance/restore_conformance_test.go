@@ -214,6 +214,72 @@ func (h *harness) httpTransactionSignatures(t *testing.T) []string {
 	return signaturesOf(rows)
 }
 
+// seedNestedCategoryFixture records one parent/child category pair
+// ("Investments"/"Interest", issue #237's own repro naming) on top of
+// h's flat seed()/seedExportFixtures() categories — needed because
+// neither of those seeds any parent/child relationship at all, so a
+// topological-ordering bug in restore would otherwise have nothing to
+// trip over.
+func (h *harness) seedNestedCategoryFixture() (parentID, childID string) {
+	h.t.Helper()
+	ctx := context.Background()
+	parent, err := h.svc.CreateCategory(ctx, app.CreateCategoryCommand{
+		ActorID: seededUserID, Name: "Investments", Kind: "expense",
+	})
+	if err != nil {
+		h.t.Fatalf("seed category Investments: %v", err)
+	}
+	child, err := h.svc.CreateCategory(ctx, app.CreateCategoryCommand{
+		ActorID: seededUserID, Name: "Interest", Kind: "expense", ParentRef: parent.Category.ID(),
+	})
+	if err != nil {
+		h.t.Fatalf("seed category Interest: %v", err)
+	}
+	return parent.Category.ID(), child.Category.ID()
+}
+
+// forceChildCategoryFirst rewrites doc's categories array, swapping
+// childID's entry ahead of parentID's if it isn't already — issue #237's
+// repro condition, which ExportSnapshot's export-by-ID sort (ADR-0008)
+// makes close to a coin flip per parent/child pair in production, since
+// category IDs are random UUIDs. Forcing it here, rather than relying on
+// that coin flip, makes the regression deterministic regardless of which
+// way childID and parentID's real UUIDs happen to sort.
+func forceChildCategoryFirst(t *testing.T, doc []byte, childID, parentID string) []byte {
+	t.Helper()
+	var m map[string]any
+	if err := json.Unmarshal(doc, &m); err != nil {
+		t.Fatalf("forceChildCategoryFirst: unmarshal: %v", err)
+	}
+	cats, _ := m["categories"].([]any)
+	childIdx, parentIdx := -1, -1
+	for i, c := range cats {
+		entry, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch entry["id"] {
+		case childID:
+			childIdx = i
+		case parentID:
+			parentIdx = i
+		}
+	}
+	if childIdx == -1 || parentIdx == -1 {
+		t.Fatalf("forceChildCategoryFirst: could not find child %q / parent %q in document's categories", childID, parentID)
+	}
+	if childIdx > parentIdx {
+		cats[childIdx], cats[parentIdx] = cats[parentIdx], cats[childIdx]
+	}
+	m["categories"] = cats
+
+	out, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("forceChildCategoryFirst: marshal: %v", err)
+	}
+	return out
+}
+
 // buildRestoreDocument builds a canonical bodger.export/v1 document (raw
 // bytes) from one independent, throwaway harness's real ExportJSON entry
 // point, plus the expected account names, category names, and
@@ -222,16 +288,24 @@ func (h *harness) httpTransactionSignatures(t *testing.T) []string {
 // hardcoded here, so a future change to seed/seedExportFixtures can't
 // silently desync this test's expectations from what it's actually
 // restoring.
+//
+// It also seeds a parent/child category pair and forces the child ahead
+// of its parent in the document's categories array (issue #237) — a
+// restore that doesn't tolerate that ordering fails outright, which
+// TestRestoreSnapshotConformance's own assertions below would already
+// catch, so no extra parent/child-specific assertion is needed here.
 func buildRestoreDocument(t *testing.T) (document []byte, wantAccounts, wantCategories, wantTxns []string) {
 	t.Helper()
 	src := newHarness(t)
 	src.seed()
 	src.seedExportFixtures()
+	parentID, childID := src.seedNestedCategoryFixture()
 
 	data, err := src.svc.ExportJSON(context.Background(), app.ExportJSONQuery{ActorID: seededUserID})
 	if err != nil {
 		t.Fatalf("ExportJSON: %v", err)
 	}
+	data = forceChildCategoryFirst(t, data, childID, parentID)
 
 	return data, src.cliAccountNames(t), src.cliCategoryNames(t), src.cliTransactionSignatures(t)
 }

@@ -330,6 +330,79 @@ func assertSnapshotsEquivalentModuloIDs(t *testing.T, before, after app.ExportSn
 	}
 }
 
+// TestRestoreSnapshot_ChildCategoryBeforeParentInDocument is issue #237's
+// regression test: SnapshotRepository.Replace inserts categories one row
+// at a time and categories.parent_id is a foreign key to categories.id,
+// so a document whose categories array happens to list a child before its
+// own parent used to fail restore with a FOREIGN KEY constraint error.
+// ExportSnapshot's export-by-ID sort (ADR-0008) makes that ordering close
+// to a coin flip per parent/child pair in production, since category IDs
+// are random UUIDs -- this test doesn't rely on that coin flip landing a
+// particular way; it forces the child ahead of its parent in the document
+// directly, via mutateDocument, so the regression is deterministic
+// regardless of which way the real UUIDs happen to sort.
+func TestRestoreSnapshot_ChildCategoryBeforeParentInDocument(t *testing.T) {
+	svc, _, _ := newSQLiteTestService(t, time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	actorID := sqliteActorID
+
+	investments := mustCategoryFixtureAs(t, svc, actorID, "Investments", "expense")
+	interest, err := svc.CreateCategory(ctx, app.CreateCategoryCommand{
+		ActorID: actorID, Name: "Interest", Kind: "expense", ParentRef: investments.Category.ID(),
+	})
+	if err != nil {
+		t.Fatalf("CreateCategory(Interest): %v", err)
+	}
+
+	doc, err := svc.ExportJSON(ctx, app.ExportJSONQuery{ActorID: actorID})
+	if err != nil {
+		t.Fatalf("ExportJSON: %v", err)
+	}
+
+	doc = mutateDocument(t, doc, func(m map[string]any) {
+		cats, _ := m["categories"].([]any)
+		if len(cats) != 2 {
+			t.Fatalf("test fixture: want exactly 2 categories, got %d", len(cats))
+		}
+		firstIsChild := func() bool {
+			entry, ok := cats[0].(map[string]any)
+			return ok && entry["id"] == interest.Category.ID()
+		}
+		if !firstIsChild() {
+			cats[0], cats[1] = cats[1], cats[0]
+		}
+		m["categories"] = cats
+	})
+
+	if _, err := svc.RestoreSnapshot(ctx, app.RestoreSnapshotQuery{ActorID: actorID, Document: doc}); err != nil {
+		t.Fatalf("RestoreSnapshot with child category listed before its parent: %v", err)
+	}
+
+	categories, err := svc.Categories.List(ctx, actorID)
+	if err != nil {
+		t.Fatalf("Categories.List: %v", err)
+	}
+	if len(categories) != 2 {
+		t.Fatalf("len(categories) after restore = %d, want 2", len(categories))
+	}
+	byName := make(map[string]ledger.Category, len(categories))
+	for _, c := range categories {
+		byName[c.Name()] = c
+	}
+	restoredParent, ok := byName["Investments"]
+	if !ok {
+		t.Fatalf("restored categories = %+v, want an Investments entry", categories)
+	}
+	restoredChild, ok := byName["Interest"]
+	if !ok {
+		t.Fatalf("restored categories = %+v, want an Interest entry", categories)
+	}
+	parentID, hasParent := restoredChild.ParentID()
+	if !hasParent || parentID != restoredParent.ID() {
+		t.Errorf("restored Interest parent = (%q, %v), want Investments's restored ID %q", parentID, hasParent, restoredParent.ID())
+	}
+}
+
 func tagStrings(tags []ledger.Tag) []string {
 	out := make([]string, len(tags))
 	for i, t := range tags {
