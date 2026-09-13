@@ -1014,11 +1014,14 @@ export interface components {
             starts_on: string;
         };
         BudgetActuals: {
+            /** Format: date */
+            as_of: string;
             budget_id: string;
             currency: string;
             /** Format: date */
             from: string;
             lines: components["schemas"]["BudgetLineActuals"][];
+            overall: components["schemas"]["BudgetOverallActuals"];
             /** Format: date */
             to: string;
             unconverted?: components["schemas"]["UnconvertedPosting"][];
@@ -1084,6 +1087,28 @@ export interface components {
         };
         BudgetListEnvelope: {
             data: components["schemas"]["Budget"][];
+        };
+        BudgetOverallActuals: {
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            actual: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            budgeted: string;
+            /**
+             * Format: money
+             * @description A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.
+             */
+            remaining: string;
+            /**
+             * Format: double
+             * @description Actual / Budgeted, summed across every line. Zero when Budgeted is zero.
+             */
+            utilisation: number;
         };
         CashFlow: {
             currency: string;

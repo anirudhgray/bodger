@@ -123,16 +123,32 @@ type budgetLineActualsView struct {
 	Utilisation float64 `json:"utilisation"`
 }
 
+// budgetOverallActualsView is every line's plan-vs-actual summed into one
+// figure for the whole budget (app.BudgetOverallActuals) — the same shape
+// budgetLineActualsView reports per line, minus the fields that only make
+// sense for a single line.
+type budgetOverallActualsView struct {
+	Budgeted    string  `json:"budgeted"`
+	Actual      string  `json:"actual"`
+	Remaining   string  `json:"remaining"`
+	Utilisation float64 `json:"utilisation"`
+}
+
 // budgetActualsView is `bodger budgets actuals`' rendered shape
 // (app.BudgetActualsResult). Unconverted mirrors balance.go's own
 // unconvertedBalanceView convention, but keyed by transaction rather than
 // account — a budget line's actual can pool contributions from more than
 // one posting, unlike a single account's balance.
 type budgetActualsView struct {
-	BudgetID    string                      `json:"budget_id"`
-	Currency    string                      `json:"currency"`
-	From        string                      `json:"from"`
-	To          string                      `json:"to"`
+	BudgetID string `json:"budget_id"`
+	Currency string `json:"currency"`
+	From     string `json:"from"`
+	To       string `json:"to"`
+	// AsOf mirrors balance.go's own AsOf field — today, in your configured
+	// timezone, so a caller can tell whether this period is the current
+	// one, a past one, or a future one without computing "today" itself.
+	AsOf        string                      `json:"as_of"`
+	Overall     budgetOverallActualsView    `json:"overall"`
 	Lines       []budgetLineActualsView     `json:"lines"`
 	Unconverted []unconvertedPostingCLIView `json:"unconverted,omitempty"`
 }
@@ -163,10 +179,17 @@ func unconvertedPostingCLIViewsFrom(u []app.UnconvertedPosting) []unconvertedPos
 
 func budgetActualsViewFrom(r app.BudgetActualsResult) budgetActualsView {
 	v := budgetActualsView{
-		BudgetID:    r.Budget.ID(),
-		Currency:    r.Budget.Currency(),
-		From:        r.From.String(),
-		To:          r.To.String(),
+		BudgetID: r.Budget.ID(),
+		Currency: r.Budget.Currency(),
+		From:     r.From.String(),
+		To:       r.To.String(),
+		AsOf:     r.AsOf.String(),
+		Overall: budgetOverallActualsView{
+			Budgeted:    r.Overall.Budgeted.AmountString(),
+			Actual:      r.Overall.Actual.AmountString(),
+			Remaining:   r.Overall.Remaining.AmountString(),
+			Utilisation: r.Overall.Utilisation,
+		},
 		Lines:       []budgetLineActualsView{},
 		Unconverted: unconvertedPostingCLIViewsFrom(r.Unconverted),
 	}
@@ -184,7 +207,9 @@ func budgetActualsViewFrom(r app.BudgetActualsResult) budgetActualsView {
 }
 
 func printBudgetActuals(w io.Writer, v budgetActualsView) {
-	_, _ = fmt.Fprintf(w, "Period %s to %s:\n", v.From, v.To)
+	_, _ = fmt.Fprintf(w, "Period %s to %s (as of %s):\n", v.From, v.To, v.AsOf)
+	_, _ = fmt.Fprintf(w, "Overall: %s / %s %s (%.0f%%)\n",
+		v.Overall.Actual, v.Overall.Budgeted, v.Currency, v.Overall.Utilisation*100)
 	if len(v.Lines) == 0 {
 		_, _ = fmt.Fprintln(w, "No lines to report.")
 		return

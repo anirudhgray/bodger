@@ -280,22 +280,45 @@ type budgetLineActualsView struct {
 	Utilisation float64 `json:"utilisation" doc:"Actual / Budgeted. Zero when Budgeted is zero."`
 }
 
+// budgetOverallActualsView is every line's plan-vs-actual summed into one
+// figure for the whole budget (app.BudgetOverallActuals) -- the same
+// shape budgetLineActualsView reports per line, minus the fields that
+// only make sense for a single line.
+type budgetOverallActualsView struct {
+	Budgeted    string  `json:"budgeted" format:"money"`
+	Actual      string  `json:"actual" format:"money"`
+	Remaining   string  `json:"remaining" format:"money"`
+	Utilisation float64 `json:"utilisation" doc:"Actual / Budgeted, summed across every line. Zero when Budgeted is zero."`
+}
+
 // budgetActualsView is GET .../actuals' response shape (app.BudgetActualsResult).
 type budgetActualsView struct {
-	BudgetID    string                   `json:"budget_id"`
-	Currency    string                   `json:"currency"`
-	From        string                   `json:"from" format:"date"`
-	To          string                   `json:"to" format:"date"`
+	BudgetID string `json:"budget_id"`
+	Currency string `json:"currency"`
+	From     string `json:"from" format:"date"`
+	To       string `json:"to" format:"date"`
+	// AsOf is today, in your configured timezone -- compare against
+	// From/To to tell whether this period is the current one, a past one,
+	// or a future one.
+	AsOf        string                   `json:"as_of" format:"date"`
+	Overall     budgetOverallActualsView `json:"overall"`
 	Lines       []budgetLineActualsView  `json:"lines"`
 	Unconverted []unconvertedPostingView `json:"unconverted,omitempty"`
 }
 
 func budgetActualsViewFrom(r app.BudgetActualsResult) budgetActualsView {
 	v := budgetActualsView{
-		BudgetID:    r.Budget.ID(),
-		Currency:    r.Budget.Currency(),
-		From:        r.From.String(),
-		To:          r.To.String(),
+		BudgetID: r.Budget.ID(),
+		Currency: r.Budget.Currency(),
+		From:     r.From.String(),
+		To:       r.To.String(),
+		AsOf:     r.AsOf.String(),
+		Overall: budgetOverallActualsView{
+			Budgeted:    r.Overall.Budgeted.AmountString(),
+			Actual:      r.Overall.Actual.AmountString(),
+			Remaining:   r.Overall.Remaining.AmountString(),
+			Utilisation: r.Overall.Utilisation,
+		},
 		Lines:       []budgetLineActualsView{},
 		Unconverted: unconvertedPostingViewsFrom(r.Unconverted),
 	}

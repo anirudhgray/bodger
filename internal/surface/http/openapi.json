@@ -466,6 +466,10 @@
       },
       "BudgetActuals": {
         "properties": {
+          "as_of": {
+            "format": "date",
+            "type": "string"
+          },
           "budget_id": {
             "type": "string"
           },
@@ -481,6 +485,9 @@
               "$ref": "#/components/schemas/BudgetLineActuals"
             },
             "type": "array"
+          },
+          "overall": {
+            "$ref": "#/components/schemas/BudgetOverallActuals"
           },
           "to": {
             "format": "date",
@@ -498,6 +505,8 @@
           "currency",
           "from",
           "to",
+          "as_of",
+          "overall",
           "lines"
         ],
         "type": "object"
@@ -651,6 +660,37 @@
         },
         "required": [
           "data"
+        ],
+        "type": "object"
+      },
+      "BudgetOverallActuals": {
+        "properties": {
+          "actual": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "budgeted": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "remaining": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "utilisation": {
+            "description": "Actual / Budgeted, summed across every line. Zero when Budgeted is zero.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "budgeted",
+          "actual",
+          "remaining",
+          "utilisation"
         ],
         "type": "object"
       },
