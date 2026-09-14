@@ -115,6 +115,14 @@ type ToolDef struct {
 // ever registered when the dispatcher was constructed with
 // allowDestructive (ADR-0013's --allow-destructive gate, enforced
 // generically by Dispatcher.Register -- nothing here re-implements it).
+//
+// fetchFxRatesTool is issue #272's write-tier wiring: the one
+// network-touching, store-writing FX action (Service.FetchFxRates) that
+// fell through the cracks between #260's and #267's named read-tier
+// scopes -- list_fx_rates (#260) only ever reads stored rates. Same
+// wiring-only shape as every other tool here, no new app-layer logic;
+// write, not destructive, since it's additive (new rate rows) and no
+// harder to reverse than any other write.
 func Tools() []ToolDef {
 	return []ToolDef{
 		whoAmITool(),
@@ -147,5 +155,6 @@ func Tools() []ToolDef {
 		commitImportTool(),
 		rollbackImportTool(),
 		restoreSnapshotTool(),
+		fetchFxRatesTool(),
 	}
 }

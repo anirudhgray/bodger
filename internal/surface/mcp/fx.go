@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -118,6 +119,114 @@ func listFxRatesTool() ToolDef {
 				return errorResult(err), nil
 			}
 			return jsonResult(fxRateViewFrom(args.From, args.To, result))
+		},
+	}
+}
+
+// fetchedRateView renders one app.FetchedRate. Mirrors
+// internal/surface/cli/fx.go's and internal/surface/http/fx.go's own
+// fetchedRateView field-for-field, reproduced here rather than imported
+// (internal/surface packages never import one another).
+type fetchedRateView struct {
+	Pair   string `json:"pair"`
+	Rate   string `json:"rate"`
+	Date   string `json:"date"`
+	Source string `json:"source"`
+}
+
+func fetchedRateViewFrom(f app.FetchedRate) fetchedRateView {
+	return fetchedRateView{
+		Pair:   fmt.Sprintf("%s/%s", f.Rate.Base(), f.Rate.Quote()),
+		Rate:   f.Rate.Value().String(),
+		Date:   f.Date.String(),
+		Source: f.Source,
+	}
+}
+
+// fxFetchView is fetch_fx_rates' result shape (app.FetchFxRatesResult).
+// Mirrors internal/surface/cli/fx.go's and internal/surface/http/fx.go's
+// own fxFetchView.
+type fxFetchView struct {
+	ReportingCurrency string            `json:"reporting_currency"`
+	Fetched           []fetchedRateView `json:"fetched"`
+}
+
+func fxFetchViewFrom(r app.FetchFxRatesResult) fxFetchView {
+	v := fxFetchView{ReportingCurrency: r.ReportingCurrency}
+	for _, f := range r.Fetched {
+		v.Fetched = append(v.Fetched, fetchedRateViewFrom(f))
+	}
+	return v
+}
+
+// fetchFxRatesArgs is fetch_fx_rates' arguments, mirroring
+// app.FetchFxRatesCommand field for field (aside from ActorID, resolved
+// by the dispatcher/harness like every other tool). Every field is
+// optional -- see FetchFxRatesCommand's own doc comments for what an
+// empty value means for each.
+type fetchFxRatesArgs struct {
+	Pairs []string `json:"pairs,omitempty"`
+	Quote string   `json:"quote,omitempty"`
+	From  string   `json:"from,omitempty"`
+	To    string   `json:"to,omitempty"`
+}
+
+// fetchFxRatesTool wires app.Service.FetchFxRates -- issue #135's one
+// explicit, network-touching, store-writing FX action -- onto a
+// write-tier MCP tool (issue #272). Unlike list_fx_rates, this does call
+// Service.FxProvider and writes to fx_rates, so it's registered write,
+// not read; it's additive (new rate rows) and reversible in the same
+// sense any other write is, not a deletion or hard-to-reverse operation,
+// so it's write, not destructive either. Argument and result shapes
+// mirror internal/surface/cli/fx.go's "fx rates fetch" command and
+// internal/surface/http/fx.go's "POST /api/v1/fx/rates/fetch" handler
+// field for field, the same wiring-only pattern list_fx_rates already
+// used for its own sibling read.
+func fetchFxRatesTool() ToolDef {
+	return ToolDef{
+		Name:        "fetch_fx_rates",
+		Description: "Fetch and store exchange rates from the configured provider. With no pairs, fetches every currency pair actually in use across your accounts and transactions, quoted against your reporting currency, at today's date. Pass pairs to restrict the fetch to specific base currencies (add quote to quote them against a currency other than your reporting currency), and from/to together for a historical backfill instead of just today.",
+		Tier:        ports.MCPToolTierWrite,
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"pairs": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "Restrict the fetch to these base currencies, quoted against quote (or your reporting currency). Omit to fetch every in-use pair (quote is ignored in that case).",
+				},
+				"quote": map[string]any{
+					"type":        "string",
+					"description": "Quote currency for every pairs entry, instead of your reporting currency. Ignored when pairs is omitted.",
+				},
+				"from": map[string]any{
+					"type":        "string",
+					"description": "Backfill range start date, inclusive (requires \"to\").",
+				},
+				"to": map[string]any{
+					"type":        "string",
+					"description": "Backfill range end date, inclusive (requires \"from\").",
+				},
+			},
+			"additionalProperties": false,
+		},
+		Execute: func(ctx context.Context, svc *app.Service, actorID string, raw json.RawMessage) (*sdkmcp.CallToolResult, error) {
+			var args fetchFxRatesArgs
+			if err := decodeArgs(raw, &args); err != nil {
+				return errorResult(err), nil
+			}
+
+			result, err := svc.FetchFxRates(ctx, app.FetchFxRatesCommand{
+				ActorID: actorID,
+				Pairs:   args.Pairs,
+				Quote:   args.Quote,
+				From:    args.From,
+				To:      args.To,
+			})
+			if err != nil {
+				return errorResult(err), nil
+			}
+			return jsonResult(fxFetchViewFrom(result))
 		},
 	}
 }
