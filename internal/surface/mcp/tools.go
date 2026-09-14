@@ -98,6 +98,15 @@ type ToolDef struct {
 // is registered here as write, not destructive -- see its own doc comment
 // for the reasoning.
 //
+// Everything from getBalanceTotalsTool through getTransactionTool is
+// issue #267's extended read-tier wiring: balance totals/net worth
+// (balances.go's own AccountBalances-derived methods), the M5 analytics
+// suite beyond #260's plain category-spending report (cash flow, trends,
+// savings rate, top transactions, average transaction size, category
+// trends — all in analytics.go), and a single-transaction lookup by ID
+// (get_transaction.go), as opposed to #260's list_transactions. Same
+// wiring-only shape, same read tier, no new app-layer logic.
+//
 // Every tool from deleteTransactionTool through restoreSnapshotTool is
 // issue #262's destructive-tier wiring: soft-deleting a transaction,
 // committing or rolling back a staged import, and restoring a full backup
@@ -125,6 +134,15 @@ func Tools() []ToolDef {
 		updateBudgetLineTool(),
 		removeBudgetLineTool(),
 		archiveBudgetTool(),
+		getBalanceTotalsTool(),
+		getNetWorthOverTimeTool(),
+		getCashFlowTool(),
+		getTrendsTool(),
+		getSavingsRateTool(),
+		getTopTransactionsTool(),
+		getAverageTransactionSizeTool(),
+		getCategoryTrendsTool(),
+		getTransactionTool(),
 		deleteTransactionTool(),
 		commitImportTool(),
 		rollbackImportTool(),
