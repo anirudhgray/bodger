@@ -12,6 +12,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/platform/clock"
 	"github.com/anirudhgray/bodger/internal/platform/config"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
+	"github.com/anirudhgray/bodger/internal/ports"
 )
 
 // newTestService wires an *app.Service to the real SQLite adapter over a
@@ -19,8 +20,20 @@ import (
 // wiring internal/surface/http/http_test.go's and
 // internal/surface/cli/cli_test.go's own newTestService/newTestFactory
 // helpers use, reproduced here since cmd/bodger's real bootstrap lives in
-// package main and can't be imported from a test in this package.
+// package main and can't be imported from a test in this package. It
+// wires a real (network-touching) Frankfurter provider — fine for every
+// test that never calls fetch_fx_rates; a test that does calls
+// newTestServiceWithFxProvider instead so it never depends on the network
+// (see fx_write_test.go), mirroring internal/surface/http/http_test.go's
+// own newTestService/newTestServiceWithFxProvider split.
 func newTestService(t *testing.T, frozenAt time.Time) (*app.Service, *clock.Frozen) {
+	t.Helper()
+	return newTestServiceWithFxProvider(t, frozenAt, fxprovider.New("", nil))
+}
+
+// newTestServiceWithFxProvider is newTestService with the FX rate
+// provider swapped out.
+func newTestServiceWithFxProvider(t *testing.T, frozenAt time.Time, provider ports.FxRateProvider) (*app.Service, *clock.Frozen) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -45,7 +58,7 @@ func newTestService(t *testing.T, frozenAt time.Time) (*app.Service, *clock.Froz
 		sqlite.NewAccountRepository(db), sqlite.NewCategoryRepository(db),
 		sqlite.NewTransactionRepository(db), sqlite.NewTagRepository(db),
 		sqlite.NewUserRepository(db), sqlite.NewSessionRepository(db), sqlite.NewAPITokenRepository(db),
-		sqlite.NewFxRateRepository(db), fxprovider.New("", nil),
+		sqlite.NewFxRateRepository(db), provider,
 		sqlite.NewImportBatchRepository(db), sqlite.NewImportRecordRepository(db), sqlite.NewImportCommitRepository(db),
 		sqlite.NewSnapshotRepository(db),
 		sqlite.NewBudgetRepository(db),
