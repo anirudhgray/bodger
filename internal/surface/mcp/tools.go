@@ -96,16 +96,25 @@ type ToolDef struct {
 // #261's write-tier wiring: recording/editing transactions and budget/line
 // CRUD, allowed and audited via mcp_tool_call (ADR-0013). archiveBudgetTool
 // is registered here as write, not destructive -- see its own doc comment
-// for the reasoning. Destructive tools are #262, not this file.
+// for the reasoning.
 //
-// Everything from getBalanceTotalsTool onward is issue #267's extended
-// read-tier wiring: balance totals/net worth (balances.go's own
-// AccountBalances-derived methods), the M5 analytics suite beyond
-// #260's plain category-spending report (cash flow, trends, savings
-// rate, top transactions, average transaction size, category trends —
-// all in analytics.go), and a single-transaction lookup by ID
+// Everything from getBalanceTotalsTool through getTransactionTool is
+// issue #267's extended read-tier wiring: balance totals/net worth
+// (balances.go's own AccountBalances-derived methods), the M5 analytics
+// suite beyond #260's plain category-spending report (cash flow, trends,
+// savings rate, top transactions, average transaction size, category
+// trends — all in analytics.go), and a single-transaction lookup by ID
 // (get_transaction.go), as opposed to #260's list_transactions. Same
 // wiring-only shape, same read tier, no new app-layer logic.
+//
+// Every tool from deleteTransactionTool through restoreSnapshotTool is
+// issue #262's destructive-tier wiring: soft-deleting a transaction,
+// committing or rolling back a staged import, and restoring a full backup
+// document. Each declares a non-nil Describe (ToolDescribeFunc), so
+// Dispatcher.Register's own panic guard is satisfied, and each is only
+// ever registered when the dispatcher was constructed with
+// allowDestructive (ADR-0013's --allow-destructive gate, enforced
+// generically by Dispatcher.Register -- nothing here re-implements it).
 func Tools() []ToolDef {
 	return []ToolDef{
 		whoAmITool(),
@@ -134,5 +143,9 @@ func Tools() []ToolDef {
 		getAverageTransactionSizeTool(),
 		getCategoryTrendsTool(),
 		getTransactionTool(),
+		deleteTransactionTool(),
+		commitImportTool(),
+		rollbackImportTool(),
+		restoreSnapshotTool(),
 	}
 }
