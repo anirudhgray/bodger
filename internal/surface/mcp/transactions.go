@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -30,6 +31,16 @@ type transactionView struct {
 	Currency      string   `json:"currency"`
 	ToAmount      string   `json:"to_amount,omitempty"`
 	ToCurrency    string   `json:"to_currency,omitempty"`
+	// Rate and RateSource render a cross-currency transfer's implied
+	// exchange rate and its provenance (issue #137), the same
+	// "1 <from currency> = <value> <to currency>" rendering and the same
+	// omit-when-same-currency rule as internal/surface/cli/move.go's
+	// moveView and internal/surface/http/dto.go's own transactionView --
+	// found missing here by internal/surface/conformance's MCP leg
+	// (issue #263), which compares this view's JSON directly against
+	// theirs.
+	Rate       string `json:"rate,omitempty"`
+	RateSource string `json:"rate_source,omitempty"`
 }
 
 func transactionViewFrom(r app.TransactionResult) transactionView {
@@ -67,6 +78,10 @@ func transactionViewFrom(r app.TransactionResult) transactionView {
 			v.Amount = p.Amount().Abs().AmountString()
 			v.Currency = p.Currency()
 		}
+	}
+	if rate, source, ok := t.FxRate(); ok && !rate.IsIdentity() {
+		v.Rate = fmt.Sprintf("1 %s = %s %s", rate.Base(), rate.Value().String(), rate.Quote())
+		v.RateSource = source
 	}
 	return v
 }
