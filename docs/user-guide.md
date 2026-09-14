@@ -610,6 +610,7 @@ These are available by default (no `--allow-destructive` needed), run immediatel
 | `update_budget_line` | Update an existing budget line's amount and rollover flag — the same as `bodger budgets lines update`. |
 | `remove_budget_line` | Remove one line from an existing budget — the same as `bodger budgets lines remove`. |
 | `archive_budget` | Archive a budget: it stops appearing in current listings and creation flows, but its history stays fully queryable and archiving is fully reversible — the same as `bodger budgets archive`. |
+| `fetch_fx_rates` | Fetch and store exchange rates from the configured provider — the only tool that reaches out to the network — the same as `bodger fx rates fetch`. |
 
 ### Undo-or-bulk-change tools
 
