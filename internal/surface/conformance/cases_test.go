@@ -1,6 +1,7 @@
 package conformance
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -267,8 +268,8 @@ var cases = []conformanceCase{
 	},
 }
 
-// TestConformance runs every case in the table through both surfaces
-// against one shared, seeded database, and asserts they agree.
+// TestConformance runs every case in the table through all three
+// surfaces against one shared, seeded database, and asserts they agree.
 //
 // Manually re-verified that this catches a surface resolving a date
 // itself instead of delegating to internal/app/normalize.DateOf (issue
@@ -280,14 +281,33 @@ var cases = []conformanceCase{
 // confirmed every date-sensitive case failed — "today"/"yesterday"/empty
 // cases on a date mismatch, and the invalid-date case on HTTP silently
 // succeeding instead of rejecting "not a date" — then reverted the
-// change. Not left as a permanent fixture the way the import-graph and
+// change.
+//
+// Re-verified the same way for the MCP leg (issue #263), the same day:
+// temporarily commented out passing Date: args.Date in
+// internal/surface/mcp/transactions_write.go's recordOutflowTool (so
+// RecordOutflowCommand.Date was always its zero value), ran this suite,
+// and confirmed 12 of 22 cases failed specifically on the MCP leg — 11
+// date-sensitive outflow cases ("yesterday", the ISO/locale/grouped/
+// symbol-amount/case-insensitive/whitespace/Unicode/tags cases, all of
+// which book on a non-"today" date) on a plain date mismatch against
+// CLI, and the invalid-date case on MCP silently succeeding instead of
+// rejecting "not a date" — then reverted the change. (This also
+// surfaced a real, unrelated bug this session fixed separately:
+// internal/surface/mcp/transactions.go's transactionViewFrom never
+// rendered rate/rate_source for a cross-currency transfer, unlike
+// moveViewFrom and dto.go's own transactionView — see that file's git
+// history.) Not left as a permanent fixture the way the import-graph and
 // banned-symbol violations are, because there is no way to break "a
 // surface resolves its own date" without editing a real surface's
 // production code, which would leave a real bug in the tree between test
 // runs rather than a self-contained fixture.
 //
-// Last manually verified: 2026-09-02, confirmed 4 of 19 cases failed
-// with exactly this shape, then restored internal/surface/http/transactions.go.
+// Last manually verified: 2026-09-02 for the CLI/HTTP legs, confirmed 4
+// of 19 cases failed with exactly this shape, then restored
+// internal/surface/http/transactions.go. 2026-09-14 for the MCP leg,
+// confirmed 12 of 22 cases failed with exactly this shape, then restored
+// internal/surface/mcp/transactions_write.go.
 func TestConformance(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -296,6 +316,7 @@ func TestConformance(t *testing.T) {
 
 			cliOut, cliErr := h.runCLI(tc.cliArgs()...)
 			httpStatus, httpDecoded := h.runHTTP(tc.httpMethod(), tc.httpPath(), tc.httpBody())
+			mcpResult := h.runMCP(context.Background(), tc.mcpToolName(), tc.mcpArgs())
 
 			if tc.wantErrCode != "" {
 				if cliErr == nil {
@@ -304,13 +325,20 @@ func TestConformance(t *testing.T) {
 				if httpStatus < 400 {
 					t.Fatalf("HTTP: expected an error status, got %d (body: %v)", httpStatus, httpDecoded)
 				}
+				if !mcpResult.IsError {
+					t.Fatalf("MCP: expected an error result, got success: %+v", mcpResult)
+				}
 				gotCLI := h.cliErrorCode(cliErr)
 				gotHTTP := h.httpErrorCode(httpDecoded)
+				gotMCP := h.mcpErrorCode(mcpResult)
 				if gotCLI != tc.wantErrCode {
 					t.Errorf("CLI error code = %s, want %s", gotCLI, tc.wantErrCode)
 				}
 				if gotHTTP != tc.wantErrCode {
 					t.Errorf("HTTP error code = %s, want %s", gotHTTP, tc.wantErrCode)
+				}
+				if gotMCP != tc.wantErrCode {
+					t.Errorf("MCP error code = %s, want %s", gotMCP, tc.wantErrCode)
 				}
 				cliField := h.cliErrorField(cliErr)
 				httpField := h.httpErrorField(httpDecoded)
@@ -326,17 +354,26 @@ func TestConformance(t *testing.T) {
 			if httpStatus >= 300 {
 				t.Fatalf("HTTP: unexpected error status %d: %v", httpStatus, httpDecoded)
 			}
+			if mcpResult.IsError {
+				t.Fatalf("MCP: unexpected error result: %+v", mcpResult)
+			}
 
 			cliData := decodeEnvelope(t, cliOut)
 			httpData := h.httpData(httpDecoded)
+			mcpData := h.mcpData(mcpResult)
 
 			cliFields := comparableFields(cliData)
 			httpFields := comparableFields(httpData)
+			mcpFields := comparableFields(mcpData)
 
 			cliJSON, _ := json.MarshalIndent(cliFields, "", "  ")
 			httpJSON, _ := json.MarshalIndent(httpFields, "", "  ")
+			mcpJSON, _ := json.MarshalIndent(mcpFields, "", "  ")
 			if string(cliJSON) != string(httpJSON) {
 				t.Errorf("CLI and HTTP disagree on the stored transaction:\nCLI:\n%s\nHTTP:\n%s", cliJSON, httpJSON)
+			}
+			if string(cliJSON) != string(mcpJSON) {
+				t.Errorf("CLI and MCP disagree on the stored transaction:\nCLI:\n%s\nMCP:\n%s", cliJSON, mcpJSON)
 			}
 		})
 	}
@@ -367,6 +404,48 @@ func (c conformanceCase) cliArgs() []string {
 		args = append(args, "--tag", tag)
 	}
 	return args
+}
+
+// mcpToolName and mcpArgs build runMCP's call for c — record_outflow,
+// record_inflow, or record_transfer (internal/surface/mcp/transactions_write.go),
+// the write-tier tools #261 already shipped for these three verbs.
+func (c conformanceCase) mcpToolName() string {
+	switch c.kind {
+	case outflow:
+		return "record_outflow"
+	case inflow:
+		return "record_inflow"
+	case transfer:
+		return "record_transfer"
+	}
+	return ""
+}
+
+func (c conformanceCase) mcpArgs() map[string]any {
+	if c.kind == transfer {
+		return map[string]any{
+			"from_account": c.fromAccount,
+			"to_account":   c.toAccount,
+			"amount":       c.amount,
+			"to_amount":    c.toAmount,
+			"date":         c.date,
+			// Same default as httpBody's transfer branch — see its own
+			// comment for why description is never a point of
+			// divergence between surfaces.
+			"description": fmt.Sprintf("Transfer from %s to %s", c.fromAccount, c.toAccount),
+			"notes":       c.notes,
+			"tags":        c.tags,
+		}
+	}
+	return map[string]any{
+		"account":     c.account,
+		"category":    c.category,
+		"amount":      c.amount,
+		"date":        c.date,
+		"description": c.category, // same default as httpBody's entry branch
+		"notes":       c.notes,
+		"tags":        c.tags,
+	}
 }
 
 // httpMethod, httpPath, and httpBody build runHTTP's request for c —
