@@ -18,10 +18,20 @@
 // both surfaces to hit, which neither surface's own production code may
 // do.
 //
-// Adding a third surface (MCP, M7) costs one wiring step: a
-// runMCP-shaped method on harness next to runCLI and runHTTP below, and
-// a third field on recordResult's expected comparison in cases_test.go.
-// Every existing table row then exercises it for free.
+// MCP (M8, issue #263) is this package's third leg: harness.runMCP below
+// drives a real sdkmcp.ClientSession, talking to a real sdkmcp.Server
+// built from the production mcp.Dispatcher and mcp.Tools(), over the
+// SDK's own in-memory transport — the same wiring
+// internal/surface/mcp/server_test.go's TestServer_WhoAmIOverInMemoryTransport
+// proves end to end, connected once per harness (alongside h.srv) rather
+// than reconnected per case. TestConformance in cases_test.go calls it
+// for every case exactly as it already calls runCLI and runHTTP, and
+// compares its result the same way: comparableFields for a successful
+// case, error code alone (mcpErrorCode) for a failing one — MCP's error
+// result carries no field-path equivalent to CLI's and HTTP's "field"
+// key (see internal/surface/mcp/result.go's errorResult), so that one
+// comparison is necessarily narrower than the CLI/HTTP field-path check
+// above it.
 package conformance
 
 import (
@@ -38,6 +48,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/anirudhgray/bodger/internal/adapters/fxprovider"
 	"github.com/anirudhgray/bodger/internal/adapters/sqlite"
 	"github.com/anirudhgray/bodger/internal/app"
@@ -48,6 +60,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/ports"
 	clisurface "github.com/anirudhgray/bodger/internal/surface/cli"
 	httpsurface "github.com/anirudhgray/bodger/internal/surface/http"
+	mcpsurface "github.com/anirudhgray/bodger/internal/surface/mcp"
 )
 
 // hostileInstant is issue #9's deliberately hostile frozen instant:
@@ -76,6 +89,7 @@ type harness struct {
 	svc   *app.Service
 	srv   *httptest.Server
 	token string
+	mcp   *sdkmcp.ClientSession
 }
 
 // newHarness builds a fresh, empty, fully-migrated database and the
@@ -138,6 +152,33 @@ func newHarnessWithFxProvider(t *testing.T, provider ports.FxRateProvider) *harn
 	srv := httptest.NewServer(httpsurface.NewMux(svc, nil))
 	t.Cleanup(srv.Close)
 
+	// MCP leg (issue #263): the same production Dispatcher/Tools() wiring
+	// internal/surface/mcp/server_test.go's
+	// TestServer_WhoAmIOverInMemoryTransport proves end to end, connected
+	// once here — like srv above — rather than reconnected per case.
+	// allowDestructive is false: this package's cases are all
+	// record-verb (write-tier), so no destructive tool needs to be
+	// registered.
+	dispatcher := mcpsurface.NewDispatcher(svc, false, nil)
+	for _, def := range mcpsurface.Tools() {
+		dispatcher.Register(def)
+	}
+	mcpServer := dispatcher.BuildServer(&sdkmcp.Implementation{Name: "bodger-conformance", Version: "test"})
+	mcpServerTransport, mcpClientTransport := sdkmcp.NewInMemoryTransports()
+
+	mcpServerSession, err := mcpServer.Connect(context.Background(), mcpServerTransport, nil)
+	if err != nil {
+		t.Fatalf("mcpServer.Connect: %v", err)
+	}
+	t.Cleanup(func() { _ = mcpServerSession.Close() })
+
+	mcpClient := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "bodger-conformance-client", Version: "test"}, nil)
+	mcpClientSession, err := mcpClient.Connect(context.Background(), mcpClientTransport, nil)
+	if err != nil {
+		t.Fatalf("mcpClient.Connect: %v", err)
+	}
+	t.Cleanup(func() { _ = mcpClientSession.Close() })
+
 	// Every route runHTTP exercises now requires a resolved ActorID
 	// (issue #56) — a bearer API token, minted here once, is what
 	// authenticates every runHTTP call below; conformance cares that both
@@ -155,7 +196,7 @@ func newHarnessWithFxProvider(t *testing.T, provider ports.FxRateProvider) *harn
 		t.Fatalf("CreateAPIToken: %v", err)
 	}
 
-	return &harness{t: t, svc: svc, srv: srv, token: tok.PlaintextToken}
+	return &harness{t: t, svc: svc, srv: srv, token: tok.PlaintextToken, mcp: mcpClientSession}
 }
 
 // seed creates the accounts and categories this package's case table
@@ -334,4 +375,70 @@ func (h *harness) httpData(decoded map[string]any) map[string]any {
 		h.t.Fatalf("httpData: %v has no \"data\" object", decoded)
 	}
 	return data
+}
+
+// runMCP calls the named tool on h's shared in-memory MCP session with
+// the given arguments (typically a conformanceCase's mcpArgs()) and
+// returns the raw *sdkmcp.CallToolResult — a successful call's data is
+// extracted with mcpData, a failed one's error code with mcpErrorCode,
+// mirroring runCLI/runHTTP's own split into a raw result and separate
+// success/error accessors.
+func (h *harness) runMCP(ctx context.Context, tool string, args map[string]any) *sdkmcp.CallToolResult {
+	h.t.Helper()
+	result, err := h.mcp.CallTool(ctx, &sdkmcp.CallToolParams{Name: tool, Arguments: args})
+	if err != nil {
+		h.t.Fatalf("CallTool(%s): %v", tool, err)
+	}
+	return result
+}
+
+// mcpData decodes a successful runMCP result's single TextContent block
+// as JSON — every write tool renders its result this way via
+// internal/surface/mcp/args.go's jsonResult — failing the test outright
+// if result isn't shaped like one.
+func (h *harness) mcpData(result *sdkmcp.CallToolResult) map[string]any {
+	h.t.Helper()
+	if result.IsError {
+		h.t.Fatalf("mcpData: result is an error: %+v", result)
+	}
+	if len(result.Content) == 0 {
+		h.t.Fatalf("mcpData: result has no content: %+v", result)
+	}
+	text, ok := result.Content[0].(*sdkmcp.TextContent)
+	if !ok {
+		h.t.Fatalf("mcpData: content[0] = %T, want *sdkmcp.TextContent", result.Content[0])
+	}
+	var data map[string]any
+	if err := json.Unmarshal([]byte(text.Text), &data); err != nil {
+		h.t.Fatalf("mcpData: decode %q: %v", text.Text, err)
+	}
+	return data
+}
+
+// mcpErrorCode extracts the *errs.Error code a failed runMCP result
+// carries — internal/surface/mcp/result.go's errorResult stashes it in
+// StructuredContent under "code" (resultCodeKey), which the SDK
+// round-trips through JSON as a map[string]any — failing the test
+// outright if result isn't shaped like an error result carrying one.
+//
+// Unlike cliErrorCode/httpErrorCode's field-path siblings
+// (cliErrorField/httpErrorField), there is no mcpErrorField: MCP's error
+// result carries only a human-readable message and this code, no
+// field-path equivalent to CLI's and HTTP's "field" key (see
+// result.go's own doc comment) — so TestConformance's MCP comparison
+// only asserts the error code, not a field path.
+func (h *harness) mcpErrorCode(result *sdkmcp.CallToolResult) errs.Code {
+	h.t.Helper()
+	if !result.IsError {
+		h.t.Fatalf("mcpErrorCode: result is not an error: %+v", result)
+	}
+	structured, ok := result.StructuredContent.(map[string]any)
+	if !ok {
+		h.t.Fatalf("mcpErrorCode: %v has no StructuredContent map", result)
+	}
+	code, ok := structured["code"].(string)
+	if !ok {
+		h.t.Fatalf("mcpErrorCode: %v has no \"code\" string", structured)
+	}
+	return errs.Code(code)
 }
