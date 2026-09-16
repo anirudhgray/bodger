@@ -342,7 +342,7 @@ Strictly three separate things, and conflating any two of them is a correctness 
 
 Only entity 3 contributes to balances, reports, budget actuals, or anything the user would call a number. Occurrences may appear in forecasts and reminders, always visually and structurally distinguished from actuals. Materialising an occurrence creates a real transaction and links back.
 
-Deferred to a later milestone (§13), but modelled now because retrofitting the distinction after the fact is how forecast money ends up in a balance.
+Modelled here first, because retrofitting the distinction after the fact is how forecast money ends up in a balance. [ADR-0014](decisions/0014-recurring-transactions-scheduling.md) settles the mechanics: the exact `RRULE` subset and its structured Go/SQL representation, why a monthly-on-the-31st rule clamps to 28 February rather than skipping it (a deliberate deviation from RFC 5545), where "what date is it" resolves, how far ahead occurrences are generated, and what makes an occurrence structurally incapable of reaching a balance. A rule posts to exactly one account/category pair; recurring transfers are deferred alongside split transfers (§13).
 
 ---
 
