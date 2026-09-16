@@ -231,8 +231,8 @@ Monthly category budgets, actual vs budget, remaining, utilisation, history. Rol
 ### M8 · Moria — MCP server
 `bodger mcp` over stdio. Read, write, and destructive tool tiers with confirmation and audit ([ADR-0013](decisions/0013-mcp-server-design.md)). Named for the Doors of Durin, which open to nothing but the correct word spoken by someone entitled to know it — a fitting name for the milestone where an agent's access to the ledger is granted tool by tool, tier by tier, and never silently.
 
-### M9 — Recurring transactions
-Rules, scheduled occurrences, materialisation, forecasting. Occurrences never touch a balance.
+### M9 · Lothlórien — Recurring transactions
+Rules, scheduled occurrences, materialisation, forecasting. Occurrences never touch a balance. Named for Galadriel's Mirror, which shows visions of what may yet come to pass, not what has — a fitting name for the milestone where money that hasn't moved yet is forecast, always kept structurally distinct from what actually has.
 
 ---
 
@@ -863,7 +863,7 @@ A follow-up built on top of #244/#245 added two more figures to actuals/history,
 | M6 · Fangorn — Import and export | ✅ Complete (v0.6.0) |
 | M7 · Gondor — Budgets | ✅ Complete (v0.7.0) |
 | M8 · Moria — MCP server | ✅ Complete (v0.8.0) |
-| M9 — Recurring transactions | ⬜ Not started |
+| M9 · Lothlórien — Recurring transactions | ⬜ Not started |
 
 Delivered in M0: this document, [`data-model.md`](data-model.md), [`ux-principles.md`](ux-principles.md), ADRs 0001–0011, [`contributing.md`](contributing.md), a placeholder [`user-guide.md`](user-guide.md), `.tool-versions`, `Makefile`, and the GitHub Actions workflow.
 
