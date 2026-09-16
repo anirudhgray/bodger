@@ -9,6 +9,17 @@ sync with each GitHub Release.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-15
+
+### Added
+
+* [062ac15a](https://github.com/anirudhgray/bodger/commit/062ac15a): feat(mcp): destructive-tier tools — delete, import commit/rollback, restore (#271) (@anirudhgray)
+* [feef5985](https://github.com/anirudhgray/bodger/commit/feef5985): feat(mcp): extended read-tier tools — analytics and single-transaction lookup (#270) (@anirudhgray)
+* [89ebc38e](https://github.com/anirudhgray/bodger/commit/89ebc38e): feat(mcp): fetch_fx_rates write-tier tool (#273) (@anirudhgray)
+* [16b15486](https://github.com/anirudhgray/bodger/commit/16b15486): feat(mcp): read-tier tools — balances, transactions, budgets, analytics, FX (#268) (@anirudhgray)
+* [dec0b39e](https://github.com/anirudhgray/bodger/commit/dec0b39e): feat(mcp): stdio transport, tool registry, and tier-enforcing dispatcher (#266) (@anirudhgray)
+* [c0661d05](https://github.com/anirudhgray/bodger/commit/c0661d05): feat(mcp): write-tier tools — record entries, edit transaction, budget CRUD (#269) (@anirudhgray)
+
 ## [0.7.0] - 2026-09-13
 
 ### Added
@@ -166,7 +177,8 @@ sync with each GitHub Release.
 * 5ae7d547: fix(infra): make lint fail loudly on an incompatible golangci-lint (#23)
 * c76bd7e7: fix(infra): pre-push hook executable bit, worktree hygiene (#14)
 
-[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/anirudhgray/bodger/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/anirudhgray/bodger/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/anirudhgray/bodger/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/anirudhgray/bodger/compare/v0.4.0...v0.5.0
