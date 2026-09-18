@@ -29,7 +29,7 @@ CREATE TABLE "accounts" (
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| id | TEXT |  | true | [postings](postings.md) [import_batch](import_batch.md) [import_record](import_record.md) |  |  |
+| id | TEXT |  | true | [postings](postings.md) [import_batch](import_batch.md) [import_record](import_record.md) [recurring_rules](recurring_rules.md) |  |  |
 | user_id | TEXT |  | false |  | [users](users.md) |  |
 | name | TEXT |  | false |  |  |  |
 | kind | TEXT |  | false |  |  |  |
@@ -69,6 +69,7 @@ erDiagram
 "postings" }o--|| "accounts" : "FOREIGN KEY (account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_batch" }o--|| "accounts" : "FOREIGN KEY (target_account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_record" }o--o| "accounts" : "FOREIGN KEY (resolved_account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"recurring_rules" }o--|| "accounts" : "FOREIGN KEY (account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "accounts" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "accounts" }o--|| "currencies" : "FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 
@@ -128,6 +129,24 @@ erDiagram
   TEXT created_at
   TEXT updated_at
   TEXT transfer_candidate_record_id FK
+}
+"recurring_rules" {
+  TEXT id PK
+  TEXT user_id FK
+  TEXT account_id FK
+  TEXT category_id FK
+  INTEGER amount_minor
+  TEXT description
+  TEXT frequency
+  INTEGER interval_count
+  INTEGER weekday
+  INTEGER day_of_month
+  INTEGER month_of_year
+  TEXT starts_on
+  TEXT ends_on
+  TEXT archived_at
+  TEXT created_at
+  TEXT updated_at
 }
 "users" {
   TEXT id PK

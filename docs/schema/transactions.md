@@ -29,7 +29,7 @@ CREATE TABLE transactions (
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| id | TEXT |  | true | [transactions](transactions.md) [postings](postings.md) [transaction_tags](transaction_tags.md) [transaction_revisions](transaction_revisions.md) [import_record](import_record.md) |  |  |
+| id | TEXT |  | true | [transactions](transactions.md) [postings](postings.md) [transaction_tags](transaction_tags.md) [transaction_revisions](transaction_revisions.md) [import_record](import_record.md) [scheduled_occurrences](scheduled_occurrences.md) |  |  |
 | user_id | TEXT |  | false |  | [users](users.md) |  |
 | kind | TEXT |  | false |  |  |  |
 | booked_date | TEXT |  | false |  |  |  |
@@ -74,6 +74,7 @@ erDiagram
 "transaction_revisions" }o--|| "transactions" : "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_record" }o--o| "transactions" : "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_record" }o--o| "transactions" : "FOREIGN KEY (duplicate_matched_transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"scheduled_occurrences" }o--o| "transactions" : "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "transactions" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 
 "transactions" {
@@ -136,6 +137,15 @@ erDiagram
   TEXT created_at
   TEXT updated_at
   TEXT transfer_candidate_record_id FK
+}
+"scheduled_occurrences" {
+  TEXT id PK
+  TEXT rule_id FK
+  TEXT occurrence_date
+  TEXT status
+  TEXT transaction_id FK
+  TEXT created_at
+  TEXT updated_at
 }
 "users" {
   TEXT id PK

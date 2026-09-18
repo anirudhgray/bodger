@@ -18,7 +18,7 @@ CREATE TABLE users (
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| id | TEXT |  | true | [transactions](transactions.md) [tags](tags.md) [transaction_revisions](transaction_revisions.md) [accounts](accounts.md) [categories](categories.md) [sessions](sessions.md) [api_tokens](api_tokens.md) [import_batch](import_batch.md) [import_record](import_record.md) [budgets](budgets.md) [mcp_tool_call](mcp_tool_call.md) |  |  |
+| id | TEXT |  | true | [transactions](transactions.md) [tags](tags.md) [transaction_revisions](transaction_revisions.md) [accounts](accounts.md) [categories](categories.md) [sessions](sessions.md) [api_tokens](api_tokens.md) [import_batch](import_batch.md) [import_record](import_record.md) [budgets](budgets.md) [mcp_tool_call](mcp_tool_call.md) [recurring_rules](recurring_rules.md) |  |  |
 | created_at | TEXT |  | false |  |  |  |
 | password_hash | TEXT |  | true |  |  |  |
 | reporting_currency | TEXT |  | true |  |  |  |
@@ -52,6 +52,7 @@ erDiagram
 "import_record" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "budgets" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "mcp_tool_call" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"recurring_rules" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 
 "users" {
   TEXT id PK
@@ -185,6 +186,24 @@ erDiagram
   TEXT confirmation_token
   TEXT result
   TEXT called_at
+}
+"recurring_rules" {
+  TEXT id PK
+  TEXT user_id FK
+  TEXT account_id FK
+  TEXT category_id FK
+  INTEGER amount_minor
+  TEXT description
+  TEXT frequency
+  INTEGER interval_count
+  INTEGER weekday
+  INTEGER day_of_month
+  INTEGER month_of_year
+  TEXT starts_on
+  TEXT ends_on
+  TEXT archived_at
+  TEXT created_at
+  TEXT updated_at
 }
 ```
 

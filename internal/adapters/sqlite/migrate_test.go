@@ -15,7 +15,7 @@ import (
 
 // latestMigrationVersion is the highest numeric prefix under migrations/.
 // Update this alongside adding a new migration.
-const latestMigrationVersion = 15
+const latestMigrationVersion = 16
 
 func TestMigrateUp_SeedsUser(t *testing.T) {
 	db, _ := newTestDB(t)
@@ -344,5 +344,145 @@ func TestMigrate00009_ArchivedAtRoundTrip(t *testing.T) {
 	}
 	if institution.Valid {
 		t.Errorf("accounts.institution = %q after up-down-up, want NULL (not preserved across the Down rollback)", institution.String)
+	}
+}
+
+// TestMigrate00016_DropsBothRecurringTables exercises the 00016
+// migration's Down in isolation, on top of the generic up-down-up cycle
+// above: scheduled_occurrences must be dropped before recurring_rules (it
+// references it), so a Down listing them the other way round would fail
+// here rather than only on a real rollback.
+func TestMigrate00016_DropsBothRecurringTables(t *testing.T) {
+	db, _ := newTestDB(t) // newTestDB already migrates all the way up
+	ctx := context.Background()
+
+	countTables := func() int {
+		t.Helper()
+		var n int
+		err := db.write.QueryRowContext(ctx, `
+			SELECT count(*) FROM sqlite_master
+			WHERE type = 'table' AND name IN ('recurring_rules', 'scheduled_occurrences')
+		`).Scan(&n)
+		if err != nil {
+			t.Fatalf("count recurring tables: %v", err)
+		}
+		return n
+	}
+
+	if got := countTables(); got != 2 {
+		t.Fatalf("after migrating up, %d of the two recurring tables exist, want 2", got)
+	}
+
+	if err := db.migrateDownTo(ctx, 15); err != nil {
+		t.Fatalf("migrateDownTo(15): %v", err)
+	}
+	if got := countTables(); got != 0 {
+		t.Errorf("%d recurring tables survived migrating down to 15, want 0", got)
+	}
+
+	if err := db.migrateUpTo(ctx, 16); err != nil {
+		t.Fatalf("migrateUpTo(16): %v", err)
+	}
+	if got := countTables(); got != 2 {
+		t.Errorf("after re-migrating up, %d of the two recurring tables exist, want 2", got)
+	}
+}
+
+// TestMigrate00016_ScheduleShapeCheck proves the schema's own frequency
+// CHECK is live, independently of recurring.Schedule's constructors: a row
+// whose positional columns don't match its declared frequency can't be
+// written even by SQL that bypasses the domain layer entirely (ADR-0014's
+// "unwritable as well as unrepresentable").
+func TestMigrate00016_ScheduleShapeCheck(t *testing.T) {
+	db, clk := newTestDB(t)
+	ctx := context.Background()
+	now := formatTime(clk.Now())
+	seedAccountAndCategory(t, db, ports.SeededUserID, "acc-1", "cat-1")
+
+	insert := func(id, frequency string, weekday, dayOfMonth, monthOfYear any) error {
+		_, err := db.write.ExecContext(ctx, `
+			INSERT INTO recurring_rules (id, user_id, account_id, category_id, amount_minor, description,
+			                             frequency, interval_count, weekday, day_of_month, month_of_year,
+			                             starts_on, ends_on, archived_at, created_at, updated_at)
+			VALUES (?, ?, 'acc-1', 'cat-1', 50000, 'Rent', ?, 1, ?, ?, ?, '2026-01-01', NULL, NULL, ?, ?)
+		`, id, ports.SeededUserID, frequency, weekday, dayOfMonth, monthOfYear, now, now)
+		return err
+	}
+
+	tests := []struct {
+		name        string
+		frequency   string
+		weekday     any
+		dayOfMonth  any
+		monthOfYear any
+		wantErr     bool
+	}{
+		{name: "weekly with a weekday", frequency: "weekly", weekday: 1},
+		{name: "monthly with a day", frequency: "monthly", dayOfMonth: 31},
+		{name: "yearly with a month and a day", frequency: "yearly", dayOfMonth: 29, monthOfYear: 2},
+		{name: "weekly without a weekday", frequency: "weekly", wantErr: true},
+		{name: "weekly carrying a day of month", frequency: "weekly", weekday: 1, dayOfMonth: 15, wantErr: true},
+		{name: "monthly carrying a weekday", frequency: "monthly", weekday: 1, dayOfMonth: 15, wantErr: true},
+		{name: "yearly without a month", frequency: "yearly", dayOfMonth: 29, wantErr: true},
+		{name: "daily is not a supported frequency", frequency: "daily", dayOfMonth: 1, wantErr: true},
+	}
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := insert(fmt.Sprintf("rule-%d", i), tt.frequency, tt.weekday, tt.dayOfMonth, tt.monthOfYear)
+			if tt.wantErr && err == nil {
+				t.Error("insert succeeded, want a CHECK constraint violation")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("insert failed: %v", err)
+			}
+		})
+	}
+}
+
+// TestMigrate00016_OccurrenceStatusAgreesWithTransaction is the schema
+// half of data-model.md §11's invariant: a materialised occurrence must
+// carry its transaction and a pending or skipped one must not, enforced
+// even against a direct write that never touched the domain layer.
+func TestMigrate00016_OccurrenceStatusAgreesWithTransaction(t *testing.T) {
+	db, clk := newTestDB(t)
+	ctx := context.Background()
+	now := formatTime(clk.Now())
+	ruleID := seedRule(t, db, ports.SeededUserID, "r1")
+	txnID := seedTransactionForOccurrence(t, db, ports.SeededUserID, "r1")
+
+	insert := func(id, status string, transactionID any, occurrenceDate string) error {
+		_, err := db.write.ExecContext(ctx, `
+			INSERT INTO scheduled_occurrences (id, rule_id, occurrence_date, status, transaction_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`, id, ruleID, occurrenceDate, status, transactionID, now, now)
+		return err
+	}
+
+	tests := []struct {
+		name          string
+		status        string
+		transactionID any
+		wantErr       bool
+	}{
+		{name: "pending without a transaction", status: "pending"},
+		{name: "skipped without a transaction", status: "skipped"},
+		{name: "materialised with a transaction", status: "materialised", transactionID: txnID},
+		{name: "pending with a transaction", status: "pending", transactionID: txnID, wantErr: true},
+		{name: "skipped with a transaction", status: "skipped", transactionID: txnID, wantErr: true},
+		{name: "materialised without a transaction", status: "materialised", wantErr: true},
+		{name: "an unknown status", status: "bogus", wantErr: true},
+	}
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// A distinct date per case, so UNIQUE (rule_id,
+			// occurrence_date) never masks the CHECK under test.
+			err := insert(fmt.Sprintf("occ-%d", i), tt.status, tt.transactionID, fmt.Sprintf("2026-01-%02d", i+1))
+			if tt.wantErr && err == nil {
+				t.Error("insert succeeded, want a CHECK constraint violation")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("insert failed: %v", err)
+			}
+		})
 	}
 }
