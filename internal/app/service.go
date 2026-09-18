@@ -110,6 +110,22 @@ type Service struct {
 	// separate, later issues.
 	Budgets ports.BudgetRepository
 
+	// RecurringRules and ScheduledOccurrences are issue #276's repository
+	// ports over recurring_rules/scheduled_occurrences (data-model.md §11,
+	// ADR-0014): a rule as a template and an occurrence as a projection,
+	// neither of which is money that moved. Following the
+	// ImportBatches/ImportRecords precedent above, both are wired in ahead
+	// of their first use-case method — rule CRUD (#277), occurrence
+	// generation (#278), and materialisation (#279) are separate, later
+	// issues.
+	//
+	// Nothing on either port returns a posting, a transaction, or a
+	// monetary value, and no balance or analytics method reads through
+	// them: that is the structural half of "an occurrence never
+	// contributes to a balance" (ADR-0014).
+	RecurringRules       ports.RecurringRuleRepository
+	ScheduledOccurrences ports.ScheduledOccurrenceRepository
+
 	// MCPToolCalls is issue #259's repository port over mcp_tool_call
 	// (ADR-0013): the audit trail of every write- and destructive-tier
 	// MCP tool invocation. Following the ImportBatches/ImportRecords
@@ -142,6 +158,8 @@ func NewService(
 	importCommits ports.ImportCommitRepository,
 	snapshots ports.SnapshotRepository,
 	budgets ports.BudgetRepository,
+	recurringRules ports.RecurringRuleRepository,
+	scheduledOccurrences ports.ScheduledOccurrenceRepository,
 	mcpToolCalls ports.MCPToolCallRepository,
 ) (*Service, error) {
 	switch {
@@ -177,6 +195,10 @@ func NewService(
 		return nil, missingDependency("snapshot repository")
 	case budgets == nil:
 		return nil, missingDependency("budget repository")
+	case recurringRules == nil:
+		return nil, missingDependency("recurring rule repository")
+	case scheduledOccurrences == nil:
+		return nil, missingDependency("scheduled occurrence repository")
 	case mcpToolCalls == nil:
 		return nil, missingDependency("MCP tool call repository")
 	}
@@ -199,7 +221,11 @@ func NewService(
 		ImportCommits: importCommits,
 		Snapshots:     snapshots,
 		Budgets:       budgets,
-		MCPToolCalls:  mcpToolCalls,
+
+		RecurringRules:       recurringRules,
+		ScheduledOccurrences: scheduledOccurrences,
+
+		MCPToolCalls: mcpToolCalls,
 	}, nil
 }
 

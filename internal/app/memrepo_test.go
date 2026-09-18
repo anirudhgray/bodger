@@ -14,6 +14,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/domain/importing"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/domain/money"
+	"github.com/anirudhgray/bodger/internal/domain/recurring"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
 )
@@ -1143,6 +1144,159 @@ func (m *memBudgets) Update(_ context.Context, actorID string, b budgeting.Budge
 }
 
 var _ ports.BudgetRepository = (*memBudgets)(nil)
+
+// memRecurringRules is an in-memory ports.RecurringRuleRepository (issue
+// #276) for future use-case tests, enforcing the same actor-scoping
+// contract (ADR-0006) every other mem* fixture above does. newTestService
+// wires it in now, ahead of any use-case method using it, the same
+// precedent memBudgets set for Budgets.
+type memRecurringRules struct {
+	byID map[string]recurring.RecurringRule
+	seq  map[string]int
+	next int
+}
+
+func newMemRecurringRules() *memRecurringRules {
+	return &memRecurringRules{byID: map[string]recurring.RecurringRule{}, seq: map[string]int{}}
+}
+
+func (m *memRecurringRules) Create(_ context.Context, actorID string, rule recurring.RecurringRule) error {
+	if rule.UserID() != actorID {
+		return errs.New(errs.NotAllowed)
+	}
+	m.next++
+	m.byID[rule.ID()] = rule
+	m.seq[rule.ID()] = m.next
+	return nil
+}
+
+func (m *memRecurringRules) Get(_ context.Context, actorID, id string) (recurring.RecurringRule, error) {
+	rule, ok := m.byID[id]
+	if !ok || rule.UserID() != actorID {
+		return recurring.RecurringRule{}, errs.New(errs.NotFound).Explain("No recurring rule with ID %q.", id).Field("id")
+	}
+	return rule, nil
+}
+
+// List returns actorID's own rules, most recently created first —
+// mirroring the real adapter's ORDER BY created_at DESC using insertion
+// sequence, since this fixture has no created_at column to sort by.
+func (m *memRecurringRules) List(_ context.Context, actorID string) ([]recurring.RecurringRule, error) {
+	var out []recurring.RecurringRule
+	for _, rule := range m.byID {
+		if rule.UserID() == actorID {
+			out = append(out, rule)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return m.seq[out[i].ID()] > m.seq[out[j].ID()] })
+	return out, nil
+}
+
+func (m *memRecurringRules) Update(_ context.Context, actorID string, rule recurring.RecurringRule) error {
+	existing, ok := m.byID[rule.ID()]
+	if !ok || existing.UserID() != actorID {
+		return errs.New(errs.NotFound).Explain("No recurring rule with ID %q.", rule.ID()).Field("id")
+	}
+	if rule.UserID() != actorID {
+		return errs.New(errs.NotAllowed)
+	}
+	m.byID[rule.ID()] = rule
+	return nil
+}
+
+var _ ports.RecurringRuleRepository = (*memRecurringRules)(nil)
+
+// memScheduledOccurrences is an in-memory
+// ports.ScheduledOccurrenceRepository (issue #276). Like the real adapter,
+// it reaches an occurrence's owner through its rule rather than a user_id
+// of its own (ADR-0014), so it holds a reference to memRecurringRules
+// instead of duplicating ownership — the same shape memSnapshots already
+// composes the fixtures it needs.
+type memScheduledOccurrences struct {
+	rules *memRecurringRules
+	byID  map[string]recurring.ScheduledOccurrence
+}
+
+func newMemScheduledOccurrences(rules *memRecurringRules) *memScheduledOccurrences {
+	return &memScheduledOccurrences{rules: rules, byID: map[string]recurring.ScheduledOccurrence{}}
+}
+
+func (m *memScheduledOccurrences) ownedByActor(actorID, ruleID string) bool {
+	rule, ok := m.rules.byID[ruleID]
+	return ok && rule.UserID() == actorID
+}
+
+func (m *memScheduledOccurrences) CreateBatch(_ context.Context, actorID string, occurrences []recurring.ScheduledOccurrence) error {
+	for _, o := range occurrences {
+		if !m.ownedByActor(actorID, o.RuleID()) {
+			return errs.New(errs.NotAllowed)
+		}
+		for _, existing := range m.byID {
+			if existing.RuleID() == o.RuleID() && existing.OccurrenceDate() == o.OccurrenceDate() {
+				return errs.New(errs.Conflict).Explain("That occurrence already exists.")
+			}
+		}
+	}
+	for _, o := range occurrences {
+		m.byID[o.ID()] = o
+	}
+	return nil
+}
+
+func (m *memScheduledOccurrences) Get(_ context.Context, actorID, id string) (recurring.ScheduledOccurrence, error) {
+	o, ok := m.byID[id]
+	if !ok || !m.ownedByActor(actorID, o.RuleID()) {
+		return recurring.ScheduledOccurrence{}, errs.New(errs.NotFound).
+			Explain("No scheduled occurrence with ID %q.", id).Field("id")
+	}
+	return o, nil
+}
+
+func (m *memScheduledOccurrences) List(_ context.Context, actorID string, filter ports.ScheduledOccurrenceFilter) ([]recurring.ScheduledOccurrence, error) {
+	var out []recurring.ScheduledOccurrence
+	for _, o := range m.byID {
+		switch {
+		case !m.ownedByActor(actorID, o.RuleID()):
+		case filter.RuleID != "" && o.RuleID() != filter.RuleID:
+		case filter.Status != "" && o.Status() != filter.Status:
+		case filter.FromDate != nil && o.OccurrenceDate().Before(*filter.FromDate):
+		case filter.ToDate != nil && o.OccurrenceDate().After(*filter.ToDate):
+		default:
+			out = append(out, o)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].OccurrenceDate() != out[j].OccurrenceDate() {
+			return out[i].OccurrenceDate().Before(out[j].OccurrenceDate())
+		}
+		return out[i].ID() < out[j].ID()
+	})
+	return out, nil
+}
+
+func (m *memScheduledOccurrences) Update(_ context.Context, actorID string, occurrence recurring.ScheduledOccurrence) error {
+	existing, ok := m.byID[occurrence.ID()]
+	if !ok || !m.ownedByActor(actorID, existing.RuleID()) {
+		return errs.New(errs.NotFound).
+			Explain("No scheduled occurrence with ID %q.", occurrence.ID()).Field("id")
+	}
+	m.byID[occurrence.ID()] = occurrence
+	return nil
+}
+
+func (m *memScheduledOccurrences) DeletePending(_ context.Context, actorID, ruleID string, onOrAfter domain.Date) error {
+	if !m.ownedByActor(actorID, ruleID) {
+		return nil
+	}
+	for id, o := range m.byID {
+		if o.RuleID() == ruleID && o.Status() == recurring.OccurrenceStatusPending && !o.OccurrenceDate().Before(onOrAfter) {
+			delete(m.byID, id)
+		}
+	}
+	return nil
+}
+
+var _ ports.ScheduledOccurrenceRepository = (*memScheduledOccurrences)(nil)
 
 // memMCPToolCalls is an in-memory ports.MCPToolCallRepository, the
 // memBudgets/memImportBatches equivalent for issue #259's mcp_tool_call

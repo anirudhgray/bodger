@@ -47,12 +47,15 @@ func newTestService(t *testing.T, frozenAt time.Time, tz string) *app.Service {
 	importBatches := newMemImportBatches()
 	importRecords := newMemImportRecords()
 	budgets := newMemBudgets()
+	recurringRules := newMemRecurringRules()
 	svc, err := app.NewService(
 		clk, cfg, idgen.New(), accounts, categories, transactions, newMemTags(),
 		users, newMemSessions(), newMemAPITokens(), newMemFxRates(accounts, transactions), newMemFxProvider(),
 		importBatches, importRecords, newMemImportCommits(importBatches, importRecords, transactions),
 		newMemSnapshots(accounts, categories, transactions, budgets),
 		budgets,
+		recurringRules,
+		newMemScheduledOccurrences(recurringRules),
 		newMemMCPToolCalls(),
 	)
 	if err != nil {

@@ -70,6 +70,8 @@ func newTestFactoryWithFxProvider(t *testing.T, frozenAt time.Time, provider por
 			sqlite.NewImportBatchRepository(db), sqlite.NewImportRecordRepository(db), sqlite.NewImportCommitRepository(db),
 			sqlite.NewSnapshotRepository(db),
 			sqlite.NewBudgetRepository(db),
+			sqlite.NewRecurringRuleRepository(db),
+			sqlite.NewScheduledOccurrenceRepository(db),
 			sqlite.NewMCPToolCallRepository(db),
 		)
 		return svc, func() error { return nil }, err
