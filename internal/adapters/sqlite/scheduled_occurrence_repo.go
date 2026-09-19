@@ -55,20 +55,36 @@ func (r *ScheduledOccurrenceRepository) CreateBatch(ctx context.Context, actorID
 		if err := requireRuleOwnedByActor(ctx, tx, actorID, o.RuleID()); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `
-			INSERT INTO scheduled_occurrences (id, rule_id, occurrence_date, status, transaction_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
-		`,
-			o.ID(), o.RuleID(), formatDate(o.OccurrenceDate()), string(o.Status()),
-			nullableString(o.TransactionID()), now, now,
-		)
-		if err != nil {
-			return wrapWriteError(err).Explain("Couldn't save the scheduled occurrence for %s.", o.OccurrenceDate())
+		if err := insertScheduledOccurrenceRow(ctx, tx, o, now); err != nil {
+			return err
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		return errs.New(errs.Internal).Wrap(err)
+	}
+	return nil
+}
+
+// insertScheduledOccurrenceRow writes o's INSERT against tx, so CreateBatch
+// and SnapshotRepository.Replace (issue #283) run the identical statement
+// inside their own respective transactions rather than duplicating this
+// SQL — the same shared-helper shape insertRecurringRuleRow gives
+// RecurringRuleRepository.Create/SnapshotRepository.Replace.
+// SnapshotRepository.Replace doesn't call requireRuleOwnedByActor itself:
+// its own top-level ownership checks on snapshot.RecurringRules already
+// guarantee every rule (and therefore every occurrence referencing one)
+// belongs to actorID.
+func insertScheduledOccurrenceRow(ctx context.Context, tx execer, o recurring.ScheduledOccurrence, now string) *errs.Error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO scheduled_occurrences (id, rule_id, occurrence_date, status, transaction_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`,
+		o.ID(), o.RuleID(), formatDate(o.OccurrenceDate()), string(o.Status()),
+		nullableString(o.TransactionID()), now, now,
+	)
+	if err != nil {
+		return wrapWriteError(err).Explain("Couldn't save the scheduled occurrence for %s.", o.OccurrenceDate())
 	}
 	return nil
 }

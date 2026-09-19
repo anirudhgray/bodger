@@ -38,11 +38,22 @@ func (r *RecurringRuleRepository) Create(ctx context.Context, actorID string, ru
 	if err := requireActor(actorID, rule.UserID()); err != nil {
 		return err
 	}
-
 	now := formatTime(r.db.clock.Now())
+	if err := insertRecurringRuleRow(ctx, r.db.write, actorID, rule, now); err != nil {
+		return err
+	}
+	return nil
+}
+
+// insertRecurringRuleRow writes rule's INSERT against tx, so Create and
+// SnapshotRepository.Replace (issue #283) run the identical statement
+// inside their own respective transactions rather than duplicating this
+// SQL — the same shared-helper shape insertBudgetRow already gives
+// BudgetRepository.Create/SnapshotRepository.Replace.
+func insertRecurringRuleRow(ctx context.Context, tx execer, actorID string, rule recurring.RecurringRule, now string) *errs.Error {
 	cols := scheduleColumns(rule.Schedule())
 
-	_, err := r.db.write.ExecContext(ctx, `
+	_, err := tx.ExecContext(ctx, `
 		INSERT INTO recurring_rules (id, user_id, account_id, category_id, amount_minor, description,
 		                             frequency, interval_count, weekday, day_of_month, month_of_year,
 		                             starts_on, ends_on, archived_at, created_at, updated_at)
