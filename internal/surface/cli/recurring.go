@@ -442,6 +442,18 @@ func newRecurringOccurrencesListCmd(factory ServiceFactory) *cobra.Command {
 
 // ---- recurring materialise/skip ----
 
+// materialiseOccurrenceView is `bodger recurring materialise`'s rendered
+// shape, mirroring internal/surface/http/recurring.go's own
+// materialiseOccurrenceView field for field: the transaction it produced,
+// and the occurrence's own updated state, both under the same "occurrence"/
+// "transaction" keys the REST and MCP surfaces use — the same
+// cross-surface JSON-shape agreement every other command in this package
+// keeps, proven by internal/surface/conformance's own MCP/HTTP legs.
+type materialiseOccurrenceView struct {
+	Occurrence  scheduledOccurrenceView `json:"occurrence"`
+	Transaction transactionView         `json:"transaction"`
+}
+
 func newRecurringMaterialiseCmd(factory ServiceFactory) *cobra.Command {
 	return &cobra.Command{
 		Use:   "materialise <occurrence-id>",
@@ -467,13 +479,16 @@ func newRecurringMaterialiseCmd(factory ServiceFactory) *cobra.Command {
 				return err
 			}
 			txID, _ := result.Occurrence.TransactionID()
-			view := scheduledOccurrenceView{
-				ID: result.Occurrence.ID(), RuleID: result.Occurrence.RuleID(),
-				OccurrenceDate: result.Occurrence.OccurrenceDate().String(),
-				Status:         string(result.Occurrence.Status()), TransactionID: txID,
+			view := materialiseOccurrenceView{
+				Occurrence: scheduledOccurrenceView{
+					ID: result.Occurrence.ID(), RuleID: result.Occurrence.RuleID(),
+					OccurrenceDate: result.Occurrence.OccurrenceDate().String(),
+					Status:         string(result.Occurrence.Status()), TransactionID: txID,
+				},
+				Transaction: transactionViewFrom(app.TransactionResult{Transaction: result.Transaction}),
 			}
 			return render(cmd, view, func(w io.Writer) {
-				printScheduledOccurrence(w, view)
+				printScheduledOccurrence(w, view.Occurrence)
 				_, _ = fmt.Fprintf(w, "Recorded %q for %s.\n", result.Transaction.Description(), result.Transaction.BookedDate().String())
 			})
 		},
