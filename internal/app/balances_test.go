@@ -45,6 +45,48 @@ func TestAccountBalances_OpeningBalancePlusPostings(t *testing.T) {
 	}
 }
 
+// TestAccountBalances_PendingOccurrenceNeverCounted is a regression guard
+// for data-model.md §11's "occurrences never contribute to a balance,
+// report, or budget actual" — issue #280. AccountBalances reads only
+// postings derived from s.Transactions, never s.ScheduledOccurrences, so
+// this currently passes trivially; it exists to catch a future change
+// that accidentally wires occurrences into this query.
+func TestAccountBalances_PendingOccurrenceNeverCounted(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+
+	created, err := svc.CreateAccount(ctx, app.CreateAccountCommand{
+		ActorID: testActorID, Name: "HDFC Savings", Kind: "bank", Currency: "INR",
+		OpeningBalance: "50000.00", OpeningBalanceDate: "2026-01-01",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	category := mustCategoryFixture(t, svc, "Groceries", "expense")
+
+	rule, err := svc.CreateRecurringRule(ctx, app.CreateRecurringRuleCommand{
+		ActorID: testActorID, AccountRef: created.Account.ID(), CategoryRef: category.Category.ID(),
+		Amount: "800.00", Description: "Groceries", StartsOn: "2026-08-14",
+		Schedule: app.RecurringScheduleInput{Frequency: "monthly", Interval: 1, DayOfMonth: 14},
+	})
+	if err != nil {
+		t.Fatalf("CreateRecurringRule: %v", err)
+	}
+	if _, err := svc.GenerateOccurrences(ctx, app.GenerateOccurrencesCommand{ActorID: testActorID, RuleID: rule.Rule.ID()}); err != nil {
+		t.Fatalf("GenerateOccurrences: %v", err)
+	}
+
+	result, err := svc.AccountBalances(ctx, app.AccountBalancesQuery{ActorID: testActorID, AsOf: "2026-08-20"})
+	if err != nil {
+		t.Fatalf("AccountBalances: %v", err)
+	}
+	// 50000.00 opening, no real transactions — a pending occurrence for
+	// the same account/date must not move this.
+	if got := result.Balances[0].Balance.AmountMinor(); got != 5000000 {
+		t.Errorf("Balance = %d, want 5000000 (a pending occurrence must never move an account balance)", got)
+	}
+}
+
 func TestAccountBalances_ExcludesTransactionsAfterAsOf(t *testing.T) {
 	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
 	ctx := context.Background()
