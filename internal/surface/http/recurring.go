@@ -6,6 +6,13 @@
 // materialise/skip use cases (issue #279), and internal/app/forecast.go's
 // projected-activity query (issue #280) — following
 // internal/surface/http/budgets.go's own view/request/handler conventions.
+//
+// refreshOccurrences (issue #294) fills a gap #281 left open: nothing
+// actually called app.GenerateOccurrences from any surface, so a created
+// rule could never produce a pending occurrence for materialise/skip to
+// act on, or for the forecast to read. See that use case's own doc
+// comment (internal/app/recurring_occurrences.go) — it anticipated this
+// exact endpoint.
 package http
 
 import (
@@ -327,6 +334,36 @@ func (h *handlers) skipOccurrence(w http.ResponseWriter, r *http.Request) {
 		Status:         string(result.Occurrence.Status()),
 		TransactionID:  txID,
 	})
+}
+
+// refreshOccurrencesView is POST .../refresh's response shape
+// (app.GenerateOccurrencesResult): only the occurrences this call actually
+// created, never ones that already existed (generation is idempotent,
+// ADR-0014).
+type refreshOccurrencesView struct {
+	Created []scheduledOccurrenceView `json:"created"`
+}
+
+func (h *handlers) refreshOccurrences(w http.ResponseWriter, r *http.Request) {
+	result, err := h.svc.GenerateOccurrences(r.Context(), app.GenerateOccurrencesCommand{
+		ActorID: actorID(r), RuleID: r.URL.Query().Get("rule_id"),
+	})
+	if err != nil {
+		h.respondError(w, r, err)
+		return
+	}
+	views := make([]scheduledOccurrenceView, 0, len(result.Created))
+	for _, occ := range result.Created {
+		txID, _ := occ.TransactionID()
+		views = append(views, scheduledOccurrenceView{
+			ID:             occ.ID(),
+			RuleID:         occ.RuleID(),
+			OccurrenceDate: occ.OccurrenceDate().String(),
+			Status:         string(occ.Status()),
+			TransactionID:  txID,
+		})
+	}
+	respond(w, http.StatusOK, refreshOccurrencesView{Created: views})
 }
 
 // forecastPointView is one period's projected totals (app.ForecastPoint) —

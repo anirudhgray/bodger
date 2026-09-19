@@ -834,6 +834,19 @@ var routeTable = []route{
 		Errors:   []int{http.StatusNotFound, http.StatusConflict},
 	},
 	{
+		Method: http.MethodPost, Pattern: "/api/v1/recurring-occurrences/refresh",
+		Handler: func(h *handlers) http.HandlerFunc { return h.refreshOccurrences },
+
+		OperationID: "refreshOccurrences", Summary: "Generate any pending occurrences a rule's schedule has newly come due for.",
+		Description:   "Ensures pending occurrences exist out to the generation horizon for the given rule (or, with no rule_id, every active rule the actor owns), without duplicating a date that already has an occurrence of any status - safe to call repeatedly. Creating or editing a rule does not generate occurrences on its own; call this afterward.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The occurrences this call actually created - never ones that already existed.",
+		Response: refreshOccurrencesView{},
+		Errors:   []int{http.StatusNotFound, http.StatusUnprocessableEntity},
+		Query: []queryParam{
+			{Name: "rule_id", Description: "Regenerate only this rule's occurrences. Omit to refresh every active rule the actor owns.", Type: "string"},
+		},
+	},
+	{
 		Method: http.MethodGet, Pattern: "/api/v1/forecast",
 		Handler: func(h *handlers) http.HandlerFunc { return h.getForecast },
 
