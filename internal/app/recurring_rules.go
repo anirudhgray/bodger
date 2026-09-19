@@ -135,6 +135,11 @@ func (s *Service) CreateRecurringRule(ctx context.Context, cmd CreateRecurringRu
 // clears it to "runs indefinitely" rather than leaving a prior value
 // untouched, since there is no separate "don't change this" sentinel on a
 // plain string field.
+//
+// If Schedule actually changes the firing pattern, this discards and
+// regenerates the rule's pending future occurrences (ADR-0014) — see
+// regenerateAfterScheduleChange. An amount/description/ends_on-only edit
+// never touches occurrences.
 type UpdateRecurringRuleCommand struct {
 	ActorID     string
 	RuleID      string
@@ -145,9 +150,8 @@ type UpdateRecurringRuleCommand struct {
 }
 
 // UpdateRecurringRule implements the "update" use case in issue #277's
-// recurring-rule-CRUD scope. Regenerating a rule's pending occurrences
-// after its schedule changes is issue #278's job, not this one's — this
-// call only updates the template.
+// recurring-rule-CRUD scope, extended by issue #278 to regenerate
+// occurrences when the schedule itself changes.
 func (s *Service) UpdateRecurringRule(ctx context.Context, cmd UpdateRecurringRuleCommand) (RecurringRuleResult, error) {
 	if err := requireActorID(cmd.ActorID); err != nil {
 		return RecurringRuleResult{}, err
@@ -200,28 +204,36 @@ func (s *Service) UpdateRecurringRule(ctx context.Context, cmd UpdateRecurringRu
 	if err := s.RecurringRules.Update(ctx, cmd.ActorID, updated); err != nil {
 		return RecurringRuleResult{}, err
 	}
+
+	if !scheduleEqual(existing.Schedule(), updated.Schedule()) {
+		if err := s.regenerateAfterScheduleChange(ctx, cmd.ActorID, updated); err != nil {
+			return RecurringRuleResult{}, err
+		}
+	}
 	return RecurringRuleResult{Rule: updated}, nil
 }
 
 // ArchiveRecurringRuleCommand stops a rule from generating any further
-// occurrences going forward (issue #278 checks Archived() before
-// generating), while leaving the rule and its already-generated
-// occurrences fully queryable.
+// occurrences going forward, while leaving the rule and its already-
+// generated materialised/skipped occurrences fully queryable.
 type ArchiveRecurringRuleCommand struct {
 	ActorID string
 	RuleID  string
 }
 
 // ArchiveRecurringRule implements the "archive" use case in issue #277's
-// recurring-rule-CRUD scope. Archiving an already-archived rule is a no-op
-// that returns its current state unchanged, the same idempotency
-// ArchiveBudget/ArchiveAccount give.
+// recurring-rule-CRUD scope, extended by issue #278 to cancel a newly-
+// archived rule's still-pending occurrences. Archiving an already-archived
+// rule is a no-op that returns its current state unchanged, the same
+// idempotency ArchiveBudget/ArchiveAccount give — and, since nothing
+// changed, it does not re-run occurrence cancellation either.
 //
-// Archiving here never touches a ScheduledOccurrence row: per the issue's
-// own scope note, an archived rule's already-pending occurrences are left
-// exactly as they are, and cancelling them is issue #278's explicit,
-// separate concern (there is no occurrence-generation code for this call
-// to reach yet regardless).
+// There is no "cancelled" OccurrenceStatus in the domain model — only
+// pending/materialised/skipped, and MarkSkipped represents a user's own
+// decision, which an archive-triggered cleanup isn't — so cancellation here
+// means removing the rows outright via DeletePending, which by construction
+// only ever touches pending occurrences and leaves materialised/skipped
+// history untouched.
 func (s *Service) ArchiveRecurringRule(ctx context.Context, cmd ArchiveRecurringRuleCommand) (RecurringRuleResult, error) {
 	if err := requireActorID(cmd.ActorID); err != nil {
 		return RecurringRuleResult{}, err
@@ -254,6 +266,9 @@ func (s *Service) ArchiveRecurringRule(ctx context.Context, cmd ArchiveRecurring
 	}
 
 	if err := s.RecurringRules.Update(ctx, cmd.ActorID, updated); err != nil {
+		return RecurringRuleResult{}, err
+	}
+	if err := s.ScheduledOccurrences.DeletePending(ctx, cmd.ActorID, existing.ID(), existing.StartsOn()); err != nil {
 		return RecurringRuleResult{}, err
 	}
 	return RecurringRuleResult{Rule: updated}, nil
