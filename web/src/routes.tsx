@@ -20,6 +20,7 @@ import { ImportPage } from '@/pages/data/Import'
 import { RestorePage } from '@/pages/data/Restore'
 import { Login } from '@/pages/Login'
 import { Placeholder } from '@/pages/Placeholder'
+import { RecurringPage } from '@/pages/Recurring'
 import { AccountsSettings } from '@/pages/settings/Accounts'
 import { ApiTokensSettings } from '@/pages/settings/ApiTokens'
 import { CategoriesSettings } from '@/pages/settings/Categories'
@@ -98,6 +99,12 @@ export const routes: RouteObject[] = [
         // actual-vs-budget with utilisation, and period navigation.
         path: 'budgets',
         element: <BudgetsPage />,
+      },
+      {
+        // issue #282 — recurring rules (create/edit/archive), the
+        // occurrences they project, and generating (refreshing) them.
+        path: 'recurring',
+        element: <RecurringPage />,
       },
       {
         // issue #214 — import wizard, export/backup, and restore-from-

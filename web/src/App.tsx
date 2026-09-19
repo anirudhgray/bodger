@@ -6,6 +6,7 @@ import {
   Moon,
   PiggyBank,
   Receipt,
+  Repeat,
   Settings as SettingsIcon,
   Sun,
   Wallet,
@@ -44,15 +45,17 @@ import { SETTINGS_SECTIONS } from '@/pages/settings/shared'
 
 // Each item's icon matches the one its own screen already uses for its
 // empty state (TransactionsList.tsx's Receipt, Balances.tsx's Wallet,
-// Analytics.tsx's BarChart3, Budgets.tsx's PiggyBank) — reusing that
-// vocabulary rather than picking new icons for the same concept. Import &
-// export and Settings are both rendered separately below, as collapsible
-// groups rather than plain links — see AppSidebar's comment for why.
+// Analytics.tsx's BarChart3, Budgets.tsx's PiggyBank, Recurring.tsx's
+// Repeat) — reusing that vocabulary rather than picking new icons for the
+// same concept. Import & export and Settings are both rendered separately
+// below, as collapsible groups rather than plain links — see AppSidebar's
+// comment for why.
 const navItems = [
   { to: '/transactions', label: 'Transactions', icon: Receipt },
   { to: '/balances', label: 'Balances', icon: Wallet },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/budgets', label: 'Budgets', icon: PiggyBank },
+  { to: '/recurring', label: 'Recurring', icon: Repeat },
 ]
 
 // AppLayout is the routing skeleton's shell: a sidebar nav, a header, and
