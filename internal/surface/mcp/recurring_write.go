@@ -4,7 +4,11 @@
 // internal/app/recurring_rules.go's CreateRecurringRule/UpdateRecurringRule
 // (issue #277) and internal/app/recurring_occurrences_actions.go's
 // MaterialiseOccurrence/SkipOccurrence (issue #279) — following
-// budgets_write.go's own write-tier tool conventions.
+// budgets_write.go's own write-tier tool conventions. refresh_occurrences
+// (issue #294) extends this: #281 never wired
+// internal/app/recurring_occurrences.go's GenerateOccurrences to any
+// surface, so a created rule could never actually produce a pending
+// occurrence.
 package mcp
 
 import (
@@ -315,6 +319,63 @@ func skipOccurrenceTool() ToolDef {
 				result.Occurrence.ID(), result.Occurrence.RuleID(), result.Occurrence.OccurrenceDate().String(),
 				string(result.Occurrence.Status()), txID,
 			))
+		},
+	}
+}
+
+// refreshOccurrencesArgs is refresh_occurrences' arguments. RuleID is
+// optional: set it to regenerate just one rule's occurrences, or omit it
+// to refresh every active rule the actor owns.
+type refreshOccurrencesArgs struct {
+	RuleID string `json:"rule_id,omitempty"`
+}
+
+// refreshOccurrencesView is refresh_occurrences' result shape
+// (app.GenerateOccurrencesResult): only the occurrences this call
+// actually created, never ones that already existed.
+type refreshOccurrencesView struct {
+	Created []scheduledOccurrenceView `json:"created"`
+}
+
+// refreshOccurrencesTool wires app.Service.GenerateOccurrences onto a
+// write-tier MCP tool — issue #294's gap fill: #281 wired every other
+// recurring use case to a surface but missed this one, so a created rule
+// could never actually produce a pending occurrence. See that use case's
+// own doc comment (internal/app/recurring_occurrences.go), which
+// anticipated this exact tool.
+func refreshOccurrencesTool() ToolDef {
+	return ToolDef{
+		Name:        "refresh_occurrences",
+		Description: "Generate any pending occurrences a rule's schedule has newly come due for, out to the generation horizon. Safe to call repeatedly -- never duplicates a date that already has an occurrence of any status. Creating or editing a rule does not generate occurrences on its own; call this afterward.",
+		Tier:        ports.MCPToolTierWrite,
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"rule_id": map[string]any{
+					"type":        "string",
+					"description": "Regenerate only this rule's occurrences. Omit to refresh every active rule the actor owns.",
+				},
+			},
+			"additionalProperties": false,
+		},
+		Execute: func(ctx context.Context, svc *app.Service, actorID string, raw json.RawMessage) (*sdkmcp.CallToolResult, error) {
+			var args refreshOccurrencesArgs
+			if err := decodeArgs(raw, &args); err != nil {
+				return errorResult(err), nil
+			}
+
+			result, err := svc.GenerateOccurrences(ctx, app.GenerateOccurrencesCommand{ActorID: actorID, RuleID: args.RuleID})
+			if err != nil {
+				return errorResult(err), nil
+			}
+			views := make([]scheduledOccurrenceView, 0, len(result.Created))
+			for _, occ := range result.Created {
+				txID, _ := occ.TransactionID()
+				views = append(views, scheduledOccurrenceViewFromOccurrence(
+					occ.ID(), occ.RuleID(), occ.OccurrenceDate().String(), string(occ.Status()), txID,
+				))
+			}
+			return jsonResult(refreshOccurrencesView{Created: views})
 		},
 	}
 }
