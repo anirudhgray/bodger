@@ -123,6 +123,15 @@ type ToolDef struct {
 // wiring-only shape as every other tool here, no new app-layer logic;
 // write, not destructive, since it's additive (new rate rows) and no
 // harder to reverse than any other write.
+//
+// Every tool from listRecurringRulesTool through archiveRecurringRuleTool
+// is issue #281's recurring-surface wiring, tiered per its own MCP
+// bullet: listRecurringRulesTool/listScheduledOccurrencesTool/
+// getForecastTool are read; createRecurringRuleTool/updateRecurringRuleTool/
+// materialiseOccurrenceTool/skipOccurrenceTool are write; and
+// archiveRecurringRuleTool is destructive (recurring.go, recurring_write.go,
+// recurring_destructive.go -- see the last file's own doc comment for why
+// this diverges from archiveBudgetTool's write-tier precedent).
 func Tools() []ToolDef {
 	return []ToolDef{
 		whoAmITool(),
@@ -156,5 +165,13 @@ func Tools() []ToolDef {
 		rollbackImportTool(),
 		restoreSnapshotTool(),
 		fetchFxRatesTool(),
+		listRecurringRulesTool(),
+		listScheduledOccurrencesTool(),
+		getForecastTool(),
+		createRecurringRuleTool(),
+		updateRecurringRuleTool(),
+		materialiseOccurrenceTool(),
+		skipOccurrenceTool(),
+		archiveRecurringRuleTool(),
 	}
 }
