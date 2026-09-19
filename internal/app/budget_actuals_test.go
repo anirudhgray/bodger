@@ -64,6 +64,52 @@ func TestBudgetActuals_SumsSpendingWithinCategorySubtree(t *testing.T) {
 	}
 }
 
+// TestBudgetActuals_PendingOccurrenceNeverCounted is a regression guard for
+// data-model.md §11's "occurrences never contribute to a balance, report,
+// or budget actual" — issue #280. BudgetActuals reads only
+// s.Transactions, never s.ScheduledOccurrences, so this currently passes
+// trivially; it exists to catch a future change that accidentally wires
+// occurrences into this query.
+func TestBudgetActuals_PendingOccurrenceNeverCounted(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	acc := mustAccountFixture(t, svc, "Checking", "bank", "USD")
+	food := mustCategoryFixture(t, svc, "Food", "expense")
+
+	budget := mustCreateBudget(t, svc, "USD", "2026-08-01", app.BudgetLineInput{
+		CategoryRef: food.Category.ID(), Amount: "500.00",
+	})
+
+	// A recurring rule for the same account/category/period a pending
+	// occurrence would obviously move the actual for, if it were counted.
+	rule, err := svc.CreateRecurringRule(ctx, app.CreateRecurringRuleCommand{
+		ActorID: testActorID, AccountRef: acc.Account.ID(), CategoryRef: food.Category.ID(),
+		Amount: "120.00", Description: "Groceries", StartsOn: "2026-08-05",
+		Schedule: app.RecurringScheduleInput{Frequency: "monthly", Interval: 1, DayOfMonth: 5},
+	})
+	if err != nil {
+		t.Fatalf("CreateRecurringRule: %v", err)
+	}
+	if _, err := svc.GenerateOccurrences(ctx, app.GenerateOccurrencesCommand{ActorID: testActorID, RuleID: rule.Rule.ID()}); err != nil {
+		t.Fatalf("GenerateOccurrences: %v", err)
+	}
+
+	result, err := svc.BudgetActuals(ctx, app.BudgetActualsQuery{ActorID: testActorID, BudgetID: budget.Budget.ID(), Period: "2026-08-15"})
+	if err != nil {
+		t.Fatalf("BudgetActuals: %v", err)
+	}
+	line := result.Lines[0]
+	if got := line.Actual.AmountMinor(); got != 0 {
+		t.Errorf("Actual = %d, want 0 (a pending occurrence must never move a budget's actual)", got)
+	}
+	if got := line.Remaining.AmountMinor(); got != 50000 {
+		t.Errorf("Remaining = %d, want 50000 (untouched by the pending occurrence)", got)
+	}
+	if got := line.Utilisation; got != 0 {
+		t.Errorf("Utilisation = %v, want 0", got)
+	}
+}
+
 func TestBudgetActuals_RefundReducesActual(t *testing.T) {
 	svc := newTestService(t, time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC), "UTC")
 	ctx := context.Background()
