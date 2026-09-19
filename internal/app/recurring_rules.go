@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/anirudhgray/bodger/internal/app/normalize"
+	"github.com/anirudhgray/bodger/internal/domain/money"
 	"github.com/anirudhgray/bodger/internal/domain/recurring"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 )
@@ -361,6 +362,23 @@ func (s *Service) ListRecurringRules(ctx context.Context, q ListRecurringRulesQu
 		currencies[r.ID()] = currencyByAccountID[r.AccountID()]
 	}
 	return ListRecurringRulesResult{Rules: rules, Currencies: currencies}, nil
+}
+
+// RecurringRuleAmount pairs rule's planned amount with currency — always
+// the value a RecurringRuleResult/ListRecurringRulesResult carries
+// alongside it — as a money.Money a surface can render, the same role
+// BudgetLineAmount plays for a BudgetLine: a RecurringRule stores no
+// currency of its own (its own doc comment), and no surface may import
+// internal/domain/money to build one itself (docs/architecture.md §3).
+// Returns a *errs.Error with code Internal if currency is invalid —
+// unreachable in practice, since it always comes from an already-valid
+// Account.
+func RecurringRuleAmount(currency string, rule recurring.RecurringRule) (money.Money, error) {
+	m, err := money.NewMoney(rule.AmountMinor(), currency)
+	if err != nil {
+		return money.Money{}, errs.New(errs.Internal).Wrap(err)
+	}
+	return m, nil
 }
 
 // buildSchedule dispatches in to whichever recurring.New*Schedule
