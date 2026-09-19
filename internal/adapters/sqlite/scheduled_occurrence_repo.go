@@ -162,9 +162,22 @@ func (r *ScheduledOccurrenceRepository) Update(ctx context.Context, actorID stri
 	if err := requireActorID(actorID); err != nil {
 		return err
 	}
-
 	now := formatTime(r.db.clock.Now())
-	result, err := r.db.write.ExecContext(ctx, `
+	if err := updateScheduledOccurrenceRow(ctx, r.db.write, actorID, occurrence, now); err != nil {
+		return err
+	}
+	return nil
+}
+
+// updateScheduledOccurrenceRow writes an occurrence's mutable columns
+// (occurrence_date, status, transaction_id) against tx, so
+// ScheduledOccurrenceRepository.Update and
+// RecurringMaterializationRepository.Materialize (issue #279) run the
+// identical statement — the latter inside its own single database
+// transaction alongside the transaction/postings insert, rather than
+// duplicating this SQL.
+func updateScheduledOccurrenceRow(ctx context.Context, tx execer, actorID string, occurrence recurring.ScheduledOccurrence, now string) *errs.Error {
+	result, err := tx.ExecContext(ctx, `
 		UPDATE scheduled_occurrences
 		SET occurrence_date = ?, status = ?, transaction_id = ?, updated_at = ?
 		WHERE id = ?

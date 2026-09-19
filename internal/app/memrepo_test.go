@@ -1298,6 +1298,37 @@ func (m *memScheduledOccurrences) DeletePending(_ context.Context, actorID, rule
 
 var _ ports.ScheduledOccurrenceRepository = (*memScheduledOccurrences)(nil)
 
+// memRecurringMaterializations is the in-memory
+// ports.RecurringMaterializationRepository fixture for
+// MaterialiseOccurrence use-case tests (issue #279). Like memImportCommits,
+// it composes the in-memory transaction/occurrence repositories a test's
+// Service already holds and simply calls their own Create/Update methods
+// in sequence — it has no need to prove the real adapter's
+// all-in-one-database-transaction atomicity
+// (recurring_materialization_repo_test.go's sqlite-backed tests do that);
+// it only needs to leave the in-memory fixtures in the state a real
+// materialisation would.
+type memRecurringMaterializations struct {
+	occurrences  *memScheduledOccurrences
+	transactions ports.TransactionRepository
+}
+
+func newMemRecurringMaterializations(occurrences *memScheduledOccurrences, transactions ports.TransactionRepository) *memRecurringMaterializations {
+	return &memRecurringMaterializations{occurrences: occurrences, transactions: transactions}
+}
+
+func (m *memRecurringMaterializations) Materialize(ctx context.Context, actorID string, occurrence recurring.ScheduledOccurrence, txn ledger.Transaction) error {
+	if txn.UserID() != actorID {
+		return errs.New(errs.NotAllowed)
+	}
+	if err := m.transactions.Create(ctx, actorID, txn, nil); err != nil {
+		return err
+	}
+	return m.occurrences.Update(ctx, actorID, occurrence)
+}
+
+var _ ports.RecurringMaterializationRepository = (*memRecurringMaterializations)(nil)
+
 // memMCPToolCalls is an in-memory ports.MCPToolCallRepository, the
 // memBudgets/memImportBatches equivalent for issue #259's mcp_tool_call
 // audit trail.

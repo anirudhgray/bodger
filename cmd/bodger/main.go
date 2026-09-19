@@ -170,6 +170,7 @@ func bootstrap(ctx context.Context) (*app.Service, func() error, error) {
 		sqlite.NewBudgetRepository(db),
 		sqlite.NewRecurringRuleRepository(db),
 		sqlite.NewScheduledOccurrenceRepository(db),
+		sqlite.NewRecurringMaterializationRepository(db),
 		sqlite.NewMCPToolCallRepository(db),
 	)
 	if err != nil {
