@@ -6,6 +6,7 @@ import (
 
 	"github.com/anirudhgray/bodger/internal/domain/budgeting"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
+	"github.com/anirudhgray/bodger/internal/domain/recurring"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
 )
@@ -68,12 +69,19 @@ type ExportedTransaction struct {
 // globally-shared table. This is a deliberate export-only asymmetry, not
 // an oversight: a restore never touches fx_rates, so any rows present
 // before a restore remain present, untouched, after it.
+//
+// RecurringRules and ScheduledOccurrences are included as of #283, sorted
+// by ID ascending the same way every other entity here is -- they are
+// genuinely per-actor data (unlike FxRates), so they round-trip through
+// restore too, on the Budgets side of that distinction.
 type ExportSnapshot struct {
-	Accounts     []ledger.Account
-	Categories   []ledger.Category
-	Transactions []ExportedTransaction
-	Budgets      []budgeting.Budget
-	FxRates      []ports.FxRateRow
+	Accounts             []ledger.Account
+	Categories           []ledger.Category
+	Transactions         []ExportedTransaction
+	Budgets              []budgeting.Budget
+	FxRates              []ports.FxRateRow
+	RecurringRules       []recurring.RecurringRule
+	ScheduledOccurrences []recurring.ScheduledOccurrence
 }
 
 // ExportSnapshot implements issue #209's full-domain-snapshot read.
@@ -135,12 +143,29 @@ func (s *Service) ExportSnapshot(ctx context.Context, q ExportSnapshotQuery) (Ex
 		return ExportSnapshot{}, err
 	}
 
+	recurringRules, err := s.RecurringRules.List(ctx, q.ActorID)
+	if err != nil {
+		return ExportSnapshot{}, err
+	}
+	sort.Slice(recurringRules, func(i, j int) bool { return recurringRules[i].ID() < recurringRules[j].ID() })
+
+	// Status: "" (the zero value) matches every status, and RuleID: ""
+	// matches every rule -- an actor-wide, all-statuses read, exactly
+	// ExportSnapshot's "complete" contract.
+	scheduledOccurrences, err := s.ScheduledOccurrences.List(ctx, q.ActorID, ports.ScheduledOccurrenceFilter{})
+	if err != nil {
+		return ExportSnapshot{}, err
+	}
+	sort.Slice(scheduledOccurrences, func(i, j int) bool { return scheduledOccurrences[i].ID() < scheduledOccurrences[j].ID() })
+
 	return ExportSnapshot{
-		Accounts:     accounts,
-		Categories:   categories,
-		Transactions: exported,
-		Budgets:      budgets,
-		FxRates:      fxRates,
+		Accounts:             accounts,
+		Categories:           categories,
+		Transactions:         exported,
+		Budgets:              budgets,
+		FxRates:              fxRates,
+		RecurringRules:       recurringRules,
+		ScheduledOccurrences: scheduledOccurrences,
 	}, nil
 }
 

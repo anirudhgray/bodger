@@ -11,6 +11,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/domain"
 	"github.com/anirudhgray/bodger/internal/domain/budgeting"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
+	"github.com/anirudhgray/bodger/internal/domain/recurring"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/platform/idgen"
 	"github.com/anirudhgray/bodger/internal/ports"
@@ -28,10 +29,12 @@ type RestoreSnapshotQuery struct {
 // RestoreSnapshotResult reports how many rows of each kind the restore
 // installed, for a surface to summarise back to the user.
 type RestoreSnapshotResult struct {
-	Accounts     int
-	Categories   int
-	Transactions int
-	Budgets      int
+	Accounts             int
+	Categories           int
+	Transactions         int
+	Budgets              int
+	RecurringRules       int
+	ScheduledOccurrences int
 }
 
 // RestoreSnapshot implements issue #226: a full-state restore of a
@@ -63,6 +66,12 @@ type RestoreSnapshotResult struct {
 // at all (ADR-0004), so there is no per-actor ownership check that would
 // make sense for it — see ExportSnapshot's doc comment (export.go) and
 // ports.Snapshot's own doc comment for the full reasoning (#221).
+//
+// Recurring rules and their scheduled occurrences are restored (#283),
+// through the same discipline: a rule's account_id/category_id are
+// remapped through accountIDs/categoryIDs, and an occurrence's rule_id and
+// (for a materialised one) transaction_id are remapped through this
+// restore's own ruleIDs/transactionIDs maps.
 func (s *Service) RestoreSnapshot(ctx context.Context, q RestoreSnapshotQuery) (RestoreSnapshotResult, error) {
 	if err := requireActorID(q.ActorID); err != nil {
 		return RestoreSnapshotResult{}, err
@@ -95,10 +104,12 @@ func (s *Service) RestoreSnapshot(ctx context.Context, q RestoreSnapshotQuery) (
 	}
 
 	return RestoreSnapshotResult{
-		Accounts:     len(snapshot.Accounts),
-		Categories:   len(snapshot.Categories),
-		Transactions: len(snapshot.Transactions),
-		Budgets:      len(snapshot.Budgets),
+		Accounts:             len(snapshot.Accounts),
+		Categories:           len(snapshot.Categories),
+		Transactions:         len(snapshot.Transactions),
+		Budgets:              len(snapshot.Budgets),
+		RecurringRules:       len(snapshot.RecurringRules),
+		ScheduledOccurrences: len(snapshot.ScheduledOccurrences),
 	}, nil
 }
 
@@ -124,7 +135,17 @@ func buildRestoreSnapshot(ids idgen.Generator, actorID string, envelope jsonEnve
 		return ports.Snapshot{}, err
 	}
 
-	transactions, err := restoreTransactions(ids, actorID, envelope.Transactions, accountIDs, categoryIDs)
+	transactions, transactionIDs, err := restoreTransactions(ids, actorID, envelope.Transactions, accountIDs, categoryIDs)
+	if err != nil {
+		return ports.Snapshot{}, err
+	}
+
+	recurringRules, ruleIDs, err := restoreRecurringRules(ids, actorID, envelope.RecurringRules, accountIDs, categoryIDs)
+	if err != nil {
+		return ports.Snapshot{}, err
+	}
+
+	scheduledOccurrences, err := restoreScheduledOccurrences(ids, envelope.ScheduledOccurrences, ruleIDs, transactionIDs)
 	if err != nil {
 		return ports.Snapshot{}, err
 	}
@@ -134,7 +155,14 @@ func buildRestoreSnapshot(ids idgen.Generator, actorID string, envelope jsonEnve
 		return ports.Snapshot{}, err
 	}
 
-	return ports.Snapshot{Accounts: accounts, Categories: categories, Transactions: transactions, Budgets: budgets}, nil
+	return ports.Snapshot{
+		Accounts:             accounts,
+		Categories:           categories,
+		Transactions:         transactions,
+		Budgets:              budgets,
+		RecurringRules:       recurringRules,
+		ScheduledOccurrences: scheduledOccurrences,
+	}, nil
 }
 
 // restoreAccounts rebuilds every account in raw with a freshly generated
@@ -317,8 +345,11 @@ func categoryDepth(id string, parentOf map[string]*string) int {
 // tags) in raw with freshly generated IDs, remapping each posting's
 // account/category and each transaction's related-transaction reference
 // through accountIDs/categoryIDs and this function's own transaction-ID
-// map.
-func restoreTransactions(ids idgen.Generator, actorID string, raw []jsonExportedTxn, accountIDs, categoryIDs map[string]string) ([]ports.SnapshotTransaction, error) {
+// map, which it also returns (the same old-ID -> new-ID shape
+// restoreAccounts/restoreCategories return) so a later reference into a
+// transaction from outside this function -- a scheduled occurrence's
+// transaction_id (#283) -- can be remapped the same way.
+func restoreTransactions(ids idgen.Generator, actorID string, raw []jsonExportedTxn, accountIDs, categoryIDs map[string]string) ([]ports.SnapshotTransaction, map[string]string, error) {
 	txnIDs := make(map[string]string, len(raw))
 	for _, jt := range raw {
 		txnIDs[jt.ID] = ids.NewID()
@@ -330,12 +361,12 @@ func restoreTransactions(ids idgen.Generator, actorID string, raw []jsonExported
 
 		postings, err := restorePostings(ids, jt.Postings, accountIDs, categoryIDs)
 		if err != nil {
-			return nil, restoreFieldError(err, "transactions", jt.ID, "postings")
+			return nil, nil, restoreFieldError(err, "transactions", jt.ID, "postings")
 		}
 
 		bookedDate, err := parseISODate(jt.BookedDate)
 		if err != nil {
-			return nil, restoreFieldError(err, "transactions", jt.ID, "booked_date")
+			return nil, nil, restoreFieldError(err, "transactions", jt.ID, "booked_date")
 		}
 
 		var opts []ledger.TransactionOption
@@ -345,7 +376,7 @@ func restoreTransactions(ids idgen.Generator, actorID string, raw []jsonExported
 		if jt.PostedDate != nil {
 			postedDate, err := parseISODate(*jt.PostedDate)
 			if err != nil {
-				return nil, restoreFieldError(err, "transactions", jt.ID, "posted_date")
+				return nil, nil, restoreFieldError(err, "transactions", jt.ID, "posted_date")
 			}
 			opts = append(opts, ledger.WithPostedDate(postedDate))
 		}
@@ -362,7 +393,7 @@ func restoreTransactions(ids idgen.Generator, actorID string, raw []jsonExported
 		if jt.RelatedTransactionID != nil {
 			relatedNewID, ok := txnIDs[*jt.RelatedTransactionID]
 			if !ok {
-				return nil, errs.New(errs.InvalidInput).
+				return nil, nil, errs.New(errs.InvalidInput).
 					Explain("The document's transactions entry %q references a related transaction %q that doesn't exist in the document.", jt.ID, *jt.RelatedTransactionID).
 					Field("document").
 					Wrap(fmt.Errorf("app: unknown related transaction %q", *jt.RelatedTransactionID))
@@ -372,21 +403,144 @@ func restoreTransactions(ids idgen.Generator, actorID string, raw []jsonExported
 
 		txn, err := buildRestoredTransaction(newID, actorID, ledger.TransactionKind(jt.Kind), bookedDate, jt.Description, postings, opts)
 		if err != nil {
-			return nil, restoreFieldError(err, "transactions", jt.ID, "")
+			return nil, nil, restoreFieldError(err, "transactions", jt.ID, "")
 		}
 
 		tags := make([]ledger.Tag, 0, len(jt.Tags))
 		for _, tagValue := range jt.Tags {
 			tag, err := ledger.NewTag(tagValue)
 			if err != nil {
-				return nil, restoreFieldError(err, "transactions", jt.ID, "tags")
+				return nil, nil, restoreFieldError(err, "transactions", jt.ID, "tags")
 			}
 			tags = append(tags, tag)
 		}
 
 		out = append(out, ports.SnapshotTransaction{Transaction: txn, Tags: tags})
 	}
-	return out, nil
+	return out, txnIDs, nil
+}
+
+// restoreRecurringRules rebuilds every RecurringRule in raw with a freshly
+// generated ID, remapping account_id/category_id through
+// accountIDs/categoryIDs (the same maps restorePostings already resolves a
+// posting's own account_id/category_id through), and returns the rules
+// alongside the old-ID -> new-ID map restoreScheduledOccurrences needs to
+// remap each occurrence's rule_id — the same "map returned alongside the
+// slice" shape restoreAccounts/restoreCategories/restoreTransactions use.
+func restoreRecurringRules(ids idgen.Generator, actorID string, raw []jsonRecurringRule, accountIDs, categoryIDs map[string]string) ([]recurring.RecurringRule, map[string]string, error) {
+	ruleIDs := make(map[string]string, len(raw))
+	rules := make([]recurring.RecurringRule, 0, len(raw))
+
+	for _, jr := range raw {
+		newID := ids.NewID()
+		ruleIDs[jr.ID] = newID
+
+		newAccountID, ok := accountIDs[jr.AccountID]
+		if !ok {
+			return nil, nil, errs.New(errs.InvalidInput).
+				Explain("The document's recurring_rules entry %q references an account %q that doesn't exist in the document.", jr.ID, jr.AccountID).
+				Field("document").
+				Wrap(fmt.Errorf("app: recurring rule %q references unknown account %q", jr.ID, jr.AccountID))
+		}
+		newCategoryID, ok := categoryIDs[jr.CategoryID]
+		if !ok {
+			return nil, nil, errs.New(errs.InvalidInput).
+				Explain("The document's recurring_rules entry %q references a category %q that doesn't exist in the document.", jr.ID, jr.CategoryID).
+				Field("document").
+				Wrap(fmt.Errorf("app: recurring rule %q references unknown category %q", jr.ID, jr.CategoryID))
+		}
+
+		weekday := time.Sunday
+		if jr.Weekday != nil {
+			weekday = time.Weekday(*jr.Weekday)
+		}
+		month := time.January
+		if jr.Month != nil {
+			month = time.Month(*jr.Month)
+		}
+		dayOfMonth := 0
+		if jr.DayOfMonth != nil {
+			dayOfMonth = *jr.DayOfMonth
+		}
+		schedule, err := recurring.NewSchedule(recurring.Frequency(jr.Frequency), jr.Interval, weekday, month, dayOfMonth)
+		if err != nil {
+			return nil, nil, restoreFieldError(err, "recurring_rules", jr.ID, "frequency")
+		}
+
+		startsOn, err := parseISODate(jr.StartsOn)
+		if err != nil {
+			return nil, nil, restoreFieldError(err, "recurring_rules", jr.ID, "starts_on")
+		}
+
+		var opts []recurring.RecurringRuleOption
+		if jr.EndsOn != nil {
+			endsOn, err := parseISODate(*jr.EndsOn)
+			if err != nil {
+				return nil, nil, restoreFieldError(err, "recurring_rules", jr.ID, "ends_on")
+			}
+			opts = append(opts, recurring.WithEndsOn(endsOn))
+		}
+		if jr.ArchivedAt != nil {
+			archivedAt, err := parseISODate(*jr.ArchivedAt)
+			if err != nil {
+				return nil, nil, restoreFieldError(err, "recurring_rules", jr.ID, "archived_at")
+			}
+			opts = append(opts, recurring.WithArchivedAt(archivedAt))
+		}
+
+		rule, err := recurring.NewRecurringRule(newID, actorID, newAccountID, newCategoryID, jr.AmountMinor, jr.Description, schedule, startsOn, opts...)
+		if err != nil {
+			return nil, nil, restoreFieldError(err, "recurring_rules", jr.ID, "")
+		}
+		rules = append(rules, rule)
+	}
+	return rules, ruleIDs, nil
+}
+
+// restoreScheduledOccurrences rebuilds every ScheduledOccurrence in raw
+// with a freshly generated ID, remapping rule_id through ruleIDs (always)
+// and transaction_id through transactionIDs (only when the occurrence's
+// own status is materialised — a pending or skipped occurrence carries no
+// transaction_id to remap, the same invariant
+// recurring.NewScheduledOccurrence enforces at construction).
+func restoreScheduledOccurrences(ids idgen.Generator, raw []jsonScheduledOccurrence, ruleIDs, transactionIDs map[string]string) ([]recurring.ScheduledOccurrence, error) {
+	occurrences := make([]recurring.ScheduledOccurrence, 0, len(raw))
+
+	for _, jo := range raw {
+		newRuleID, ok := ruleIDs[jo.RuleID]
+		if !ok {
+			return nil, errs.New(errs.InvalidInput).
+				Explain("The document's scheduled_occurrences entry %q references a recurring rule %q that doesn't exist in the document.", jo.ID, jo.RuleID).
+				Field("document").
+				Wrap(fmt.Errorf("app: scheduled occurrence %q references unknown recurring rule %q", jo.ID, jo.RuleID))
+		}
+
+		occurrenceDate, err := parseISODate(jo.OccurrenceDate)
+		if err != nil {
+			return nil, restoreFieldError(err, "scheduled_occurrences", jo.ID, "occurrence_date")
+		}
+
+		opts := []recurring.ScheduledOccurrenceOption{
+			recurring.WithOccurrenceStatus(recurring.OccurrenceStatus(jo.Status)),
+		}
+		if jo.TransactionID != nil {
+			newTransactionID, ok := transactionIDs[*jo.TransactionID]
+			if !ok {
+				return nil, errs.New(errs.InvalidInput).
+					Explain("The document's scheduled_occurrences entry %q references a transaction %q that doesn't exist in the document.", jo.ID, *jo.TransactionID).
+					Field("document").
+					Wrap(fmt.Errorf("app: scheduled occurrence %q references unknown transaction %q", jo.ID, *jo.TransactionID))
+			}
+			opts = append(opts, recurring.WithTransactionID(newTransactionID))
+		}
+
+		occurrence, err := recurring.NewScheduledOccurrence(ids.NewID(), newRuleID, occurrenceDate, opts...)
+		if err != nil {
+			return nil, restoreFieldError(err, "scheduled_occurrences", jo.ID, "")
+		}
+		occurrences = append(occurrences, occurrence)
+	}
+	return occurrences, nil
 }
 
 // buildRestoredTransaction dispatches to the ledger constructor matching

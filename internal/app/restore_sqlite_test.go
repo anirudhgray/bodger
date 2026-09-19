@@ -10,6 +10,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/domain"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
 	"github.com/anirudhgray/bodger/internal/domain/money"
+	"github.com/anirudhgray/bodger/internal/domain/recurring"
 )
 
 // TestRestoreSnapshot_RoundTripEquivalentAfterReExport is this issue's
@@ -118,6 +119,113 @@ func TestRestoreSnapshot_RoundTripEquivalentAfterReExport(t *testing.T) {
 	}
 
 	assertSnapshotsEquivalentModuloIDs(t, beforeSnapshot, afterSnapshot)
+}
+
+// TestRestoreSnapshot_RecurringRulesAndOccurrencesRoundTrip is issue #283's
+// own explicit ask: export an actor with a recurring rule whose occurrences
+// span all three statuses, restore into a clean database, and assert full
+// equality -- including that a materialised occurrence's transaction_id
+// correctly points at its own newly restored transaction, never the
+// original (already-deleted-by-restore) one.
+func TestRestoreSnapshot_RecurringRulesAndOccurrencesRoundTrip(t *testing.T) {
+	svc, _, _ := newSQLiteTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	actorID := sqliteActorID
+
+	checking := mustAccountFixtureAs(t, svc, actorID, "Checking", "bank", "INR")
+	rent := mustCategoryFixtureAs(t, svc, actorID, "Rent", "expense")
+
+	ruleResult, err := svc.CreateRecurringRule(ctx, app.CreateRecurringRuleCommand{
+		ActorID: actorID, AccountRef: checking.Account.ID(), CategoryRef: rent.Category.ID(),
+		Amount: "1200.00", Description: "Monthly rent",
+		Schedule: app.RecurringScheduleInput{Frequency: "monthly", Interval: 1, DayOfMonth: 1},
+		StartsOn: "2026-01-01",
+	})
+	if err != nil {
+		t.Fatalf("CreateRecurringRule: %v", err)
+	}
+
+	generated, err := svc.GenerateOccurrences(ctx, app.GenerateOccurrencesCommand{ActorID: actorID, RuleID: ruleResult.Rule.ID()})
+	if err != nil {
+		t.Fatalf("GenerateOccurrences: %v", err)
+	}
+	var jan, feb, mar recurring.ScheduledOccurrence
+	for _, o := range generated.Created {
+		switch o.OccurrenceDate().String() {
+		case "2026-01-01":
+			jan = o
+		case "2026-02-01":
+			feb = o
+		case "2026-03-01":
+			mar = o
+		}
+	}
+	if jan.ID() == "" || feb.ID() == "" || mar.ID() == "" {
+		t.Fatalf("expected Jan/Feb/Mar occurrences among generated, got %d occurrences", len(generated.Created))
+	}
+
+	// pending: mar is left untouched.
+	// materialised: jan.
+	if _, err := svc.MaterialiseOccurrence(ctx, app.MaterialiseOccurrenceCommand{ActorID: actorID, OccurrenceID: jan.ID()}); err != nil {
+		t.Fatalf("MaterialiseOccurrence: %v", err)
+	}
+	// skipped: feb.
+	if _, err := svc.SkipOccurrence(ctx, app.SkipOccurrenceCommand{ActorID: actorID, OccurrenceID: feb.ID()}); err != nil {
+		t.Fatalf("SkipOccurrence: %v", err)
+	}
+
+	beforeSnapshot, err := svc.ExportSnapshot(ctx, app.ExportSnapshotQuery{ActorID: actorID})
+	if err != nil {
+		t.Fatalf("ExportSnapshot (before): %v", err)
+	}
+	doc, err := svc.ExportJSON(ctx, app.ExportJSONQuery{ActorID: actorID})
+	if err != nil {
+		t.Fatalf("ExportJSON: %v", err)
+	}
+
+	statuses := map[recurring.OccurrenceStatus]bool{}
+	for _, o := range beforeSnapshot.ScheduledOccurrences {
+		statuses[o.Status()] = true
+	}
+	for _, want := range []recurring.OccurrenceStatus{recurring.OccurrenceStatusPending, recurring.OccurrenceStatusMaterialised, recurring.OccurrenceStatusSkipped} {
+		if !statuses[want] {
+			t.Fatalf("fixture setup didn't produce a %q occurrence — test doesn't cover what it claims to", want)
+		}
+	}
+
+	if _, err := svc.RestoreSnapshot(ctx, app.RestoreSnapshotQuery{ActorID: actorID, Document: doc}); err != nil {
+		t.Fatalf("RestoreSnapshot: %v", err)
+	}
+
+	afterSnapshot, err := svc.ExportSnapshot(ctx, app.ExportSnapshotQuery{ActorID: actorID})
+	if err != nil {
+		t.Fatalf("ExportSnapshot (after): %v", err)
+	}
+
+	assertSnapshotsEquivalentModuloIDs(t, beforeSnapshot, afterSnapshot)
+
+	// Belt-and-braces on the one guarantee this test exists for: the
+	// restored materialised occurrence's transaction_id must not equal the
+	// original (pre-restore) transaction ID — RestoreSnapshot regenerates
+	// every ID, so an unchanged value here would mean the remap silently
+	// didn't happen and the column just carries stale, dangling data.
+	var beforeMaterialisedTxnID, afterMaterialisedTxnID string
+	for _, o := range beforeSnapshot.ScheduledOccurrences {
+		if o.Status() == recurring.OccurrenceStatusMaterialised {
+			beforeMaterialisedTxnID, _ = o.TransactionID()
+		}
+	}
+	for _, o := range afterSnapshot.ScheduledOccurrences {
+		if o.Status() == recurring.OccurrenceStatusMaterialised {
+			afterMaterialisedTxnID, _ = o.TransactionID()
+		}
+	}
+	if beforeMaterialisedTxnID == "" || afterMaterialisedTxnID == "" {
+		t.Fatalf("expected both before and after snapshots to have a materialised occurrence with a transaction_id")
+	}
+	if afterMaterialisedTxnID == beforeMaterialisedTxnID {
+		t.Errorf("materialised occurrence's transaction_id was not remapped: still %q after restore", afterMaterialisedTxnID)
+	}
 }
 
 // TestRestoreSnapshot_SucceedsAfterCommittedImport is issue #236's
@@ -325,6 +433,82 @@ func assertSnapshotsEquivalentModuloIDs(t *testing.T, before, after app.ExportSn
 				if wantCategoryID := categoryIDMap[bCat]; aCat != wantCategoryID {
 					t.Errorf("transaction %q posting %d category = %q, want remapped %q", key.description, i, aCat, wantCategoryID)
 				}
+			}
+		}
+	}
+
+	// Transactions are matched by (date, description) above, but that key
+	// isn't necessarily unique across the snapshot (multiple fixtures could
+	// share a date and description) — recurring rules add a new consumer of
+	// this map (a materialised occurrence's remapped transaction_id) that
+	// actually needs a reliable one-to-one lookup, so it's built once here
+	// from the same before/after pairing the loop above already performed.
+	transactionIDMap := make(map[string]string, len(before.Transactions))
+	for _, bet := range before.Transactions {
+		key := txnKey{bet.Transaction.BookedDate().String(), bet.Transaction.Description()}
+		if aet, ok := afterByKey[key]; ok {
+			transactionIDMap[bet.Transaction.ID()] = aet.Transaction.ID()
+		}
+	}
+
+	if len(before.RecurringRules) != len(after.RecurringRules) {
+		t.Fatalf("recurring rule count = %d, want %d", len(after.RecurringRules), len(before.RecurringRules))
+	}
+	afterRulesByDescription := make(map[string]recurring.RecurringRule, len(after.RecurringRules))
+	for _, r := range after.RecurringRules {
+		afterRulesByDescription[r.Description()] = r
+	}
+	ruleIDMap := make(map[string]string, len(before.RecurringRules))
+	for _, b := range before.RecurringRules {
+		a, ok := afterRulesByDescription[b.Description()]
+		if !ok {
+			t.Fatalf("recurring rule %q missing after restore", b.Description())
+			continue
+		}
+		ruleIDMap[b.ID()] = a.ID()
+		if a.AmountMinor() != b.AmountMinor() || a.StartsOn().String() != b.StartsOn().String() {
+			t.Errorf("recurring rule %q differs after restore: before amount=%d starts_on=%s, after amount=%d starts_on=%s",
+				b.Description(), b.AmountMinor(), b.StartsOn(), a.AmountMinor(), a.StartsOn())
+		}
+		if wantAccountID := accountIDMap[b.AccountID()]; a.AccountID() != wantAccountID {
+			t.Errorf("recurring rule %q account = %q, want remapped %q", b.Description(), a.AccountID(), wantAccountID)
+		}
+		if wantCategoryID := categoryIDMap[b.CategoryID()]; a.CategoryID() != wantCategoryID {
+			t.Errorf("recurring rule %q category = %q, want remapped %q", b.Description(), a.CategoryID(), wantCategoryID)
+		}
+	}
+
+	if len(before.ScheduledOccurrences) != len(after.ScheduledOccurrences) {
+		t.Fatalf("scheduled occurrence count = %d, want %d", len(after.ScheduledOccurrences), len(before.ScheduledOccurrences))
+	}
+	type occKey struct{ ruleID, date string }
+	afterOccByKey := make(map[occKey]recurring.ScheduledOccurrence, len(after.ScheduledOccurrences))
+	for _, o := range after.ScheduledOccurrences {
+		afterOccByKey[occKey{o.RuleID(), o.OccurrenceDate().String()}] = o
+	}
+	for _, b := range before.ScheduledOccurrences {
+		wantRuleID, ok := ruleIDMap[b.RuleID()]
+		if !ok {
+			t.Fatalf("scheduled occurrence %s references rule %q with no after-restore mapping", b.OccurrenceDate(), b.RuleID())
+			continue
+		}
+		a, ok := afterOccByKey[occKey{wantRuleID, b.OccurrenceDate().String()}]
+		if !ok {
+			t.Fatalf("scheduled occurrence on %s for rule %q missing after restore", b.OccurrenceDate(), b.RuleID())
+			continue
+		}
+		if a.Status() != b.Status() {
+			t.Errorf("scheduled occurrence on %s status = %s, want %s", b.OccurrenceDate(), a.Status(), b.Status())
+		}
+		bTxnID, bHasTxn := b.TransactionID()
+		aTxnID, aHasTxn := a.TransactionID()
+		if bHasTxn != aHasTxn {
+			t.Errorf("scheduled occurrence on %s transaction-id presence differs after restore", b.OccurrenceDate())
+			continue
+		}
+		if bHasTxn {
+			if wantTxnID := transactionIDMap[bTxnID]; aTxnID != wantTxnID {
+				t.Errorf("scheduled occurrence on %s transaction_id = %q, want remapped %q (its own restored transaction, not the original)", b.OccurrenceDate(), aTxnID, wantTxnID)
 			}
 		}
 	}
