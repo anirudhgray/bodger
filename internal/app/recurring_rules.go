@@ -13,9 +13,20 @@ import (
 const maxRuleDescriptionLen = 200
 
 // RecurringRuleResult wraps the RecurringRule a create/update/archive/get
-// use case produced or affected.
+// use case produced or affected, plus the currency its AmountMinor is
+// denominated in. RecurringRule itself deliberately carries no currency
+// field (its own doc comment: "amountMinor is denominated in the rule's
+// account's currency") — resolving that currency needs an account lookup,
+// which only the app layer can do (ADR-0005), so it travels here instead,
+// the same reason BudgetActualsResult carries its own Currency rather than
+// leaving a surface to guess it. Added for issue #281's surface wiring:
+// every surface renders a rule's amount as a decimal string (the same
+// convention budgetLineView.Amount already follows via
+// BudgetLineAmount), and none of them may resolve an account's currency
+// themselves.
 type RecurringRuleResult struct {
-	Rule recurring.RecurringRule
+	Rule     recurring.RecurringRule
+	Currency string
 }
 
 // RecurringScheduleInput is the frequency-generic shape every recurring-rule
@@ -111,7 +122,7 @@ func (s *Service) CreateRecurringRule(ctx context.Context, cmd CreateRecurringRu
 	if err := s.RecurringRules.Create(ctx, cmd.ActorID, rule); err != nil {
 		return RecurringRuleResult{}, err
 	}
-	return RecurringRuleResult{Rule: rule}, nil
+	return RecurringRuleResult{Rule: rule, Currency: account.Currency()}, nil
 }
 
 // UpdateRecurringRuleCommand updates an existing rule's amount,
@@ -210,7 +221,7 @@ func (s *Service) UpdateRecurringRule(ctx context.Context, cmd UpdateRecurringRu
 			return RecurringRuleResult{}, err
 		}
 	}
-	return RecurringRuleResult{Rule: updated}, nil
+	return RecurringRuleResult{Rule: updated, Currency: account.Currency()}, nil
 }
 
 // ArchiveRecurringRuleCommand stops a rule from generating any further
@@ -242,8 +253,12 @@ func (s *Service) ArchiveRecurringRule(ctx context.Context, cmd ArchiveRecurring
 	if err != nil {
 		return RecurringRuleResult{}, attachField(err, "rule_id")
 	}
+	account, err := s.resolveOwnedAccount(ctx, cmd.ActorID, existing.AccountID())
+	if err != nil {
+		return RecurringRuleResult{}, err
+	}
 	if existing.Archived() {
-		return RecurringRuleResult{Rule: existing}, nil
+		return RecurringRuleResult{Rule: existing, Currency: account.Currency()}, nil
 	}
 
 	today, err := normalize.DateOf("", s.Clock, s.Config.UserTimezone)
@@ -271,7 +286,7 @@ func (s *Service) ArchiveRecurringRule(ctx context.Context, cmd ArchiveRecurring
 	if err := s.ScheduledOccurrences.DeletePending(ctx, cmd.ActorID, existing.ID(), existing.StartsOn()); err != nil {
 		return RecurringRuleResult{}, err
 	}
-	return RecurringRuleResult{Rule: updated}, nil
+	return RecurringRuleResult{Rule: updated, Currency: account.Currency()}, nil
 }
 
 // GetRecurringRuleQuery fetches a single recurring rule by ID, scoped to
@@ -292,7 +307,11 @@ func (s *Service) GetRecurringRule(ctx context.Context, q GetRecurringRuleQuery)
 	if err != nil {
 		return RecurringRuleResult{}, attachField(err, "rule_id")
 	}
-	return RecurringRuleResult{Rule: rule}, nil
+	account, err := s.resolveOwnedAccount(ctx, q.ActorID, rule.AccountID())
+	if err != nil {
+		return RecurringRuleResult{}, err
+	}
+	return RecurringRuleResult{Rule: rule, Currency: account.Currency()}, nil
 }
 
 // ListRecurringRulesQuery lists every rule actorID owns, archived and
@@ -303,12 +322,24 @@ type ListRecurringRulesQuery struct {
 }
 
 // ListRecurringRulesResult is ListRecurringRules' result, in the
-// repository's most-recently-created-first order.
+// repository's most-recently-created-first order. Currencies maps each
+// rule's own ID to the currency its AmountMinor is denominated in
+// (RecurringRuleResult's own doc comment explains why this can't live on
+// RecurringRule itself) — a map alongside Rules rather than a parallel
+// wrapper slice, so a caller that only wants the rules themselves (e.g.
+// GenerateOccurrences' own RecurringRules.List call, which this method
+// doesn't share — this is the surface-facing read) isn't forced through
+// an extra indirection.
 type ListRecurringRulesResult struct {
-	Rules []recurring.RecurringRule
+	Rules      []recurring.RecurringRule
+	Currencies map[string]string
 }
 
 // ListRecurringRules implements the "list" read this issue's CRUD needs.
+// Currencies is built from one Accounts.List call, not one lookup per
+// rule — the same "resolve the whole owning set once" shape Forecast's
+// own accountByID cache uses, since a surface can't resolve an account's
+// currency itself.
 func (s *Service) ListRecurringRules(ctx context.Context, q ListRecurringRulesQuery) (ListRecurringRulesResult, error) {
 	if err := requireActorID(q.ActorID); err != nil {
 		return ListRecurringRulesResult{}, err
@@ -317,7 +348,19 @@ func (s *Service) ListRecurringRules(ctx context.Context, q ListRecurringRulesQu
 	if err != nil {
 		return ListRecurringRulesResult{}, err
 	}
-	return ListRecurringRulesResult{Rules: rules}, nil
+	accounts, err := s.Accounts.List(ctx, q.ActorID)
+	if err != nil {
+		return ListRecurringRulesResult{}, err
+	}
+	currencyByAccountID := make(map[string]string, len(accounts))
+	for _, a := range accounts {
+		currencyByAccountID[a.ID()] = a.Currency()
+	}
+	currencies := make(map[string]string, len(rules))
+	for _, r := range rules {
+		currencies[r.ID()] = currencyByAccountID[r.AccountID()]
+	}
+	return ListRecurringRulesResult{Rules: rules, Currencies: currencies}, nil
 }
 
 // buildSchedule dispatches in to whichever recurring.New*Schedule
