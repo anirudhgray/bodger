@@ -9,6 +9,23 @@ sync with each GitHub Release.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-19
+
+### Added
+
+* [2094d11d](https://github.com/anirudhgray/bodger/commit/2094d11d): feat(domain,persistence,decisions): RecurringRule/ScheduledOccurrence model, migration, ADR-0014 (#285) (@anirudhgray)
+* [621f1fd6](https://github.com/anirudhgray/bodger/commit/621f1fd6): feat(app): recurring rule CRUD use cases (#287) (@anirudhgray)
+* [8a031c9e](https://github.com/anirudhgray/bodger/commit/8a031c9e): feat(app): scheduled occurrence generation/projection (#288) (@anirudhgray)
+* [0891c5bb](https://github.com/anirudhgray/bodger/commit/0891c5bb): feat(app,persistence): materialise/skip recurring occurrence (#290) (@anirudhgray)
+* [4579fd81](https://github.com/anirudhgray/bodger/commit/4579fd81): feat(app): forecasting -- projected occurrences in analytics (#291) (@anirudhgray)
+* [b5a59ac8](https://github.com/anirudhgray/bodger/commit/b5a59ac8): feat(app,persistence): include recurring rules/occurrences in export/restore (#292) (@anirudhgray)
+* [eb0661cf](https://github.com/anirudhgray/bodger/commit/eb0661cf): feat(api,cli,mcp): recurring rules/occurrences surface wiring and conformance (#293) (@anirudhgray)
+* [a0186cf9](https://github.com/anirudhgray/bodger/commit/a0186cf9): feat(web): recurring rules and forecast screens (#296) (@anirudhgray)
+
+### Fixed
+
+* [6c50753c](https://github.com/anirudhgray/bodger/commit/6c50753c): fix(api,cli,mcp): wire GenerateOccurrences -- no way to create pending occurrences today (#295) (@anirudhgray)
+
 ## [0.8.0] - 2026-09-15
 
 ### Added
@@ -177,7 +194,8 @@ sync with each GitHub Release.
 * 5ae7d547: fix(infra): make lint fail loudly on an incompatible golangci-lint (#23)
 * c76bd7e7: fix(infra): pre-push hook executable bit, worktree hygiene (#14)
 
-[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/anirudhgray/bodger/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/anirudhgray/bodger/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/anirudhgray/bodger/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/anirudhgray/bodger/compare/v0.5.0...v0.6.0
