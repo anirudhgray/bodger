@@ -132,6 +132,9 @@ type ToolDef struct {
 // archiveRecurringRuleTool is destructive (recurring.go, recurring_write.go,
 // recurring_destructive.go -- see the last file's own doc comment for why
 // this diverges from archiveBudgetTool's write-tier precedent).
+// refreshOccurrencesTool (issue #294) is also write tier: #281 missed
+// wiring GenerateOccurrences to any surface, so a created rule could
+// never actually produce a pending occurrence.
 func Tools() []ToolDef {
 	return []ToolDef{
 		whoAmITool(),
@@ -172,6 +175,7 @@ func Tools() []ToolDef {
 		updateRecurringRuleTool(),
 		materialiseOccurrenceTool(),
 		skipOccurrenceTool(),
+		refreshOccurrencesTool(),
 		archiveRecurringRuleTool(),
 	}
 }

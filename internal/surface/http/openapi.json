@@ -2262,6 +2262,31 @@
         ],
         "type": "object"
       },
+      "RefreshOccurrences": {
+        "properties": {
+          "created": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduledOccurrence"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "created"
+        ],
+        "type": "object"
+      },
+      "RefreshOccurrencesEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RefreshOccurrences"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "ReportingCurrency": {
         "properties": {
           "currency": {
@@ -5706,6 +5731,41 @@
           }
         },
         "summary": "List scheduled occurrences, optionally by rule, status, and date range."
+      }
+    },
+    "/api/v1/recurring-occurrences/refresh": {
+      "post": {
+        "description": "Ensures pending occurrences exist out to the generation horizon for the given rule (or, with no rule_id, every active rule the actor owns), without duplicating a date that already has an occurrence of any status - safe to call repeatedly. Creating or editing a rule does not generate occurrences on its own; call this afterward.",
+        "operationId": "refreshOccurrences",
+        "parameters": [
+          {
+            "description": "Regenerate only this rule's occurrences. Omit to refresh every active rule the actor owns.",
+            "in": "query",
+            "name": "rule_id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshOccurrencesEnvelope"
+                }
+              }
+            },
+            "description": "The occurrences this call actually created - never ones that already existed."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Generate any pending occurrences a rule's schedule has newly come due for."
       }
     },
     "/api/v1/recurring-occurrences/{id}/materialise": {

@@ -21,12 +21,15 @@
 // to also stand up a second, destructive-enabled MCP session is a
 // reasonable follow-up but out of this issue's own scope.
 //
-// Occurrence generation (GenerateOccurrences) has no surface of its own
-// by design (internal/app/recurring_occurrences.go's own doc comment:
-// "likely NOT directly exposed as a user-facing op"), so every test below
-// that needs a pending occurrence to act on seeds one via the application
-// layer directly, the same way harness.seed() creates accounts and
-// categories directly rather than through a surface.
+// Occurrence generation (GenerateOccurrences) was believed to have no
+// surface of its own by design when this file was first written, so every
+// test below that needed a pending occurrence to act on seeded one via the
+// application layer directly. That assumption was wrong: #281 simply
+// missed wiring it, discovered while scoping #282 (issue #294). Every test
+// below now seeds pending occurrences through `bodger recurring refresh`
+// (CLI), POST /api/v1/recurring-occurrences/refresh (HTTP), or
+// refresh_occurrences (MCP) instead, per the surface each rule was itself
+// created through.
 package conformance
 
 import (
@@ -37,7 +40,6 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/anirudhgray/bodger/internal/app"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 )
 
@@ -272,20 +274,68 @@ func TestRecurringOccurrenceSurfacesConformance(t *testing.T) {
 		"description": "MCP rule", "schedule": scheduleArgs, "starts_on": "2026-08-01",
 	})
 
-	for _, ruleID := range []string{cliRuleID, httpRuleID, mcpRuleID} {
-		if _, err := h.svc.GenerateOccurrences(ctx, app.GenerateOccurrencesCommand{ActorID: seededUserID, RuleID: ruleID}); err != nil {
-			t.Fatalf("GenerateOccurrences(%s): %v", ruleID, err)
-		}
+	// ---- refresh (issue #294: generate each rule's pending occurrences
+	// through the surface itself, not by calling app.GenerateOccurrences
+	// directly -- that direct call was this test's own stand-in before
+	// #294 wired a refresh operation to any surface at all) ----
+	cliOut, cliErr := h.runCLI("recurring", "refresh", "--rule", cliRuleID)
+	if cliErr != nil {
+		t.Fatalf("CLI recurring refresh: unexpected error: %v (output: %s)", cliErr, cliOut)
+	}
+	cliRefreshed, ok := decodeEnvelope(t, cliOut)["created"].([]any)
+	if !ok {
+		t.Fatalf("CLI recurring refresh: created isn't an array: %s", cliOut)
+	}
+
+	httpStatus, httpDecoded := h.runHTTP("POST", "/api/v1/recurring-occurrences/refresh?rule_id="+httpRuleID, nil)
+	if httpStatus != http.StatusOK {
+		t.Fatalf("POST /api/v1/recurring-occurrences/refresh: status = %d, want 200: %+v", httpStatus, httpDecoded)
+	}
+	httpRefreshed, ok := h.httpData(httpDecoded)["created"].([]any)
+	if !ok {
+		t.Fatalf("POST /api/v1/recurring-occurrences/refresh: created isn't an array: %+v", httpDecoded)
+	}
+
+	mcpResult := h.runMCP(ctx, "refresh_occurrences", map[string]any{"rule_id": mcpRuleID})
+	if mcpResult.IsError {
+		t.Fatalf("MCP refresh_occurrences: unexpected error result: %+v", mcpResult)
+	}
+	mcpRefreshed, ok := h.mcpData(mcpResult)["created"].([]any)
+	if !ok {
+		t.Fatalf("MCP refresh_occurrences: created isn't an array: %+v", mcpResult)
+	}
+
+	if len(cliRefreshed) == 0 || len(httpRefreshed) != len(cliRefreshed) || len(mcpRefreshed) != len(cliRefreshed) {
+		t.Fatalf("refresh: got %d/%d/%d created occurrences (CLI/HTTP/MCP), want a matching nonzero count", len(cliRefreshed), len(httpRefreshed), len(mcpRefreshed))
+	}
+	var cliRefreshedFirst, httpRefreshedFirst, mcpRefreshedFirst scheduledOccurrenceConformanceView
+	reencode(t, cliRefreshed[0], &cliRefreshedFirst)
+	reencode(t, httpRefreshed[0], &httpRefreshedFirst)
+	reencode(t, mcpRefreshed[0], &mcpRefreshedFirst)
+	assertJSONEqual(t, "refresh (CLI vs HTTP)", cliRefreshedFirst, httpRefreshedFirst)
+	assertJSONEqual(t, "refresh (CLI vs MCP)", cliRefreshedFirst, mcpRefreshedFirst)
+	if cliRefreshedFirst.OccurrenceDate != "2026-08-01" || cliRefreshedFirst.Status != "pending" {
+		t.Fatalf("refresh: first = %+v, want 2026-08-01/pending", cliRefreshedFirst)
+	}
+
+	// Calling refresh again must create nothing new -- generation is
+	// idempotent (ADR-0014).
+	cliOut, cliErr = h.runCLI("recurring", "refresh", "--rule", cliRuleID)
+	if cliErr != nil {
+		t.Fatalf("CLI recurring refresh (second call): unexpected error: %v (output: %s)", cliErr, cliOut)
+	}
+	if again, ok := decodeEnvelope(t, cliOut)["created"].([]any); !ok || len(again) != 0 {
+		t.Fatalf("refresh: second call created %v, want none (idempotent)", again)
 	}
 
 	// ---- occurrences list ----
-	cliOut, cliErr := h.runCLI("recurring", "occurrences", "list", "--rule", cliRuleID)
+	cliOut, cliErr = h.runCLI("recurring", "occurrences", "list", "--rule", cliRuleID)
 	if cliErr != nil {
 		t.Fatalf("CLI recurring occurrences list: unexpected error: %v (output: %s)", cliErr, cliOut)
 	}
 	cliOccs := decodeEnvelopeArray(t, cliOut)
 
-	httpStatus, httpDecoded := h.runHTTP("GET", "/api/v1/recurring-occurrences?rule_id="+httpRuleID, nil)
+	httpStatus, httpDecoded = h.runHTTP("GET", "/api/v1/recurring-occurrences?rule_id="+httpRuleID, nil)
 	if httpStatus != http.StatusOK {
 		t.Fatalf("GET /api/v1/recurring-occurrences: status = %d, want 200: %+v", httpStatus, httpDecoded)
 	}
@@ -294,7 +344,7 @@ func TestRecurringOccurrenceSurfacesConformance(t *testing.T) {
 		t.Fatalf("GET /api/v1/recurring-occurrences: data isn't an array: %+v", httpDecoded)
 	}
 
-	mcpResult := h.runMCP(ctx, "list_scheduled_occurrences", map[string]any{"rule_id": mcpRuleID})
+	mcpResult = h.runMCP(ctx, "list_scheduled_occurrences", map[string]any{"rule_id": mcpRuleID})
 	if mcpResult.IsError {
 		t.Fatalf("MCP list_scheduled_occurrences: unexpected error result: %+v", mcpResult)
 	}
@@ -435,10 +485,18 @@ func TestForecastSurfacesConformance(t *testing.T) {
 		"account_ref": "HDFC Savings", "category_ref": "groceries", "amount": "500",
 		"description": "MCP rule", "schedule": scheduleArgs, "starts_on": "2026-08-01",
 	})
-	for _, ruleID := range []string{cliRuleID, httpRuleID, mcpRuleID} {
-		if _, err := h.svc.GenerateOccurrences(ctx, app.GenerateOccurrencesCommand{ActorID: seededUserID, RuleID: ruleID}); err != nil {
-			t.Fatalf("GenerateOccurrences(%s): %v", ruleID, err)
-		}
+	// Seed each rule's pending occurrences through its own surface (issue
+	// #294's refresh operation, not a direct app.GenerateOccurrences call
+	// -- the refresh operation itself is exercised for cross-surface
+	// agreement in TestRecurringOccurrenceSurfacesConformance).
+	if cliOut, cliErr := h.runCLI("recurring", "refresh", "--rule", cliRuleID); cliErr != nil {
+		t.Fatalf("CLI recurring refresh: unexpected error: %v (output: %s)", cliErr, cliOut)
+	}
+	if status, decoded := h.runHTTP("POST", "/api/v1/recurring-occurrences/refresh?rule_id="+httpRuleID, nil); status != http.StatusOK {
+		t.Fatalf("POST /api/v1/recurring-occurrences/refresh: status = %d, want 200: %+v", status, decoded)
+	}
+	if result := h.runMCP(ctx, "refresh_occurrences", map[string]any{"rule_id": mcpRuleID}); result.IsError {
+		t.Fatalf("MCP refresh_occurrences: unexpected error result: %+v", result)
 	}
 
 	cliOut, cliErr := h.runCLI("recurring", "forecast", "--from", "2026-08-01", "--to", "2026-10-31", "--currency", "INR", "--policy", "current")
@@ -507,6 +565,32 @@ func TestRecurringSurfacesConformance_Errors(t *testing.T) {
 		mcpResult := h.runMCP(context.Background(), "update_recurring_rule", map[string]any{
 			"rule_id": "does-not-exist", "amount": "500", "description": "x", "schedule": scheduleArgs,
 		})
+		if !mcpResult.IsError {
+			t.Fatalf("MCP: expected an error result, got success: %+v", mcpResult)
+		}
+		if code := h.mcpErrorCode(mcpResult); code != errs.NotFound {
+			t.Errorf("MCP error code = %s, want %s", code, errs.NotFound)
+		}
+	})
+
+	t.Run("refresh unknown rule id", func(t *testing.T) {
+		cliOut, cliErr := h.runCLI("recurring", "refresh", "--rule", "does-not-exist")
+		if cliErr == nil {
+			t.Fatalf("CLI: expected an error, got success (output: %s)", cliOut)
+		}
+		if code := h.cliErrorCode(cliErr); code != errs.NotFound {
+			t.Errorf("CLI error code = %s, want %s", code, errs.NotFound)
+		}
+
+		httpStatus, httpDecoded := h.runHTTP("POST", "/api/v1/recurring-occurrences/refresh?rule_id=does-not-exist", nil)
+		if httpStatus != http.StatusNotFound {
+			t.Fatalf("HTTP: status = %d, want 404: %+v", httpStatus, httpDecoded)
+		}
+		if code := h.httpErrorCode(httpDecoded); code != errs.NotFound {
+			t.Errorf("HTTP error code = %s, want %s", code, errs.NotFound)
+		}
+
+		mcpResult := h.runMCP(context.Background(), "refresh_occurrences", map[string]any{"rule_id": "does-not-exist"})
 		if !mcpResult.IsError {
 			t.Fatalf("MCP: expected an error result, got success: %+v", mcpResult)
 		}

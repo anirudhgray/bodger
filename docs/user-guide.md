@@ -738,6 +738,15 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | `bodger budgets lines remove <budget-id> <line-id>` | Remove a line from a budget |
 | `bodger budgets actuals <budget-id> [--period]` | Actual spend against a budget's lines for a period (defaults to the current month) |
 | `bodger budgets history <budget-id> [--period] [--months]` | Actual-vs-budget over several consecutive months (defaults to 6) |
+| `bodger recurring create <account> <category> <amount> <description> --frequency [--interval] [--weekday] [--day-of-month] [--month] [--starts-on] [--ends-on]` | Create a recurring rule's template — this alone doesn't generate any occurrence; run `recurring refresh` afterward |
+| `bodger recurring update <rule-id> <amount> <description> --frequency [--interval] [--weekday] [--day-of-month] [--month] [--ends-on]` | Update a rule's amount, description, schedule, and end date — every field is set together |
+| `bodger recurring archive <rule-id>` | Archive a rule: stops it generating further occurrences and cancels any still-pending ones |
+| `bodger recurring list` | List your recurring rules, including archived ones |
+| `bodger recurring occurrences list [--rule] [--status] [--from] [--to]` | List scheduled occurrences, optionally filtered by rule, status, or date range |
+| `bodger recurring refresh [--rule]` | Generate any pending occurrences a rule's schedule has newly come due for, out to a year ahead — safe to run repeatedly |
+| `bodger recurring materialise <occurrence-id>` | Turn a pending occurrence into a real transaction, using the rule's current amount, account, category, and description |
+| `bodger recurring skip <occurrence-id>` | Record that a pending occurrence's firing was deliberately not recorded — no transaction is created |
+| `bodger recurring forecast --from --to --policy [--currency] [--granularity]` | Projected inflow/outflow/net from pending occurrences, bucketed by period — never touches a balance or actual |
 
 `<account>` and `<category>` accept either the name you gave it (case-insensitive) or its ID. If a name matches more than one of your accounts or categories, `bodger` lists the candidates instead of guessing. `<id>` is a transaction's own ID, which `bodger transactions list` shows in its last column.
 
