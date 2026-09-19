@@ -779,6 +779,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/recurring-occurrences/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate any pending occurrences a rule's schedule has newly come due for.
+         * @description Ensures pending occurrences exist out to the generation horizon for the given rule (or, with no rule_id, every active rule the actor owns), without duplicating a date that already has an occurrence of any status - safe to call repeatedly. Creating or editing a rule does not generate occurrences on its own; call this afterward.
+         */
+        post: operations["refreshOccurrences"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/recurring-occurrences/{id}/materialise": {
         parameters: {
             query?: never;
@@ -1832,6 +1852,12 @@ export interface components {
         };
         RecurringRuleListEnvelope: {
             data: components["schemas"]["RecurringRule"][];
+        };
+        RefreshOccurrences: {
+            created: components["schemas"]["ScheduledOccurrence"][];
+        };
+        RefreshOccurrencesEnvelope: {
+            data: components["schemas"]["RefreshOccurrences"];
         };
         ReportingCurrency: {
             currency: string;
@@ -3618,6 +3644,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScheduledOccurrenceListEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    refreshOccurrences: {
+        parameters: {
+            query?: {
+                /** @description Regenerate only this rule's occurrences. Omit to refresh every active rule the actor owns. */
+                rule_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The occurrences this call actually created - never ones that already existed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefreshOccurrencesEnvelope"];
                 };
             };
             404: components["responses"]["NotFound"];
