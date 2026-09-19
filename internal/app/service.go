@@ -126,6 +126,15 @@ type Service struct {
 	RecurringRules       ports.RecurringRuleRepository
 	ScheduledOccurrences ports.ScheduledOccurrenceRepository
 
+	// RecurringMaterializations is issue #279's repository port over the
+	// one write that must be atomic: turning a pending ScheduledOccurrence
+	// into a real Transaction. Separate from RecurringRules/
+	// ScheduledOccurrences above for the same reason ImportCommits is
+	// separate from ImportBatches/ImportRecords — it is the one operation
+	// that writes to transactions/postings and scheduled_occurrences
+	// together, in a single database transaction.
+	RecurringMaterializations ports.RecurringMaterializationRepository
+
 	// MCPToolCalls is issue #259's repository port over mcp_tool_call
 	// (ADR-0013): the audit trail of every write- and destructive-tier
 	// MCP tool invocation. Following the ImportBatches/ImportRecords
@@ -160,6 +169,7 @@ func NewService(
 	budgets ports.BudgetRepository,
 	recurringRules ports.RecurringRuleRepository,
 	scheduledOccurrences ports.ScheduledOccurrenceRepository,
+	recurringMaterializations ports.RecurringMaterializationRepository,
 	mcpToolCalls ports.MCPToolCallRepository,
 ) (*Service, error) {
 	switch {
@@ -199,6 +209,8 @@ func NewService(
 		return nil, missingDependency("recurring rule repository")
 	case scheduledOccurrences == nil:
 		return nil, missingDependency("scheduled occurrence repository")
+	case recurringMaterializations == nil:
+		return nil, missingDependency("recurring materialization repository")
 	case mcpToolCalls == nil:
 		return nil, missingDependency("MCP tool call repository")
 	}
@@ -224,6 +236,8 @@ func NewService(
 
 		RecurringRules:       recurringRules,
 		ScheduledOccurrences: scheduledOccurrences,
+
+		RecurringMaterializations: recurringMaterializations,
 
 		MCPToolCalls: mcpToolCalls,
 	}, nil

@@ -156,6 +156,7 @@ func newTestServiceWithFxProvider(t *testing.T, frozenAt time.Time, tz string, p
 		sqlite.NewBudgetRepository(db),
 		sqlite.NewRecurringRuleRepository(db),
 		sqlite.NewScheduledOccurrenceRepository(db),
+		sqlite.NewRecurringMaterializationRepository(db),
 		sqlite.NewMCPToolCallRepository(db),
 	)
 	if err != nil {
