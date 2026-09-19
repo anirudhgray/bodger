@@ -77,8 +77,10 @@ type ScheduledOccurrenceRepository interface {
 
 	// DeletePending removes ruleID's pending occurrences falling on or
 	// after onOrAfter, for actorID. This is what a rule's schedule
-	// changing needs (issue #277): the stale projection is discarded and
-	// regenerated.
+	// changing needs (issue #278): the stale projection is discarded and
+	// regenerated. Issue #278 also uses it, with onOrAfter set to the
+	// rule's own StartsOn, to cancel every remaining pending occurrence
+	// when a rule is archived.
 	//
 	// It is deliberately narrower than a general Delete. A materialised
 	// occurrence is the provenance of a real transaction and a skipped one
