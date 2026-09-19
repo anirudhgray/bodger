@@ -21,6 +21,8 @@
 | [budgets](budgets.md) | 9 |  | table |
 | [budget_lines](budget_lines.md) | 5 |  | table |
 | [mcp_tool_call](mcp_tool_call.md) | 8 |  | table |
+| [recurring_rules](recurring_rules.md) | 16 |  | table |
+| [scheduled_occurrences](scheduled_occurrences.md) | 7 |  | table |
 
 ## Relations
 
@@ -59,6 +61,11 @@ erDiagram
 "budget_lines" }o--|| "categories" : "FOREIGN KEY (category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "budget_lines" }o--|| "budgets" : "FOREIGN KEY (budget_id) REFERENCES budgets (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
 "mcp_tool_call" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"recurring_rules" }o--|| "categories" : "FOREIGN KEY (category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"recurring_rules" }o--|| "accounts" : "FOREIGN KEY (account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"recurring_rules" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"scheduled_occurrences" }o--o| "transactions" : "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"scheduled_occurrences" }o--|| "recurring_rules" : "FOREIGN KEY (rule_id) REFERENCES recurring_rules (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
 
 "users" {
   TEXT id PK
@@ -227,6 +234,33 @@ erDiagram
   TEXT confirmation_token
   TEXT result
   TEXT called_at
+}
+"recurring_rules" {
+  TEXT id PK
+  TEXT user_id FK
+  TEXT account_id FK
+  TEXT category_id FK
+  INTEGER amount_minor
+  TEXT description
+  TEXT frequency
+  INTEGER interval_count
+  INTEGER weekday
+  INTEGER day_of_month
+  INTEGER month_of_year
+  TEXT starts_on
+  TEXT ends_on
+  TEXT archived_at
+  TEXT created_at
+  TEXT updated_at
+}
+"scheduled_occurrences" {
+  TEXT id PK
+  TEXT rule_id FK
+  TEXT occurrence_date
+  TEXT status
+  TEXT transaction_id FK
+  TEXT created_at
+  TEXT updated_at
 }
 ```
 

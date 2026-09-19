@@ -25,7 +25,7 @@ CREATE TABLE "categories" (
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| id | TEXT |  | true | [postings](postings.md) [categories](categories.md) [import_record](import_record.md) [budget_lines](budget_lines.md) |  |  |
+| id | TEXT |  | true | [postings](postings.md) [categories](categories.md) [import_record](import_record.md) [budget_lines](budget_lines.md) [recurring_rules](recurring_rules.md) |  |  |
 | user_id | TEXT |  | false |  | [users](users.md) |  |
 | parent_id | TEXT |  | true |  | [categories](categories.md) |  |
 | name | TEXT |  | false |  |  |  |
@@ -64,6 +64,7 @@ erDiagram
 "categories" }o--o| "categories" : "FOREIGN KEY (parent_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_record" }o--o| "categories" : "FOREIGN KEY (resolved_category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "budget_lines" }o--|| "categories" : "FOREIGN KEY (category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"recurring_rules" }o--|| "categories" : "FOREIGN KEY (category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "categories" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 
 "categories" {
@@ -115,6 +116,24 @@ erDiagram
   TEXT category_id FK
   INTEGER amount_minor
   INTEGER rollover
+}
+"recurring_rules" {
+  TEXT id PK
+  TEXT user_id FK
+  TEXT account_id FK
+  TEXT category_id FK
+  INTEGER amount_minor
+  TEXT description
+  TEXT frequency
+  INTEGER interval_count
+  INTEGER weekday
+  INTEGER day_of_month
+  INTEGER month_of_year
+  TEXT starts_on
+  TEXT ends_on
+  TEXT archived_at
+  TEXT created_at
+  TEXT updated_at
 }
 "users" {
   TEXT id PK

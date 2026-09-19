@@ -2130,6 +2130,408 @@
         }
       ],
       "def": "CREATE TABLE mcp_tool_call (\n    id                 TEXT NOT NULL PRIMARY KEY,\n    user_id            TEXT NOT NULL REFERENCES users (id),\n    tool_name          TEXT NOT NULL,\n    tier               TEXT NOT NULL CHECK (tier IN ('read', 'write', 'destructive')),\n    arguments          TEXT NOT NULL,\n    confirmation_token TEXT,\n    result             TEXT NOT NULL,\n    called_at          TEXT NOT NULL\n)"
+    },
+    {
+      "name": "recurring_rules",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "account_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "category_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "amount_minor",
+          "type": "INTEGER",
+          "nullable": false
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "frequency",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "interval_count",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": "1"
+        },
+        {
+          "name": "weekday",
+          "type": "INTEGER",
+          "nullable": true
+        },
+        {
+          "name": "day_of_month",
+          "type": "INTEGER",
+          "nullable": true
+        },
+        {
+          "name": "month_of_year",
+          "type": "INTEGER",
+          "nullable": true
+        },
+        {
+          "name": "starts_on",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "ends_on",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "archived_at",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_recurring_rules_category_id",
+          "def": "CREATE INDEX idx_recurring_rules_category_id ON recurring_rules (category_id)",
+          "table": "recurring_rules",
+          "columns": [
+            "category_id"
+          ]
+        },
+        {
+          "name": "idx_recurring_rules_account_id",
+          "def": "CREATE INDEX idx_recurring_rules_account_id ON recurring_rules (account_id)",
+          "table": "recurring_rules",
+          "columns": [
+            "account_id"
+          ]
+        },
+        {
+          "name": "idx_recurring_rules_user_id",
+          "def": "CREATE INDEX idx_recurring_rules_user_id ON recurring_rules (user_id)",
+          "table": "recurring_rules",
+          "columns": [
+            "user_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_recurring_rules_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "recurring_rules",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "recurring_rules",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "recurring_rules",
+          "referenced_table": "categories",
+          "columns": [
+            "category_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "recurring_rules",
+          "referenced_table": "accounts",
+          "columns": [
+            "account_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 2)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "recurring_rules",
+          "referenced_table": "users",
+          "columns": [
+            "user_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_recurring_rules_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "recurring_rules",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (amount_minor \u003e 0)",
+          "table": "recurring_rules",
+          "columns": [
+            "amount_minor"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (frequency IN ('weekly', 'monthly', 'yearly'))",
+          "table": "recurring_rules",
+          "columns": [
+            "frequency"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (interval_count \u003e= 1)",
+          "table": "recurring_rules",
+          "columns": [
+            "interval_count"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (weekday BETWEEN 0 AND 6)",
+          "table": "recurring_rules",
+          "columns": [
+            "weekday"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (day_of_month BETWEEN 1 AND 31)",
+          "table": "recurring_rules",
+          "columns": [
+            "day_of_month"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (month_of_year BETWEEN 1 AND 12)",
+          "table": "recurring_rules",
+          "columns": [
+            "month_of_year"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK ( (frequency = 'weekly' AND weekday IS NOT NULL AND day_of_month IS NULL AND month_of_year IS NULL) OR (frequency = 'monthly' AND weekday IS NULL AND day_of_month IS NOT NULL AND month_of_year IS NULL) OR (frequency = 'yearly' AND weekday IS NULL AND day_of_month IS NOT NULL AND month_of_year IS NOT NULL) )",
+          "table": "recurring_rules",
+          "columns": [
+            "frequency",
+            "weekday",
+            "day_of_month",
+            "month_of_year"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE recurring_rules (\n    id             TEXT NOT NULL PRIMARY KEY,\n    user_id        TEXT NOT NULL REFERENCES users (id),\n    account_id     TEXT NOT NULL REFERENCES accounts (id),\n    category_id    TEXT NOT NULL REFERENCES categories (id),\n    amount_minor   INTEGER NOT NULL CHECK (amount_minor \u003e 0),\n    description    TEXT NOT NULL,\n    frequency      TEXT NOT NULL CHECK (frequency IN ('weekly', 'monthly', 'yearly')),\n    interval_count INTEGER NOT NULL DEFAULT 1 CHECK (interval_count \u003e= 1),\n    weekday        INTEGER CHECK (weekday BETWEEN 0 AND 6),\n    day_of_month   INTEGER CHECK (day_of_month BETWEEN 1 AND 31),\n    month_of_year  INTEGER CHECK (month_of_year BETWEEN 1 AND 12),\n    starts_on      TEXT NOT NULL,\n    ends_on        TEXT,\n    archived_at    TEXT,\n    created_at     TEXT NOT NULL,\n    updated_at     TEXT NOT NULL,\n    -- Exactly the positional fields the declared frequency needs, and no\n    -- others -- the schema half of recurring.Schedule's own \"only one way\n    -- to construct this\" rule.\n    CHECK (\n        (frequency = 'weekly'  AND weekday IS NOT NULL AND day_of_month IS NULL     AND month_of_year IS NULL)\n        OR (frequency = 'monthly' AND weekday IS NULL  AND day_of_month IS NOT NULL AND month_of_year IS NULL)\n        OR (frequency = 'yearly'  AND weekday IS NULL  AND day_of_month IS NOT NULL AND month_of_year IS NOT NULL)\n    )\n)"
+    },
+    {
+      "name": "scheduled_occurrences",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "rule_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "occurrence_date",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "nullable": false,
+          "default": "'pending'"
+        },
+        {
+          "name": "transaction_id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_scheduled_occurrences_transaction_id",
+          "def": "CREATE INDEX idx_scheduled_occurrences_transaction_id ON scheduled_occurrences (transaction_id)",
+          "table": "scheduled_occurrences",
+          "columns": [
+            "transaction_id"
+          ]
+        },
+        {
+          "name": "idx_scheduled_occurrences_status_date",
+          "def": "CREATE INDEX idx_scheduled_occurrences_status_date ON scheduled_occurrences (status, occurrence_date)",
+          "table": "scheduled_occurrences",
+          "columns": [
+            "status",
+            "occurrence_date"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_scheduled_occurrences_2",
+          "def": "UNIQUE (rule_id, occurrence_date)",
+          "table": "scheduled_occurrences",
+          "columns": [
+            "rule_id",
+            "occurrence_date"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_scheduled_occurrences_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "scheduled_occurrences",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "scheduled_occurrences",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "scheduled_occurrences",
+          "referenced_table": "transactions",
+          "columns": [
+            "transaction_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (rule_id) REFERENCES recurring_rules (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
+          "table": "scheduled_occurrences",
+          "referenced_table": "recurring_rules",
+          "columns": [
+            "rule_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_scheduled_occurrences_2",
+          "type": "UNIQUE",
+          "def": "UNIQUE (rule_id, occurrence_date)",
+          "table": "scheduled_occurrences",
+          "columns": [
+            "rule_id",
+            "occurrence_date"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_scheduled_occurrences_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "scheduled_occurrences",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (status IN ('pending', 'materialised', 'skipped'))",
+          "table": "scheduled_occurrences",
+          "columns": [
+            "status"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK ((status = 'materialised') = (transaction_id IS NOT NULL))",
+          "table": "scheduled_occurrences",
+          "columns": [
+            "id",
+            "status",
+            "transaction_id"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE scheduled_occurrences (\n    id              TEXT NOT NULL PRIMARY KEY,\n    rule_id         TEXT NOT NULL REFERENCES recurring_rules (id) ON DELETE CASCADE,\n    occurrence_date TEXT NOT NULL,\n    status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'materialised', 'skipped')),\n    transaction_id  TEXT REFERENCES transactions (id),\n    created_at      TEXT NOT NULL,\n    updated_at      TEXT NOT NULL,\n    -- Status and provenance can't drift apart, even through a direct\n    -- write: a materialised occurrence has a transaction, and a pending\n    -- or skipped one does not. recurring.NewScheduledOccurrence enforces\n    -- the same rule in the domain layer.\n    CHECK ((status = 'materialised') = (transaction_id IS NOT NULL)),\n    UNIQUE (rule_id, occurrence_date)\n)"
     }
   ],
   "relations": [
@@ -2550,6 +2952,71 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "recurring_rules",
+      "columns": [
+        "category_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "categories",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "recurring_rules",
+      "columns": [
+        "account_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "accounts",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "recurring_rules",
+      "columns": [
+        "user_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "users",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "scheduled_occurrences",
+      "columns": [
+        "transaction_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "transactions",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "scheduled_occurrences",
+      "columns": [
+        "rule_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "recurring_rules",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (rule_id) REFERENCES recurring_rules (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
     }
   ],
   "driver": {

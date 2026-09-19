@@ -21,6 +21,7 @@ Format: **Status · Context · Decision · Alternatives considered · Consequenc
 | [0011](0011-error-model.md) | Error model: eight coarse codes and the safe/internal split | Accepted |
 | [0012](0012-fx-rate-provider.md) | FX rate provider: Frankfurter; arbitrary base/quote, no key, no triangulation | Accepted |
 | [0013](0013-mcp-server-design.md) | MCP server: tier-enforcing dispatcher, destructive confirmation protocol, audit log | Accepted |
+| [0014](0014-recurring-transactions-scheduling.md) | Recurring transactions: structured schedule subset, clamped month-ends, generated occurrences that can't reach a balance | Accepted |
 
 ## On "the brief"
 

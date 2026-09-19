@@ -143,6 +143,8 @@ func newHarnessWithFxProvider(t *testing.T, provider ports.FxRateProvider) *harn
 		sqlite.NewImportCommitRepository(db),
 		sqlite.NewSnapshotRepository(db),
 		sqlite.NewBudgetRepository(db),
+		sqlite.NewRecurringRuleRepository(db),
+		sqlite.NewScheduledOccurrenceRepository(db),
 		sqlite.NewMCPToolCallRepository(db),
 	)
 	if err != nil {
