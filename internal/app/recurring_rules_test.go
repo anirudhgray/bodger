@@ -53,6 +53,9 @@ func TestCreateRecurringRule_Weekly(t *testing.T) {
 	if result.Rule.AmountMinor() != 5000 {
 		t.Errorf("AmountMinor = %d, want 5000", result.Rule.AmountMinor())
 	}
+	if result.Currency != "USD" {
+		t.Errorf("Currency = %q, want USD (the account's own currency)", result.Currency)
+	}
 	if result.Rule.Schedule().Frequency() != recurring.FrequencyWeekly {
 		t.Errorf("Frequency = %q, want weekly", result.Rule.Schedule().Frequency())
 	}
@@ -467,6 +470,9 @@ func TestListRecurringRules(t *testing.T) {
 	// Most recently created first.
 	if result.Rules[0].Description() != "B" {
 		t.Errorf("Rules[0].Description = %q, want %q (most recent first)", result.Rules[0].Description(), "B")
+	}
+	if got := result.Currencies[result.Rules[0].ID()]; got != "USD" {
+		t.Errorf("Currencies[Rules[0].ID()] = %q, want USD", got)
 	}
 }
 

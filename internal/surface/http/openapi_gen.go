@@ -73,6 +73,8 @@ var enumSets = map[string][]string{
 	"import_duplicate_tier":       {"exact", "suspected_duplicate"},
 	"import_duplicate_resolution": {"pending", "confirmed_duplicate", "not_duplicate"},
 	"budget_period_type":          {"monthly"},
+	"recurring_frequency":         {"weekly", "monthly", "yearly"},
+	"occurrence_status":           {"pending", "materialised", "skipped"},
 }
 
 func errorCodeValues() []string {
@@ -94,6 +96,7 @@ var errorResponseNames = map[int]string{
 	http.StatusUnprocessableEntity: "InvalidInput",
 	http.StatusUnauthorized:        "Unauthenticated",
 	http.StatusPreconditionFailed:  "PreconditionFailed",
+	http.StatusConflict:            "Conflict",
 }
 
 // schemaTypeName is this generator's naming rule for a Go DTO type's
@@ -450,6 +453,7 @@ func GenerateOpenAPIDocument() ([]byte, error) {
 				"InvalidInput":       errorResponse("The request failed validation.", errorEnvelopeRef),
 				"Unauthenticated":    errorResponse("No valid credential was presented.", errorEnvelopeRef),
 				"PreconditionFailed": errorResponse("The request is valid, but not allowed given the resource's current state.", errorEnvelopeRef),
+				"Conflict":           errorResponse("The request would conflict with something that already exists, or with the resource's current state.", errorEnvelopeRef),
 			},
 		},
 	}

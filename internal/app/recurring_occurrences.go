@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/anirudhgray/bodger/internal/app/normalize"
@@ -186,6 +187,101 @@ func scheduleEqual(a, b recurring.Schedule) bool {
 		return am == bm && ad == bd
 	default:
 		return false
+	}
+}
+
+// ListScheduledOccurrencesQuery lists ScheduledOccurrence rows actorID
+// owns, optionally narrowed to one rule, one status, and/or an inclusive
+// occurrence-date range — a thin app-layer wrapper over
+// ports.ScheduledOccurrenceRepository.List/ScheduledOccurrenceFilter.
+//
+// This is issue #281's own gap fill: the repository-level filter already
+// existed (internal/ports/scheduled_occurrence.go), but no app-layer
+// query exposed it to a surface, which would have meant REST, CLI, and
+// MCP each reimplementing the same status/date filtering independently —
+// exactly what CLAUDE.md's normalize-once rule and ADR-0005 exist to
+// prevent. RuleID, when set, is resolved the same actor-scoped way every
+// other recurring-rule use case resolves one (RecurringRules.Get), which
+// doubles as this query's authorisation check for that field the same
+// way resolveOwnedAccount/resolveOwnedCategory does elsewhere — the
+// underlying ScheduledOccurrenceRepository.List is already actor-scoped
+// on its own, but resolving the rule first turns "that rule isn't yours"
+// into a clear NotFound instead of a silently empty result.
+type ListScheduledOccurrencesQuery struct {
+	ActorID  string
+	RuleID   string
+	Status   string
+	FromDate string
+	ToDate   string
+}
+
+// ListScheduledOccurrencesResult is ListScheduledOccurrences' result, in
+// the repository's ascending occurrence_date order.
+type ListScheduledOccurrencesResult struct {
+	Occurrences []recurring.ScheduledOccurrence
+}
+
+// ListScheduledOccurrences implements the "list occurrences, with a
+// status filter" read issue #281's REST scope calls for.
+func (s *Service) ListScheduledOccurrences(ctx context.Context, q ListScheduledOccurrencesQuery) (ListScheduledOccurrencesResult, error) {
+	if err := requireActorID(q.ActorID); err != nil {
+		return ListScheduledOccurrencesResult{}, err
+	}
+
+	filter := ports.ScheduledOccurrenceFilter{}
+
+	if strings.TrimSpace(q.RuleID) != "" {
+		rule, err := s.RecurringRules.Get(ctx, q.ActorID, q.RuleID)
+		if err != nil {
+			return ListScheduledOccurrencesResult{}, attachField(err, "rule_id")
+		}
+		filter.RuleID = rule.ID()
+	}
+
+	status, err := parseOccurrenceStatus(q.Status)
+	if err != nil {
+		return ListScheduledOccurrencesResult{}, err
+	}
+	filter.Status = status
+
+	from, err := optionalDate(q.FromDate, s.Clock, s.Config.UserTimezone)
+	if err != nil {
+		return ListScheduledOccurrencesResult{}, attachField(err, "from_date")
+	}
+	filter.FromDate = from
+
+	to, err := optionalDate(q.ToDate, s.Clock, s.Config.UserTimezone)
+	if err != nil {
+		return ListScheduledOccurrencesResult{}, attachField(err, "to_date")
+	}
+	filter.ToDate = to
+
+	occurrences, err := s.ScheduledOccurrences.List(ctx, q.ActorID, filter)
+	if err != nil {
+		return ListScheduledOccurrencesResult{}, err
+	}
+	return ListScheduledOccurrencesResult{Occurrences: occurrences}, nil
+}
+
+// parseOccurrenceStatus validates raw against recurring's closed set of
+// occurrence statuses (recurring.OccurrenceStatus), the same
+// parseAccountKind/parseCategoryKind/parseTransactionKind shape
+// helpers.go already uses for every other closed-enum filter field. ""
+// means "no status filter" — every status — matching
+// ports.ScheduledOccurrenceFilter's own zero-value convention.
+func parseOccurrenceStatus(raw string) (recurring.OccurrenceStatus, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", nil
+	}
+	status := recurring.OccurrenceStatus(strings.ToLower(strings.TrimSpace(raw)))
+	switch status {
+	case recurring.OccurrenceStatusPending, recurring.OccurrenceStatusMaterialised, recurring.OccurrenceStatusSkipped:
+		return status, nil
+	default:
+		return "", errs.New(errs.InvalidInput).
+			Explain("%q isn't a valid occurrence status.", raw).
+			Field("status").
+			With("valid_statuses", []string{"pending", "materialised", "skipped"})
 	}
 }
 

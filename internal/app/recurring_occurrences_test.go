@@ -249,3 +249,91 @@ func TestGenerateOccurrences_UnknownRuleIDIsNotFound(t *testing.T) {
 	_, err := svc.GenerateOccurrences(context.Background(), app.GenerateOccurrencesCommand{ActorID: testActorID, RuleID: "does-not-exist"})
 	wantErrCode(t, err, errs.NotFound)
 }
+
+func TestListScheduledOccurrences_FiltersByStatus(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	account := mustCreateAccount(t, svc, testActorID, "Checking")
+	rent := mustCreateCategory(t, svc, "Rent")
+	ruleID := mustCreateWeeklyRule(t, svc, testActorID, account, rent, "2026-01-05")
+
+	genResult, err := svc.GenerateOccurrences(ctx, app.GenerateOccurrencesCommand{ActorID: testActorID, RuleID: ruleID})
+	if err != nil {
+		t.Fatalf("GenerateOccurrences: %v", err)
+	}
+	if len(genResult.Created) == 0 {
+		t.Fatalf("expected at least one generated occurrence")
+	}
+	first := occurrenceByDate(t, genResult.Created, "2026-01-05")
+
+	if _, err := svc.MaterialiseOccurrence(ctx, app.MaterialiseOccurrenceCommand{ActorID: testActorID, OccurrenceID: first.ID()}); err != nil {
+		t.Fatalf("MaterialiseOccurrence: %v", err)
+	}
+
+	all, err := svc.ListScheduledOccurrences(ctx, app.ListScheduledOccurrencesQuery{ActorID: testActorID, RuleID: ruleID})
+	if err != nil {
+		t.Fatalf("ListScheduledOccurrences (all): %v", err)
+	}
+	if len(all.Occurrences) != len(genResult.Created) {
+		t.Fatalf("all: got %d occurrences, want %d", len(all.Occurrences), len(genResult.Created))
+	}
+
+	materialised, err := svc.ListScheduledOccurrences(ctx, app.ListScheduledOccurrencesQuery{
+		ActorID: testActorID, RuleID: ruleID, Status: "materialised",
+	})
+	if err != nil {
+		t.Fatalf("ListScheduledOccurrences (materialised): %v", err)
+	}
+	if len(materialised.Occurrences) != 1 || materialised.Occurrences[0].ID() != first.ID() {
+		t.Fatalf("materialised: got %+v, want exactly the materialised occurrence", materialised.Occurrences)
+	}
+
+	pending, err := svc.ListScheduledOccurrences(ctx, app.ListScheduledOccurrencesQuery{
+		ActorID: testActorID, RuleID: ruleID, Status: "pending",
+	})
+	if err != nil {
+		t.Fatalf("ListScheduledOccurrences (pending): %v", err)
+	}
+	if len(pending.Occurrences) != len(genResult.Created)-1 {
+		t.Fatalf("pending: got %d, want %d", len(pending.Occurrences), len(genResult.Created)-1)
+	}
+	for _, o := range pending.Occurrences {
+		if o.ID() == first.ID() {
+			t.Fatalf("pending: unexpectedly includes the materialised occurrence")
+		}
+	}
+}
+
+func TestListScheduledOccurrences_DateRange(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	account := mustCreateAccount(t, svc, testActorID, "Checking")
+	rent := mustCreateCategory(t, svc, "Rent")
+	ruleID := mustCreateWeeklyRule(t, svc, testActorID, account, rent, "2026-01-05")
+
+	if _, err := svc.GenerateOccurrences(ctx, app.GenerateOccurrencesCommand{ActorID: testActorID, RuleID: ruleID}); err != nil {
+		t.Fatalf("GenerateOccurrences: %v", err)
+	}
+
+	result, err := svc.ListScheduledOccurrences(ctx, app.ListScheduledOccurrencesQuery{
+		ActorID: testActorID, RuleID: ruleID, FromDate: "2026-01-05", ToDate: "2026-01-12",
+	})
+	if err != nil {
+		t.Fatalf("ListScheduledOccurrences: %v", err)
+	}
+	if len(result.Occurrences) != 2 {
+		t.Fatalf("got %d occurrences in range, want 2 (2026-01-05 and 2026-01-12)", len(result.Occurrences))
+	}
+}
+
+func TestListScheduledOccurrences_UnknownRuleIDIsNotFound(t *testing.T) {
+	svc := newTestService(t, time.Now(), "UTC")
+	_, err := svc.ListScheduledOccurrences(context.Background(), app.ListScheduledOccurrencesQuery{ActorID: testActorID, RuleID: "does-not-exist"})
+	wantErrCode(t, err, errs.NotFound)
+}
+
+func TestListScheduledOccurrences_InvalidStatusIsInvalidInput(t *testing.T) {
+	svc := newTestService(t, time.Now(), "UTC")
+	_, err := svc.ListScheduledOccurrences(context.Background(), app.ListScheduledOccurrencesQuery{ActorID: testActorID, Status: "cancelled"})
+	wantErrCode(t, err, errs.InvalidInput)
+}
