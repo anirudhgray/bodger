@@ -16,6 +16,12 @@
 //     gap ADR-0005's "one coherent set of capabilities, several thin
 //     surfaces" exists to prevent. Added for parity with GET
 //     /api/v1/forecast and the MCP get_forecast tool.
+//   - `bodger recurring refresh` (issue #294) fills a real gap #281 left
+//     open: nothing ever wired internal/app/recurring_occurrences.go's
+//     GenerateOccurrences to a surface, so a created rule could never
+//     actually produce a pending occurrence for materialise/skip to act
+//     on or for forecast to read. That use case's own doc comment
+//     anticipated this exact command name.
 //   - There is no `bodger recurring show <rule-id>` (a single-rule get).
 //     This one is deliberately *not* added, unlike forecast: the issue's
 //     CLI and MCP bullets both consistently omit a single-rule get
@@ -528,6 +534,66 @@ func newRecurringSkipCmd(factory ServiceFactory) *cobra.Command {
 	}
 }
 
+// ---- recurring refresh ----
+
+// refreshOccurrencesView is `recurring refresh`'s output shape, mirroring
+// internal/surface/http/recurring.go's own refreshOccurrencesView.
+type refreshOccurrencesView struct {
+	Created []scheduledOccurrenceView `json:"created"`
+}
+
+// newRecurringRefreshCmd builds "recurring refresh" — issue #294's gap
+// fill: internal/app/recurring_occurrences.go's GenerateOccurrences was
+// never wired to any surface, so a created rule could never actually
+// produce a pending occurrence. This is the command that use case's own
+// doc comment anticipated by name.
+func newRecurringRefreshCmd(factory ServiceFactory) *cobra.Command {
+	var ruleID string
+	cmd := &cobra.Command{
+		Use:   "refresh",
+		Short: "Generate any pending occurrences a rule's schedule has newly come due for",
+		Long: "Generate any pending occurrences a rule's schedule has newly come due for, out to " +
+			"the generation horizon - safe to call repeatedly, since it never duplicates a date " +
+			"that already has an occurrence of any status. Creating or editing a rule does not " +
+			"generate occurrences on its own; run this afterward.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+			svc, closeDB, err := factory(ctx)
+			if err != nil {
+				return err
+			}
+			defer closeQuietly(cmd, closeDB)
+
+			result, err := svc.GenerateOccurrences(ctx, app.GenerateOccurrencesCommand{
+				ActorID: ports.SeededUserID, RuleID: ruleID,
+			})
+			if err != nil {
+				return err
+			}
+			views := make([]scheduledOccurrenceView, 0, len(result.Created))
+			for _, occ := range result.Created {
+				txID, _ := occ.TransactionID()
+				views = append(views, scheduledOccurrenceView{
+					ID: occ.ID(), RuleID: occ.RuleID(),
+					OccurrenceDate: occ.OccurrenceDate().String(),
+					Status:         string(occ.Status()), TransactionID: txID,
+				})
+			}
+			view := refreshOccurrencesView{Created: views}
+			return render(cmd, view, func(w io.Writer) {
+				if len(view.Created) == 0 {
+					_, _ = fmt.Fprintln(w, "No new occurrences.")
+					return
+				}
+				printScheduledOccurrenceTable(w, view.Created)
+			})
+		},
+	}
+	cmd.Flags().StringVar(&ruleID, "rule", "", "regenerate only this rule's occurrences (default: every active rule)")
+	return cmd
+}
+
 // ---- recurring forecast ----
 
 // forecastPointView is one period's projected totals (app.ForecastPoint),
@@ -635,10 +701,11 @@ func newRecurringForecastCmd(factory ServiceFactory) *cobra.Command {
 // ---- command group ----
 
 // newRecurringCmd builds the "recurring" command group: create, update,
-// archive, list, occurrences (a "list" subgroup), materialise, skip, and
-// forecast — one subcommand per use case internal/app's recurring rule,
-// occurrence, and forecast files expose (issues #277-#280), per issue
-// #281's own surface-wiring scope.
+// archive, list, occurrences (a "list" subgroup), materialise, skip,
+// refresh, and forecast — one subcommand per use case internal/app's
+// recurring rule, occurrence, and forecast files expose (issues
+// #277-#280), per issue #281's own surface-wiring scope, plus refresh
+// (issue #294's gap fill, see this file's header comment).
 func newRecurringCmd(factory ServiceFactory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "recurring",
@@ -652,6 +719,7 @@ func newRecurringCmd(factory ServiceFactory) *cobra.Command {
 		newRecurringOccurrencesCmd(factory),
 		newRecurringMaterialiseCmd(factory),
 		newRecurringSkipCmd(factory),
+		newRecurringRefreshCmd(factory),
 		newRecurringForecastCmd(factory),
 	)
 	return cmd
