@@ -399,14 +399,26 @@ func wrapRecurringError(err error) error {
 		return errs.New(errs.InvalidInput).
 			Explain("That isn't a supported recurrence frequency.").
 			Field("schedule.frequency")
+	case errors.Is(err, recurring.ErrOccurrenceInvalidTransition):
+		// Reachable from genuine (if racy) user input: materialising or
+		// skipping an occurrence that's already materialised or skipped
+		// (issue #279). Conflict, the same code family this codebase uses
+		// elsewhere for "the thing you're acting on is no longer in the
+		// state you expected" (e.g. memScheduledOccurrences.CreateBatch's
+		// duplicate-date case).
+		return errs.New(errs.Conflict).
+			Explain("This occurrence has already been materialised or skipped.").
+			Field("occurrence_id")
 	default:
 		// ErrRuleEmptyID/EmptyUserID/EmptyAccountID/EmptyCategoryID/
-		// EmptyDescription/InvalidSchedule are all defensive here: every
-		// use case above already validated the corresponding input before
-		// reaching this call, so reaching this branch would mean this
-		// package's own invariant broke, not that the user did anything
-		// wrong — Internal, the same reasoning wrapBudgetingError's default
-		// case gives.
+		// EmptyDescription/InvalidSchedule, and the occurrence-side
+		// ErrOccurrenceEmptyID/EmptyRuleID/InvalidStatus/
+		// EmptyTransactionID/UnexpectedTransactionID, are all defensive
+		// here: every use case above already validated the corresponding
+		// input before reaching this call, so reaching this branch would
+		// mean this package's own invariant broke, not that the user did
+		// anything wrong — Internal, the same reasoning
+		// wrapBudgetingError's default case gives.
 		return errs.New(errs.Internal).Explain("That recurring rule isn't valid.").Wrap(err)
 	}
 }
