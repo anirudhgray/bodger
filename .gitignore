@@ -42,3 +42,5 @@ internal/platform/webui/dist/*
 cookies.txt
 
 .DS_Store
+
+/brag-output
