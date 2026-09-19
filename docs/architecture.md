@@ -234,6 +234,9 @@ Monthly category budgets, actual vs budget, remaining, utilisation, history. Rol
 ### M9 · Lothlórien — Recurring transactions
 Rules, scheduled occurrences, materialisation, forecasting. Occurrences never touch a balance. Named for Galadriel's Mirror, which shows visions of what may yet come to pass, not what has — a fitting name for the milestone where money that hasn't moved yet is forecast, always kept structurally distinct from what actually has.
 
+### M10 · Valinor — AI-assisted suggestions
+Additive, human-confirmed suggestions via [typesafe.ai](https://docs.typesafe.ai/introduction)'s typed decision primitives: a category suggestion on a staged import row, and a "this looks like rule X" suggestion on the recurring-rule matching path. Design settles first in ADR-0015 ([#298](https://github.com/anirudhgray/bodger/issues/298)) — the same "ADR before implementation" sequencing [ADR-0013](decisions/0013-mcp-server-design.md) and [ADR-0014](decisions/0014-recurring-transactions-scheduling.md) established for M8 and M9 — before any adapter or call-site issue is scoped. Named for the Blessed Realm, home of the Valar: they counsel and aid Middle-earth's free peoples without ever dictating their choices, the same relationship this milestone's suggestions have to the human who still decides.
+
 ---
 
 ## 9. Status
