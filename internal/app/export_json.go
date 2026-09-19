@@ -22,12 +22,14 @@ import (
 // There is deliberately no "generated_at" or similar field: ADR-0008 is
 // explicit that the payload carries "no timestamps of the export itself".
 type jsonEnvelope struct {
-	Format       string            `json:"format"`
-	Accounts     []jsonAccount     `json:"accounts"`
-	Categories   []jsonCategory    `json:"categories"`
-	Transactions []jsonExportedTxn `json:"transactions"`
-	Budgets      []jsonBudget      `json:"budgets"`
-	FxRates      []jsonFxRate      `json:"fx_rates"`
+	Format               string                    `json:"format"`
+	Accounts             []jsonAccount             `json:"accounts"`
+	Categories           []jsonCategory            `json:"categories"`
+	Transactions         []jsonExportedTxn         `json:"transactions"`
+	Budgets              []jsonBudget              `json:"budgets"`
+	FxRates              []jsonFxRate              `json:"fx_rates"`
+	RecurringRules       []jsonRecurringRule       `json:"recurring_rules"`
+	ScheduledOccurrences []jsonScheduledOccurrence `json:"scheduled_occurrences"`
 }
 
 type jsonAccount struct {
@@ -106,6 +108,44 @@ type jsonFxRate struct {
 	Date   string `json:"date"`
 	Rate   string `json:"rate"`
 	Source string `json:"source"`
+}
+
+// jsonRecurringRule is one RecurringRule (#283), following ADR-0014's own
+// "only the positional fields the declared frequency needs are ever
+// populated" discipline: Weekday is set only for a weekly schedule,
+// DayOfMonth for monthly/yearly, and Month for yearly, mirroring
+// recurring.Schedule's own accessors (Weekday()/DayOfMonth()/Month() each
+// return an "ok" bool alongside their value) rather than always emitting
+// every field and leaving the reader to guess which ones are meaningful
+// for a given Frequency.
+type jsonRecurringRule struct {
+	ID          string  `json:"id"`
+	AccountID   string  `json:"account_id"`
+	CategoryID  string  `json:"category_id"`
+	AmountMinor int64   `json:"amount_minor"`
+	Description string  `json:"description"`
+	Frequency   string  `json:"frequency"`
+	Interval    int     `json:"interval"`
+	Weekday     *int    `json:"weekday,omitempty"`
+	DayOfMonth  *int    `json:"day_of_month,omitempty"`
+	Month       *int    `json:"month,omitempty"`
+	StartsOn    string  `json:"starts_on"`
+	EndsOn      *string `json:"ends_on,omitempty"`
+	ArchivedAt  *string `json:"archived_at,omitempty"`
+}
+
+// jsonScheduledOccurrence is one ScheduledOccurrence (#283) -- a
+// projection, never money that moved (data-model.md §11), so there is no
+// account/currency/amount field here to serialize, matching the domain
+// type's own deliberately narrow field set. TransactionID is set only
+// when Status is "materialised", the same invariant
+// recurring.NewScheduledOccurrence enforces at construction.
+type jsonScheduledOccurrence struct {
+	ID             string  `json:"id"`
+	RuleID         string  `json:"rule_id"`
+	OccurrenceDate string  `json:"occurrence_date"`
+	Status         string  `json:"status"`
+	TransactionID  *string `json:"transaction_id,omitempty"`
 }
 
 // toJSONEnvelope converts snapshot into jsonEnvelope's wire shape.
@@ -261,13 +301,72 @@ func toJSONEnvelope(snapshot ExportSnapshot) jsonEnvelope {
 		})
 	}
 
+	recurringRules := make([]jsonRecurringRule, 0, len(snapshot.RecurringRules))
+	for _, r := range snapshot.RecurringRules {
+		schedule := r.Schedule()
+		var weekday, dayOfMonth, month *int
+		if wd, ok := schedule.Weekday(); ok {
+			v := int(wd)
+			weekday = &v
+		}
+		if d, ok := schedule.DayOfMonth(); ok {
+			dayOfMonth = &d
+		}
+		if m, ok := schedule.Month(); ok {
+			v := int(m)
+			month = &v
+		}
+		var endsOn *string
+		if d, ok := r.EndsOn(); ok {
+			s := d.String()
+			endsOn = &s
+		}
+		var archivedAt *string
+		if d, ok := r.ArchivedAt(); ok {
+			s := d.String()
+			archivedAt = &s
+		}
+		recurringRules = append(recurringRules, jsonRecurringRule{
+			ID:          r.ID(),
+			AccountID:   r.AccountID(),
+			CategoryID:  r.CategoryID(),
+			AmountMinor: r.AmountMinor(),
+			Description: r.Description(),
+			Frequency:   string(schedule.Frequency()),
+			Interval:    schedule.Interval(),
+			Weekday:     weekday,
+			DayOfMonth:  dayOfMonth,
+			Month:       month,
+			StartsOn:    r.StartsOn().String(),
+			EndsOn:      endsOn,
+			ArchivedAt:  archivedAt,
+		})
+	}
+
+	scheduledOccurrences := make([]jsonScheduledOccurrence, 0, len(snapshot.ScheduledOccurrences))
+	for _, o := range snapshot.ScheduledOccurrences {
+		var transactionID *string
+		if id, ok := o.TransactionID(); ok {
+			transactionID = &id
+		}
+		scheduledOccurrences = append(scheduledOccurrences, jsonScheduledOccurrence{
+			ID:             o.ID(),
+			RuleID:         o.RuleID(),
+			OccurrenceDate: o.OccurrenceDate().String(),
+			Status:         string(o.Status()),
+			TransactionID:  transactionID,
+		})
+	}
+
 	return jsonEnvelope{
-		Format:       ExportFormatVersion,
-		Accounts:     accounts,
-		Categories:   categories,
-		Transactions: transactions,
-		Budgets:      budgets,
-		FxRates:      fxRates,
+		Format:               ExportFormatVersion,
+		Accounts:             accounts,
+		Categories:           categories,
+		Transactions:         transactions,
+		Budgets:              budgets,
+		FxRates:              fxRates,
+		RecurringRules:       recurringRules,
+		ScheduledOccurrences: scheduledOccurrences,
 	}
 }
 
