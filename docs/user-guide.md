@@ -2,7 +2,7 @@
 
 This is the guide for actually using `bodger` — not for building it (that's [`contributing.md`](contributing.md)) and not for how it's put together inside (that's [`architecture.md`](architecture.md)).
 
-Right now that means the command line and, if you want it, a REST API served from the same binary. There's no web version yet — you run one binary on your own machine, and it keeps your data in a single file next to it. A web UI, multi-currency support, budgets, and an AI-agent interface come in later milestones — see [Status](architecture.md#9-status) if you want the full roadmap.
+That covers the command line, the REST API, the web UI, and an MCP server for AI agents — all four talk to the same application logic against the same database, so they never disagree about what your money did. You run one binary on your own machine, and it keeps your data in a single file next to it. See [Status](architecture.md#9-status) for what's shipped and what's still ahead.
 
 ---
 
@@ -338,6 +338,10 @@ Only CSV is supported today.
 
 The web UI's **Import** page (under the sidebar's **Import & export** entry) walks through the same staged pipeline as a short wizard. "New import" starts it: choose the account first, then a file (click to browse or drag and drop) — nothing is uploaded until you continue. The next step matches each field (Date, Description, and Amount are required; Posted date, Currency, Transaction ID, and Category are optional) to a column from your file's own header row, pre-guessed from common column names but always yours to change, then "Stage for review" uploads it. The review table that follows lists every staged row with its amount and any flags — a suspected duplicate needs "Not a duplicate" or "Confirm duplicate" before you can commit; an exact duplicate is shown as already skipped, and a possible transfer is informational only. "Commit import" is disabled until every flagged row has a decision. **Import history**, below, lists every import you've started with its status; a staged or reviewed one has a "Continue review" button to pick back up where you left off, and a committed one has "Roll back" to undo it — a confirmation dialog first, since rolling back deletes the transactions it created (they keep their history, the same as deleting any other transaction).
 
+<p align="center">
+  <img src="assets/screenshots/import.jpg" alt="A staged bank statement mid-review, amounts and dates parsed from the uploaded CSV" width="720">
+</p>
+
 ---
 
 ## Managing budgets
@@ -376,6 +380,10 @@ curl -X POST -H 'Authorization: Bearer bdg_...' \
 ```
 
 The web UI's **Budgets** screen (in the sidebar) shows every active budget as its own card: an **Overall** bar summing every line into one budgeted/actual figure for the whole budget, followed by a table of the lines themselves with category, budgeted, actual, remaining, and their own utilisation bar alongside the percentage — colored and labeled "Under budget"/"At budget"/"Over budget" so a line approaching or past its limit stands out at a glance. When you're looking at the month currently in progress, every bar (Overall and each line) also shows a marker for how far through the month today is; hover it for the exact day count. A line's fill sitting past that marker is a sign you're ahead of pace even if the percentage alone still reads "under budget" (the marker doesn't appear for a past or future month, since "how far through" only means something for the one happening now). Previous/Next above the cards moves the whole screen a month at a time, the same period-history data `bodger budgets history` prints. **New budget** (or, with no budgets yet, the empty state's own button) opens a dialog for the name, currency, and starts-on date, plus an "Add line" row per category you want to plan for — a category picker with the same nesting and search as the transaction form's own. **Edit** on a budget's card reopens that same dialog pre-filled, where currency shows as fixed text instead of an input (it can't change once created) and lines can be added, have their amount or rollover flag changed, or be removed; changing a line's category is done by removing it and adding a new one, same as the CLI. **Archive** hides a budget from the overview while keeping its history queryable, with no separate confirmation step, same as an account or category archive elsewhere in the app.
+
+<p align="center">
+  <img src="assets/screenshots/budgets.jpg" alt="A budget card with four lines, one of them over budget and shown in red" width="720">
+</p>
 
 ---
 
@@ -485,7 +493,15 @@ You can also do this from the command line with `bodger config reporting-currenc
 
 With `bodger serve` running, open its address in a browser (`http://127.0.0.1:8080` by default). Visiting it without a signed-in session lands you on a login screen; enter the password you set with `bodger auth set-password` — there's no separate web password, it's the same credential the CLI and REST API use. A successful login takes you into the app itself; visiting the login page again while already signed in just sends you straight back in. Transactions, Balances, Analytics, Budgets, Recurring, Import & export, and Settings live in a sidebar — always visible on a wider screen, tucked behind the icon in the top-left corner on a narrow one. Import & export and Settings each expand in place to their own sub-items — a second, quicker way into a page you're not on yet, alongside that page's own tab strip once you're there (see below). The sun/moon button switches between light and dark mode; your choice is remembered on that browser for next time, overriding your OS/browser's own light/dark setting. The "Log out" button next to it ends your session and returns you to the login screen. The **Balances** tab shows what every account holds as of today, the same figures `bodger balance` prints on the command line, plus a totals overview — your overall net balance, a breakdown by account type, and (once more than one currency is in play) a breakdown by currency — the same figures `bodger balance totals` prints. Below that, **Net worth over time** charts your total net worth across a date range you pick, bucketed weekly, monthly, yearly, or by a custom range — the same figures `bodger balance net-worth` prints; pick both a From and a To date to see it (there's no default range for a time series).
 
+<p align="center">
+  <img src="assets/screenshots/balances.jpg" alt="The Balances screen: overall net balance, a breakdown by account type and currency, and every account's figure" width="720">
+</p>
+
 **Recording a transaction** works the same way it does at the command line: pick Spend, Receive, or Move, and fill in the amount, category (or the two accounts, for a move), and account — three fields is all it takes, and if you've only got one account it's preselected for you. The category field shows how your categories nest under one another (a "Groceries" tucked under "Food" reads as such, not as an unrelated name in a flat list) and you can type to search instead of scrolling. If the one you want doesn't exist yet, typing its name offers to create it right there — pick that option and it's created and selected in one step, without losing anything else you've already filled in. The date defaults to today unless you open "Add details," which also has fields for notes and tags. Nothing you've typed is lost if the server rejects the entry (a category that doesn't exist, say) — fix the problem and submit again.
+
+<p align="center">
+  <img src="assets/screenshots/add-transaction.jpg" alt="The Add transaction dialog, mid-entry: amount, a nested category, and an account picked" width="520">
+</p>
 
 If you use more than one currency, an amount you enter in a currency other than your reporting currency shows a small "≈" line underneath with the converted figure and the date it's based on — a preview only, never saved with the transaction. It's keyed to whichever date the transaction is booked to (today by default, or whatever you pick under "Add details"), not to today, so backdating an entry shows the rate as of that day. If nothing's been fetched for that day yet, or the stored rate needs updating, a "Fetch rate"/"Refresh" link next to it pulls just that one currency for that one day — never every currency you use. None of this appears if every account you have uses the same currency.
 
@@ -497,6 +513,10 @@ If you use more than one currency, a spend or receive recorded in a currency oth
 
 The **Analytics** screen charts your spending and income by category, your cash flow, how the current period compares to the previous one, and your savings rate — the same figures `bodger report` prints on the command line, computed the same way. Category spending and income each get their own donut chart, with a sortable table of the same rows underneath (click a column heading to sort by it, click again to reverse). Pick a date range, a currency, and a **Granularity** (week, month, year, or custom) at the top; leaving the dates blank charts everything you've ever recorded. Granularity controls both how cash flow buckets its bars (a week, a month, or a year at a time) and what "current vs. previous" means for the trends comparison — week compares this week against last week, year compares this year against last year, and custom compares your chosen date range against the immediately preceding range of the same length (both From and To are required for custom; the picker prompts for them if either is missing). Month is the default and matches the screen's original month-over-month behavior. Below the trends and savings-rate cards, **Top transactions** lists your largest transactions in the period at a glance, **Average transaction size** shows the mean transaction amount overall and per category, and **Category trends** breaks the trends comparison down per category instead of just in aggregate — the same figures `bodger report top-transactions`, `bodger report average-transaction-size`, and `bodger report category-trends` print, respecting the same date range, currency, and granularity as the rest of the screen. If a chart can't convert something into your chosen currency, it's listed under "Not converted" rather than silently left out of the total, with a **Refresh rates** button to fetch whatever's missing.
 
+<p align="center">
+  <img src="assets/screenshots/analytics.jpg" alt="The Analytics screen: trends, savings rate, and donut charts for spending and income by category" width="720">
+</p>
+
 `bodger report cash-flow`, `bodger report trends`, and `bodger report category-trends` take a matching `--granularity week|month|year|custom` flag (default `month`); `bodger report category-breakdown`, `bodger report savings-rate`, and `bodger report average-transaction-size` are unaffected since they already report over an arbitrary date range with no period to bucket or compare. `bodger report top-transactions` also takes `--limit` (default 10, capped at 100) to control how many transactions come back.
 
 If any occurrences are pending, the **Analytics** screen also has a **Forecast** card: pick an end date under "Forecast through" (there's no start date to set — it always projects from today) to chart projected inflow and outflow from your pending recurring occurrences over that range, the same figures `bodger recurring forecast` prints. It's drawn with its own dashed border and muted background and every figure is labeled "Projected" throughout, so it's never mistaken for the actual cash flow chart above it — nothing in it has happened yet, and it never affects a balance, budget, or any other actual figure on this or any other screen.
@@ -504,6 +524,10 @@ If any occurrences are pending, the **Analytics** screen also has a **Forecast**
 The **Recurring** screen manages rules for a transaction that repeats on a schedule — a subscription, rent, a paycheck — and the occurrences they project. **New rule** (or, with no rules yet, the empty state's own button) opens a dialog for a description, account, category, amount, and a schedule: how often it repeats (weekly, monthly, or yearly), and the weekday, day of month, or month that pins down when. A day past the end of a shorter month clamps to that month's last day rather than skipping it — the 31st of a rule still fires in April, just on the 30th. **Edit** reopens that same dialog, though the account, category, and start date are fixed once a rule exists (shown as plain text instead of fields) — change the amount, description, schedule, or end date instead. **Archive** stops a rule from generating further occurrences and cancels any still-pending ones, the same as `bodger recurring archive`.
 
 Creating or editing a rule never generates anything by itself — an occurrence has to be explicitly generated, the same "safe to run repeatedly" step `bodger recurring refresh` performs from the command line. Click **Refresh occurrences** above the rules list to generate every active rule's upcoming dates out to a year ahead; a toast reports how many new occurrences it found (running it again finds none, until more time or a schedule change makes new ones due). They show up below, in their own **Upcoming (projected)** section — visually set apart with a dashed border and muted background, and each row carrying its own "Projected" badge, so a not-yet-real occurrence is never mistaken for a recorded transaction. From there, **Materialise** turns one into a real transaction using the rule's current amount, account, category, and description (the same as `bodger recurring materialise`) and it disappears from the upcoming list, showing up on the Transactions screen like any other entry; **Skip** records that it was deliberately not recorded, with no transaction created, and disappears the same way.
+
+<p align="center">
+  <img src="assets/screenshots/recurring.jpg" alt="Rules for rent and a paycheck, with their upcoming projected occurrences listed below" width="720">
+</p>
 
 The **Settings** area covers everything about your account and ledger setup, split into its own page per section with a tab strip across the top to switch between them. It's also expandable straight from the sidebar — click **Settings** there to reveal Password, API tokens, Accounts, Categories, and Currency without visiting the page first:
 
@@ -541,6 +565,8 @@ Want to see this working before pointing it at your real ledger? Build the binar
 make build
 BODGER_DB_PATH=/tmp/bodger-dev.db make seed-dev
 ```
+
+That seeds a US/EUR-centric dataset by default; run `make seed-dev-in` instead for an INR-centric one (with a budget and recurring rules included).
 
 Then point your MCP client at that build, with `BODGER_DB_PATH` set the same way so it reads the sample data instead of your real one. Most clients let you set environment variables alongside the command:
 
@@ -758,11 +784,9 @@ All commands default to plain-text output; add `--json` to any of them for machi
 
 ---
 
-## In the meantime
+## See also
 
 - **What is this?** → [`README.md`](../README.md)
 - **How does it work?** → [`architecture.md`](architecture.md)
 - **What does it store, and what do the words mean?** → [`data-model.md`](data-model.md)
 - **How do I build it?** → [`contributing.md`](contributing.md)
-
-The MCP server lands here in the same PR that ships it, per [`contributing.md`](contributing.md) — not in a catch-up pass afterwards.

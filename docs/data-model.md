@@ -43,7 +43,7 @@ flowchart TD
     User --> ImportBatch --> ImportRecord
 ```
 
-This sketch is the domain's full intended shape, including entities not yet built (`Budget`/`BudgetLine`, `RecurringRule`/`ScheduledOccurrence` — see §13). For the *actual* current schema — every table and foreign key that exists right now, always in sync with `internal/adapters/sqlite/migrations` because it's generated from a real migrated database rather than hand-drawn — see [`docs/schema/README.md`](schema/README.md) (issue #248). Regenerate it with `make erd` after adding a migration; `make check`/CI fails if it's stale (`make check-erd`).
+This sketch is the domain's full intended shape. Everything on it is built, including `Budget`/`BudgetLine` and `RecurringRule`/`ScheduledOccurrence` — for what's still deliberately left out of the model entirely, see §13. For the *actual* current schema — every table and foreign key that exists right now, always in sync with `internal/adapters/sqlite/migrations` because it's generated from a real migrated database rather than hand-drawn — see [`docs/schema/README.md`](schema/README.md) (issue #248), which also renders it as an ER diagram. Regenerate it with `make erd` after adding a migration; `make check`/CI fails if it's stale (`make check-erd`).
 
 Everything user-owned carries a `user_id` from day one, even though the first deployments are single-user. See [ADR-0006](decisions/0006-authentication-and-multi-user-path.md) for why that column exists before the feature does.
 

@@ -38,7 +38,7 @@ The [`Makefile`](../Makefile) is the build contract. **Every PR runs `make check
 | `make build` | Build the web UI, then the binary, into `bin/bodger` |
 | `make build-bin` | Build just the `bodger` binary, without the web UI |
 | `make run` | Run the server locally |
-| `make seed-dev` | Seed a scratch dev DB with a password, API tokens, and realistic accounts/categories/transactions via the real CLI ([`scripts/seed-dev.sh`](../scripts/seed-dev.sh)) - requires `BODGER_DB_PATH` pointed at a non-default file, e.g. `BODGER_DB_PATH=/tmp/bodger-dev.db make seed-dev`; pass script flags through `ARGS`, e.g. `make seed-dev ARGS=--force` (a bare `make seed-dev --force` doesn't work - make parses that as its own flag) |
+| `make seed-dev` | Seed a scratch dev DB with a password, API tokens, and realistic accounts/categories/transactions via the real CLI ([`scripts/seed-dev.sh`](../scripts/seed-dev.sh)) - requires `BODGER_DB_PATH` pointed at a non-default file, e.g. `BODGER_DB_PATH=/tmp/bodger-dev.db make seed-dev`; pass script flags through `ARGS`, e.g. `make seed-dev ARGS=--force` (a bare `make seed-dev --force` doesn't work - make parses that as its own flag); seeds a US/EUR-centric dataset by default - `make seed-dev-in` (or `make seed-dev ARGS="--locale in"`) seeds an INR-centric one instead, with a budget and recurring rules included |
 | `make release-dry-run` | Build every release target locally (goreleaser snapshot mode, no tag or publish) — see [`releasing.md`](releasing.md#local-dry-runs) |
 | `make analyze-web` | Build the web UI and open a bundle-size treemap (`vite-bundle-visualizer`) — use this before assuming a `make build` chunk-size warning is (or isn't) worth chasing; it shows which package is actually responsible, not just the total |
 | `make test-cover` | Tests with a coverage profile |
@@ -185,7 +185,7 @@ After adding one, regenerate the schema ERD (below) so `docs/schema` doesn't dri
 
 ### Regenerating the schema ERD
 
-[`docs/schema/README.md`](schema/README.md) (issue #248) is generated, not hand-drawn: [`tbls`](https://github.com/k1LoW/tbls) introspects a real, fully-migrated SQLite database and writes a Mermaid ER diagram plus one page per table, straight from `internal/adapters/sqlite/migrations` rather than a conceptual sketch that can drift from it (`docs/data-model.md` §2 keeps that hand-drawn sketch too, for the domain's *intended* shape including entities not built yet — the two serve different purposes). `cmd/erdgen` builds the scratch database (applying every migration via `internal/adapters/sqlite`'s own goose provider, so there's nothing to keep in sync by hand), and `.tbls.yml` configures `tbls` itself. After adding or changing a migration, run:
+[`docs/schema/README.md`](schema/README.md) (issue #248) is generated, not hand-drawn: [`tbls`](https://github.com/k1LoW/tbls) introspects a real, fully-migrated SQLite database and writes a Mermaid ER diagram plus one page per table, straight from `internal/adapters/sqlite/migrations` rather than a conceptual sketch that can drift from it (`docs/data-model.md` §2 keeps that hand-drawn sketch too, for the domain's *intended* shape — the two serve different purposes). `cmd/erdgen` builds the scratch database (applying every migration via `internal/adapters/sqlite`'s own goose provider, so there's nothing to keep in sync by hand), and `.tbls.yml` configures `tbls` itself. After adding or changing a migration, run:
 
 ```sh
 make erd
