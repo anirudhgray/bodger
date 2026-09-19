@@ -184,10 +184,15 @@ endif
 run:
 	go run $(CMD) serve
 
-## seed-dev: seed a scratch dev DB with realistic accounts/categories/transactions via the real CLI (scripts/seed-dev.sh; requires BODGER_DB_PATH; pass script flags via ARGS, e.g. `make seed-dev ARGS=--force`)
+## seed-dev: seed a scratch dev DB with realistic accounts/categories/transactions via the real CLI (scripts/seed-dev.sh; requires BODGER_DB_PATH; pass script flags via ARGS, e.g. `make seed-dev ARGS=--force`; seeds the US/EUR locale by default - `make seed-dev-in` seeds the INR locale instead)
 .PHONY: seed-dev
 seed-dev: build-bin
 	@./scripts/seed-dev.sh $(ARGS)
+
+## seed-dev-in: seed-dev, but with scripts/seed-dev.sh's INR-centric "in" locale (equivalent to `make seed-dev ARGS="--locale in"`)
+.PHONY: seed-dev-in
+seed-dev-in: build-bin
+	@./scripts/seed-dev.sh --locale in $(ARGS)
 
 ## release-dry-run: build every release target locally, no tag or publish
 .PHONY: release-dry-run
