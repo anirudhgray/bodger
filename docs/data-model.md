@@ -367,7 +367,7 @@ Modelled or left room for, but not built. Each becomes a GitHub issue rather tha
 | `Institution` as an entity | Free-text `institution` until something (logos, bank sync) needs the join. |
 | `posting.role` (`fee`) | Fees as separate linked outflows first; promote if the workflow proves annoying. |
 | Budget rollover, planned income, custom periods | Column reserved; monthly-category budgets must be right first. |
-| Recurring rules and occurrences | Modelled in §11, built after budgets. |
+| Materialising an occurrence with an overridden amount/date | ADR-0014 doesn't specify one; today's path is materialise with the projected fields, then `EditTransaction`. See [#289](https://github.com/anirudhgray/bodger/issues/289). |
 | Split transfers | A transfer with more than two postings is rejected. Revisit only with a concrete use case. |
 | Settlement date | Not introduced without a workflow that needs it. |
 | Cached balances | Only as a measured optimisation, behind an equality test against the recomputed value. |
