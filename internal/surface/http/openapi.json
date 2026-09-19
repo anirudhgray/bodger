@@ -12,6 +12,16 @@
       }
     },
     "responses": {
+      "Conflict": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        },
+        "description": "The request would conflict with something that already exists, or with the resource's current state."
+      },
       "InvalidInput": {
         "content": {
           "application/json": {
@@ -1187,6 +1197,47 @@
         ],
         "type": "object"
       },
+      "CreateRecurringRuleRequest": {
+        "properties": {
+          "account_ref": {
+            "description": "The account a materialised occurrence would post to: an account's ID or unique name.",
+            "type": "string"
+          },
+          "amount": {
+            "description": "The planned amount, in the account's own currency. Always positive.",
+            "format": "money",
+            "type": "string"
+          },
+          "category_ref": {
+            "description": "The category a materialised occurrence would be attributed to, which also decides its direction: an income category makes this an inflow, an expense category an outflow.",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "ends_on": {
+            "description": "The last date the rule may fire on. Omit for a rule that runs indefinitely.",
+            "format": "date",
+            "type": "string"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/ScheduleRequest"
+          },
+          "starts_on": {
+            "description": "The first date the rule may fire on. Defaults to today.",
+            "format": "date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_ref",
+          "category_ref",
+          "amount",
+          "description",
+          "schedule"
+        ],
+        "type": "object"
+      },
       "CreateTransactionRequest": {
         "properties": {
           "account": {
@@ -1480,6 +1531,76 @@
           "rate",
           "date",
           "source"
+        ],
+        "type": "object"
+      },
+      "Forecast": {
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/ForecastPoint"
+            },
+            "type": "array"
+          },
+          "unconverted": {
+            "items": {
+              "$ref": "#/components/schemas/UnconvertedOccurrence"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "currency",
+          "points"
+        ],
+        "type": "object"
+      },
+      "ForecastEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Forecast"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ForecastPoint": {
+        "properties": {
+          "from": {
+            "format": "date",
+            "type": "string"
+          },
+          "projected_inflow": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "projected_net": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "projected_outflow": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "to": {
+            "format": "date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "projected_inflow",
+          "projected_outflow",
+          "projected_net"
         ],
         "type": "object"
       },
@@ -1864,6 +1985,32 @@
         ],
         "type": "object"
       },
+      "MaterialiseOccurrence": {
+        "properties": {
+          "occurrence": {
+            "$ref": "#/components/schemas/ScheduledOccurrence"
+          },
+          "transaction": {
+            "$ref": "#/components/schemas/Transaction"
+          }
+        },
+        "required": [
+          "occurrence",
+          "transaction"
+        ],
+        "type": "object"
+      },
+      "MaterialiseOccurrenceEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MaterialiseOccurrence"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "NetWorthOverTime": {
         "properties": {
           "currency": {
@@ -2006,6 +2153,113 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "PatchRecurringRuleRequest": {
+        "properties": {
+          "amount": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "ends_on": {
+            "description": "Omitting this clears the rule to run indefinitely — it does not leave the existing ends_on untouched.",
+            "format": "date",
+            "type": "string"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/ScheduleRequest"
+          }
+        },
+        "required": [
+          "amount",
+          "description",
+          "schedule"
+        ],
+        "type": "object"
+      },
+      "RecurringRule": {
+        "properties": {
+          "account_id": {
+            "type": "string"
+          },
+          "amount": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "archived_at": {
+            "description": "Set only once the rule is archived.",
+            "format": "date",
+            "type": "string"
+          },
+          "category_id": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "ends_on": {
+            "description": "Absent when the rule runs indefinitely.",
+            "format": "date",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/Schedule"
+          },
+          "starts_on": {
+            "format": "date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "category_id",
+          "amount",
+          "currency",
+          "description",
+          "schedule",
+          "starts_on",
+          "archived"
+        ],
+        "type": "object"
+      },
+      "RecurringRuleEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RecurringRule"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "RecurringRuleListEnvelope": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/RecurringRule"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
         "type": "object"
       },
       "ReportingCurrency": {
@@ -2151,6 +2405,134 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/SavingsRate"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "Schedule": {
+        "properties": {
+          "day_of_month": {
+            "description": "1-31. Set for a monthly or yearly schedule.",
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "frequency": {
+            "enum": [
+              "weekly",
+              "monthly",
+              "yearly"
+            ],
+            "type": "string"
+          },
+          "interval": {
+            "type": "integer"
+          },
+          "month": {
+            "description": "1 (January) - 12 (December). Set only for a yearly schedule.",
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "weekday": {
+            "description": "0 (Sunday) - 6 (Saturday). Set only for a weekly schedule.",
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "frequency",
+          "interval"
+        ],
+        "type": "object"
+      },
+      "ScheduleRequest": {
+        "properties": {
+          "day_of_month": {
+            "description": "1-31. Required for a monthly or yearly schedule.",
+            "type": "integer"
+          },
+          "frequency": {
+            "enum": [
+              "weekly",
+              "monthly",
+              "yearly"
+            ],
+            "type": "string"
+          },
+          "interval": {
+            "type": "integer"
+          },
+          "month": {
+            "description": "1 (January) - 12 (December). Required for a yearly schedule.",
+            "type": "integer"
+          },
+          "weekday": {
+            "description": "0 (Sunday) - 6 (Saturday). Required for a weekly schedule.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "frequency",
+          "interval"
+        ],
+        "type": "object"
+      },
+      "ScheduledOccurrence": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "occurrence_date": {
+            "format": "date",
+            "type": "string"
+          },
+          "rule_id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "materialised",
+              "skipped"
+            ],
+            "type": "string"
+          },
+          "transaction_id": {
+            "description": "Set only when status is \"materialised\".",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "rule_id",
+          "occurrence_date",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ScheduledOccurrenceEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ScheduledOccurrence"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ScheduledOccurrenceListEnvelope": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduledOccurrence"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -2447,6 +2829,31 @@
         },
         "required": [
           "account",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "UnconvertedOccurrence": {
+        "properties": {
+          "amount": {
+            "description": "A plain decimal amount. Always a JSON string, in the sibling currency field's currency - never a number.",
+            "format": "money",
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "occurrence_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "occurrence_id",
+          "amount",
+          "currency",
           "reason"
         ],
         "type": "object"
@@ -4742,6 +5149,92 @@
         "summary": "Download a complete backup as canonical JSON."
       }
     },
+    "/api/v1/forecast": {
+      "get": {
+        "description": "Reads only pending occurrences - materialised and skipped occurrences are resolved history, not a forecast - and never touches a balance, budget actual, or any other actuals-only query. \"from\"/\"to\" are both required, zero-filled across the whole range so a continuous chart has every period to plot.",
+        "operationId": "getForecast",
+        "parameters": [
+          {
+            "description": "The inclusive start of the forecast range (required).",
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The inclusive end of the forecast range (required).",
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Convert every figure in the result into this currency. Defaults to your configured reporting currency.",
+            "in": "query",
+            "name": "currency",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Which conversion policy to use.",
+            "in": "query",
+            "name": "policy",
+            "schema": {
+              "enum": [
+                "transaction_date",
+                "current",
+                "pinned"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The pinned date to convert at when policy is \"pinned\".",
+            "in": "query",
+            "name": "pinned_date",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "How to bucket/compare periods. Defaults to \"month\".",
+            "in": "query",
+            "name": "granularity",
+            "schema": {
+              "enum": [
+                "week",
+                "month",
+                "year",
+                "custom"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForecastEnvelope"
+                }
+              }
+            },
+            "description": "One point per period, ascending."
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Projected inflow/outflow/net from pending scheduled occurrences, bucketed by period."
+      }
+    },
     "/api/v1/fx/rates": {
       "get": {
         "description": "A pure read over already-stored rates - this never calls out to the configured FX provider (use POST /api/v1/fx/rates/fetch for that). Setting \"amount\" also returns the converted figure.",
@@ -5147,6 +5640,270 @@
           }
         },
         "summary": "Undo a committed import: delete the transactions it created."
+      }
+    },
+    "/api/v1/recurring-occurrences": {
+      "get": {
+        "description": "An occurrence is a projection - it never represents money that has actually moved (data-model.md §11) - until it's materialised, at which point it points at the real transaction it produced.",
+        "operationId": "listScheduledOccurrences",
+        "parameters": [
+          {
+            "description": "Only include occurrences of this rule.",
+            "in": "query",
+            "name": "rule_id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only include occurrences in this status.",
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "enum": [
+                "pending",
+                "materialised",
+                "skipped"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only include occurrences on or after this date.",
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only include occurrences on or before this date.",
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledOccurrenceListEnvelope"
+                }
+              }
+            },
+            "description": "Every matching occurrence, ascending by occurrence date."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "List scheduled occurrences, optionally by rule, status, and date range."
+      }
+    },
+    "/api/v1/recurring-occurrences/{id}/materialise": {
+      "post": {
+        "description": "Always uses the occurrence's owning rule's current amount, account, category, and description, and the occurrence's own projected date - there is no way to override any of these for this one materialisation. Materialise with the projected fields, then PATCH the resulting transaction, to record it with a different amount or date.",
+        "operationId": "materialiseOccurrence",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialiseOccurrenceEnvelope"
+                }
+              }
+            },
+            "description": "The transaction it produced, and the occurrence's own updated state."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "summary": "Turn a pending occurrence into a real transaction."
+      }
+    },
+    "/api/v1/recurring-occurrences/{id}/skip": {
+      "post": {
+        "description": "No transaction is created. Money never moved and never will for this occurrence's date.",
+        "operationId": "skipOccurrence",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledOccurrenceEnvelope"
+                }
+              }
+            },
+            "description": "The occurrence's own updated state."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "summary": "Record that a pending occurrence's firing was deliberately not recorded."
+      }
+    },
+    "/api/v1/recurring-rules": {
+      "get": {
+        "description": "Includes archived rules, the same as GET /api/v1/budgets includes archived budgets - filtering to \"current\" is left to the caller.",
+        "operationId": "listRecurringRules",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringRuleListEnvelope"
+                }
+              }
+            },
+            "description": "Every recurring rule, most recently created first."
+          }
+        },
+        "summary": "List every recurring rule."
+      },
+      "post": {
+        "description": "Creates the rule's template only - no occurrence is generated by this call.",
+        "operationId": "createRecurringRule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRecurringRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringRuleEnvelope"
+                }
+              }
+            },
+            "description": "The created rule."
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Create a recurring rule."
+      }
+    },
+    "/api/v1/recurring-rules/{id}": {
+      "delete": {
+        "description": "Stops the rule from generating any further occurrences; its history (including already materialised or skipped occurrences) remains fully queryable. Any still-pending occurrence is cancelled (removed) rather than left dangling.",
+        "operationId": "archiveRecurringRule",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringRuleEnvelope"
+                }
+              }
+            },
+            "description": "The archived rule."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Archive a recurring rule."
+      },
+      "get": {
+        "operationId": "getRecurringRule",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringRuleEnvelope"
+                }
+              }
+            },
+            "description": "The rule."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Fetch one recurring rule by ID."
+      },
+      "patch": {
+        "description": "This is a full replacement of every editable field, not a partial patch: omitting \"ends_on\" clears it to \"runs indefinitely\", not to the rule's existing value. The rule's account, category, and starts-on date can't change - archive it and create a new one instead. If the schedule's own firing pattern actually changes, the rule's pending future occurrences are discarded and regenerated.",
+        "operationId": "patchRecurringRule",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchRecurringRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringRuleEnvelope"
+                }
+              }
+            },
+            "description": "The updated rule."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Update a recurring rule's amount, description, schedule, and end date."
       }
     },
     "/api/v1/reporting-currency": {
