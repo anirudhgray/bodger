@@ -241,8 +241,8 @@ func TestRecurringRuleSurfacesConformance(t *testing.T) {
 	assertJSONEqual(t, "list (CLI vs MCP)", cliListed, mcpListed)
 
 	// ---- archive (CLI vs HTTP only — see this file's own doc comment) ----
-	cliID, cliRule = cliRecurringRuleView(t, h, "recurring", "archive", cliID)
-	httpID, httpRule = httpRecurringRuleView(t, h, "DELETE", "/api/v1/recurring-rules/"+httpID, nil)
+	_, cliRule = cliRecurringRuleView(t, h, "recurring", "archive", cliID)
+	_, httpRule = httpRecurringRuleView(t, h, "DELETE", "/api/v1/recurring-rules/"+httpID, nil)
 	assertJSONEqual(t, "archive (CLI vs HTTP)", cliRule, httpRule)
 	if !cliRule.Archived || cliRule.ArchivedAt == "" {
 		t.Fatalf("archive: cli rule = %+v, want archived with archived_at set", cliRule)
