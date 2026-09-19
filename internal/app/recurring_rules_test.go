@@ -8,6 +8,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/app"
 	"github.com/anirudhgray/bodger/internal/domain/recurring"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
+	"github.com/anirudhgray/bodger/internal/ports"
 )
 
 func mustCreateAccount(t *testing.T, svc *app.Service, actorID, name string) string {
@@ -466,5 +467,209 @@ func TestListRecurringRules(t *testing.T) {
 	// Most recently created first.
 	if result.Rules[0].Description() != "B" {
 		t.Errorf("Rules[0].Description = %q, want %q (most recent first)", result.Rules[0].Description(), "B")
+	}
+}
+
+// TestUpdateRecurringRule_ScheduleChangeRegeneratesFutureOccurrences is
+// issue #278's core regression: editing a rule's schedule must discard and
+// regenerate its pending *future* occurrences (on/after today) while
+// leaving past-pending, materialised, and skipped occurrences exactly as
+// they were (ADR-0014).
+func TestUpdateRecurringRule_ScheduleChangeRegeneratesFutureOccurrences(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	account := mustCreateAccount(t, svc, testActorID, "Checking")
+	rent := mustCreateCategory(t, svc, "Rent")
+
+	created, err := svc.CreateRecurringRule(ctx, app.CreateRecurringRuleCommand{
+		ActorID: testActorID, AccountRef: account, CategoryRef: rent,
+		Amount: "100.00", Description: "Rent", StartsOn: "2026-01-01",
+		Schedule: app.RecurringScheduleInput{Frequency: "monthly", Interval: 1, DayOfMonth: 1},
+	})
+	if err != nil {
+		t.Fatalf("CreateRecurringRule: %v", err)
+	}
+	ruleID := created.Rule.ID()
+
+	generated, err := svc.GenerateOccurrences(ctx, app.GenerateOccurrencesCommand{ActorID: testActorID, RuleID: ruleID})
+	if err != nil {
+		t.Fatalf("GenerateOccurrences: %v", err)
+	}
+	// StartsOn=2026-01-01 with "today"=2026-03-15 means Jan/Feb/Mar's
+	// monthly-day-1 occurrences are all in the past relative to today.
+	jan := occurrenceByDate(t, generated.Created, "2026-01-01")
+	feb := occurrenceByDate(t, generated.Created, "2026-02-01")
+	mar := occurrenceByDate(t, generated.Created, "2026-03-01")
+	apr := occurrenceByDate(t, generated.Created, "2026-04-01") // a future one, must be discarded
+
+	materialised, err := jan.MarkMaterialised("txn-1")
+	if err != nil {
+		t.Fatalf("MarkMaterialised: %v", err)
+	}
+	if err := svc.ScheduledOccurrences.Update(ctx, testActorID, materialised); err != nil {
+		t.Fatalf("Update (materialise Jan): %v", err)
+	}
+	skipped, err := feb.MarkSkipped()
+	if err != nil {
+		t.Fatalf("MarkSkipped: %v", err)
+	}
+	if err := svc.ScheduledOccurrences.Update(ctx, testActorID, skipped); err != nil {
+		t.Fatalf("Update (skip Feb): %v", err)
+	}
+
+	// Change the schedule to something with no overlapping dates.
+	if _, err := svc.UpdateRecurringRule(ctx, app.UpdateRecurringRuleCommand{
+		ActorID: testActorID, RuleID: ruleID,
+		Amount: "100.00", Description: "Rent",
+		Schedule: app.RecurringScheduleInput{Frequency: "weekly", Interval: 1, Weekday: time.Friday},
+	}); err != nil {
+		t.Fatalf("UpdateRecurringRule: %v", err)
+	}
+
+	after := listOccurrences(t, svc, testActorID, ports.ScheduledOccurrenceFilter{RuleID: ruleID})
+
+	stillMaterialised := occurrenceByDate(t, after, "2026-01-01")
+	if stillMaterialised.Status() != recurring.OccurrenceStatusMaterialised {
+		t.Errorf("Jan occurrence status = %s, want materialised (must survive a schedule change)", stillMaterialised.Status())
+	}
+	if txID, ok := stillMaterialised.TransactionID(); !ok || txID != "txn-1" {
+		t.Errorf("Jan occurrence TransactionID = %q, %v, want txn-1, true", txID, ok)
+	}
+
+	stillSkipped := occurrenceByDate(t, after, "2026-02-01")
+	if stillSkipped.Status() != recurring.OccurrenceStatusSkipped {
+		t.Errorf("Feb occurrence status = %s, want skipped (must survive a schedule change)", stillSkipped.Status())
+	}
+
+	stillPastPending := occurrenceByDate(t, after, "2026-03-01")
+	if stillPastPending.ID() != mar.ID() || stillPastPending.Status() != recurring.OccurrenceStatusPending {
+		t.Error("a past-pending occurrence (before today) must not be touched by a schedule change")
+	}
+
+	for _, o := range after {
+		if o.ID() == apr.ID() {
+			t.Error("a future pending occurrence under the old schedule must be discarded on a schedule change")
+		}
+	}
+
+	var newFridayFound bool
+	for _, o := range after {
+		d := o.OccurrenceDate()
+		wd := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC).Weekday()
+		if wd == time.Friday && d.String() >= "2026-03-15" {
+			newFridayFound = true
+			if o.Status() != recurring.OccurrenceStatusPending {
+				t.Errorf("newly regenerated Friday occurrence %s should be pending, got %s", d, o.Status())
+			}
+		}
+	}
+	if !newFridayFound {
+		t.Error("expected at least one newly regenerated Friday occurrence on/after today")
+	}
+}
+
+// TestUpdateRecurringRule_NoScheduleChangeLeavesOccurrencesUntouched proves
+// an amount/description/ends_on-only edit never triggers occurrence
+// regeneration.
+func TestUpdateRecurringRule_NoScheduleChangeLeavesOccurrencesUntouched(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	account := mustCreateAccount(t, svc, testActorID, "Checking")
+	rent := mustCreateCategory(t, svc, "Rent")
+
+	created, err := svc.CreateRecurringRule(ctx, app.CreateRecurringRuleCommand{
+		ActorID: testActorID, AccountRef: account, CategoryRef: rent,
+		Amount: "100.00", Description: "Rent", StartsOn: "2026-01-01",
+		Schedule: app.RecurringScheduleInput{Frequency: "monthly", Interval: 1, DayOfMonth: 1},
+	})
+	if err != nil {
+		t.Fatalf("CreateRecurringRule: %v", err)
+	}
+	ruleID := created.Rule.ID()
+
+	generated, err := svc.GenerateOccurrences(ctx, app.GenerateOccurrencesCommand{ActorID: testActorID, RuleID: ruleID})
+	if err != nil {
+		t.Fatalf("GenerateOccurrences: %v", err)
+	}
+	before := listOccurrences(t, svc, testActorID, ports.ScheduledOccurrenceFilter{RuleID: ruleID})
+	if len(before) != len(generated.Created) {
+		t.Fatalf("before count = %d, want %d", len(before), len(generated.Created))
+	}
+
+	if _, err := svc.UpdateRecurringRule(ctx, app.UpdateRecurringRuleCommand{
+		ActorID: testActorID, RuleID: ruleID,
+		Amount: "150.00", Description: "Rent (increased)",
+		Schedule: app.RecurringScheduleInput{Frequency: "monthly", Interval: 1, DayOfMonth: 1},
+	}); err != nil {
+		t.Fatalf("UpdateRecurringRule: %v", err)
+	}
+
+	after := listOccurrences(t, svc, testActorID, ports.ScheduledOccurrenceFilter{RuleID: ruleID})
+	if len(after) != len(before) {
+		t.Fatalf("occurrence count changed from %d to %d after a non-schedule edit", len(before), len(after))
+	}
+	for i := range before {
+		if before[i].ID() != after[i].ID() || before[i].OccurrenceDate() != after[i].OccurrenceDate() {
+			t.Errorf("occurrence %d changed identity across a non-schedule edit: %v -> %v", i, before[i], after[i])
+		}
+	}
+}
+
+// TestArchiveRecurringRule_CancelsPendingOccurrences is issue #278's other
+// hook into #277's CRUD: archiving a rule must remove its still-pending
+// occurrences rather than leaving them dangling (ADR-0014/#278's scope).
+func TestArchiveRecurringRule_CancelsPendingOccurrences(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	ctx := context.Background()
+	account := mustCreateAccount(t, svc, testActorID, "Checking")
+	rent := mustCreateCategory(t, svc, "Rent")
+
+	created, err := svc.CreateRecurringRule(ctx, app.CreateRecurringRuleCommand{
+		ActorID: testActorID, AccountRef: account, CategoryRef: rent,
+		Amount: "100.00", Description: "Rent", StartsOn: "2026-01-01",
+		Schedule: app.RecurringScheduleInput{Frequency: "monthly", Interval: 1, DayOfMonth: 1},
+	})
+	if err != nil {
+		t.Fatalf("CreateRecurringRule: %v", err)
+	}
+	ruleID := created.Rule.ID()
+
+	generated, err := svc.GenerateOccurrences(ctx, app.GenerateOccurrencesCommand{ActorID: testActorID, RuleID: ruleID})
+	if err != nil {
+		t.Fatalf("GenerateOccurrences: %v", err)
+	}
+	if len(generated.Created) == 0 {
+		t.Fatal("expected generation to produce at least one occurrence")
+	}
+	// Materialise one so we can prove it survives the archive-time cleanup.
+	jan := occurrenceByDate(t, generated.Created, "2026-01-01")
+	materialised, err := jan.MarkMaterialised("txn-1")
+	if err != nil {
+		t.Fatalf("MarkMaterialised: %v", err)
+	}
+	if err := svc.ScheduledOccurrences.Update(ctx, testActorID, materialised); err != nil {
+		t.Fatalf("Update (materialise Jan): %v", err)
+	}
+
+	if _, err := svc.ArchiveRecurringRule(ctx, app.ArchiveRecurringRuleCommand{ActorID: testActorID, RuleID: ruleID}); err != nil {
+		t.Fatalf("ArchiveRecurringRule: %v", err)
+	}
+
+	after := listOccurrences(t, svc, testActorID, ports.ScheduledOccurrenceFilter{RuleID: ruleID})
+	if len(after) != 1 {
+		t.Fatalf("after archive, len(occurrences) = %d, want 1 (only the materialised one survives)", len(after))
+	}
+	if after[0].Status() != recurring.OccurrenceStatusMaterialised {
+		t.Errorf("surviving occurrence status = %s, want materialised", after[0].Status())
+	}
+
+	// Re-archiving (idempotent no-op) must not error and must not touch
+	// the surviving materialised occurrence again.
+	if _, err := svc.ArchiveRecurringRule(ctx, app.ArchiveRecurringRuleCommand{ActorID: testActorID, RuleID: ruleID}); err != nil {
+		t.Fatalf("ArchiveRecurringRule (again): %v", err)
+	}
+	stillAfter := listOccurrences(t, svc, testActorID, ports.ScheduledOccurrenceFilter{RuleID: ruleID})
+	if len(stillAfter) != 1 {
+		t.Fatalf("after re-archiving, len(occurrences) = %d, want 1", len(stillAfter))
 	}
 }
