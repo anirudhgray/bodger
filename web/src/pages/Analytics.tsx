@@ -20,6 +20,7 @@ import {
   ArrowUp,
   ArrowUpDown,
   BarChart3,
+  CalendarClock,
   TrendingDown,
   TrendingUp,
 } from 'lucide-react'
@@ -84,6 +85,7 @@ import {
   getCashFlow,
   getCategoryBreakdown,
   getCategoryTrends,
+  getForecast,
   getReportingCurrency,
   getSavingsRate,
   getTopTransactions,
@@ -93,6 +95,7 @@ import {
   type CashFlow,
   type CategoryBreakdown,
   type CategoryTrends,
+  type Forecast,
   type Granularity,
   type SavingsRate,
   type TopTransactions,
@@ -143,6 +146,20 @@ function categoryPieConfig(slices: CategorySlice[]): ChartConfig {
 const cashFlowChartConfig: ChartConfig = {
   inflow: { label: 'Inflow', color: 'var(--chart-1)' },
   outflow: { label: 'Outflow', color: 'var(--chart-2)' },
+}
+
+// forecastChartConfig reuses the same two chart tokens Cash flow's chart
+// does (inflow/outflow already read as "good"/"bad" everywhere in this
+// app) — the Forecast card itself is what carries the "this is projected,
+// not actual" signal (its own dashed border, muted background, and
+// "Projected …" labels throughout, mirroring pages/Recurring.tsx's
+// "Upcoming (projected)" card), the same way Balances' rate-provenance
+// detail distinguishes a derived figure by where/how it's shown rather
+// than by a one-off invented color (docs/design-system.md's "Adding a
+// color" rule).
+const forecastChartConfig: ChartConfig = {
+  projectedInflow: { label: 'Projected inflow', color: 'var(--chart-1)' },
+  projectedOutflow: { label: 'Projected outflow', color: 'var(--chart-2)' },
 }
 
 // cashFlowSpan spans the earliest From through the latest To across
@@ -463,6 +480,22 @@ export function AnalyticsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Forecast (issue #280, surfaced by #282): a wholly separate fetch from
+  // the Promise.all block below, on its own opt-in filter (forecastTo)
+  // rather than reusing the page's own from/to — those default to an
+  // open-ended "all time" history, which has no sensible meaning for a
+  // forward-looking projection. Left blank by default (nothing forecast
+  // renders until someone picks an end date) rather than guessing a
+  // default window client-side. "From" is never set here at all: the
+  // server resolves an omitted from_date to today on its own
+  // (normalize.DateOf) — the same normalize-once rule every other date
+  // field in this app follows — so this file never computes "today"
+  // itself.
+  const [forecastTo, setForecastTo] = useState('')
+  const [forecast, setForecast] = useState<Forecast | null>(null)
+  const [forecastLoading, setForecastLoading] = useState(false)
+  const [forecastError, setForecastError] = useState<string | null>(null)
+
   const [refreshOpen, setRefreshOpen] = useState(false)
   const [refreshCurrencies, setRefreshCurrencies] = useState<Set<string>>(
     new Set(),
@@ -557,6 +590,32 @@ export function AnalyticsPage() {
     // oxlint-disable-next-line react/set-state-in-effect
     load()
   }, [load])
+
+  const loadForecast = useCallback(() => {
+    if (!currency || !forecastTo) {
+      setForecast(null)
+      setForecastError(null)
+      return
+    }
+    setForecastLoading(true)
+    setForecastError(null)
+    getForecast(
+      { to: forecastTo },
+      { currency, policy: 'transaction_date' },
+      granularity,
+    )
+      .then(setForecast)
+      .catch((err: unknown) => setForecastError(errorMessage(err)))
+      .finally(() => setForecastLoading(false))
+  }, [currency, forecastTo, granularity])
+
+  useEffect(() => {
+    // Same reasoning as the load() effect above — getForecast is an
+    // external-system fetch triggered by filter changes, not a
+    // render-time derivation.
+    // oxlint-disable-next-line react/set-state-in-effect
+    loadForecast()
+  }, [loadForecast])
 
   // Every currency any of the four results flagged as unconverted — the
   // popover's candidate list. Deduplicated across all four since a
@@ -680,6 +739,20 @@ export function AnalyticsPage() {
     [cashFlow, granularity],
   )
 
+  // forecastData mirrors cashFlowData's own shape (ProjectedInflow/
+  // ProjectedOutflow, not Inflow/Outflow — never renamed to match, so a
+  // future edit here can't accidentally feed this into the actual Cash
+  // flow chart above by field-name coincidence).
+  const forecastData = useMemo(
+    () =>
+      (forecast?.points ?? []).map((point) => ({
+        label: formatPeriodLabel(point.from, point.to, granularity),
+        projectedInflow: Number(point.projected_inflow),
+        projectedOutflow: Number(point.projected_outflow),
+      })),
+    [forecast, granularity],
+  )
+
   const hasAnyData =
     categoryData.length > 0 ||
     cashFlowData.length > 0 ||
@@ -737,6 +810,25 @@ export function AnalyticsPage() {
               <SelectItem value="custom">Custom</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+        {/* Forecast (issue #280/#282) is opt-in and separate from the
+            actuals filter above: nothing forecasts until an end date is
+            picked here, and "from" is never asked for — it always
+            resolves to today server-side (see loadForecast's own
+            comment). */}
+        <div className="flex flex-col gap-1">
+          <Label
+            htmlFor="analytics-forecast-to"
+            className="text-muted-foreground text-sm font-normal"
+          >
+            Forecast through
+          </Label>
+          <DatePicker
+            id="analytics-forecast-to"
+            value={forecastTo}
+            onChange={setForecastTo}
+            placeholder="No forecast"
+          />
         </div>
         {/* Multi-currency chrome only appears once a second currency is
             actually in play — docs/ux-principles.md §4's progressive-
@@ -1115,6 +1207,97 @@ export function AnalyticsPage() {
             </Card>
           )}
         </div>
+      )}
+
+      {/* Forecast (issue #280, surfaced by #282): its own card, entirely
+          independent of the actuals grid above (loading/error/hasAnyData
+          all gate that grid, not this one — a ledger with no forecast-
+          able actuals yet can still have pending recurring occurrences to
+          project, and vice versa). Dashed border + muted background +
+          "Projected …" labels throughout are this screen's own version
+          of Recurring.tsx's "Upcoming (projected)" card — the same
+          visually-distinct, separately-titled-section treatment
+          data-model.md §11 requires for a derived, not-yet-real number,
+          applied here instead of Balances' click-to-expand rate-
+          provenance pattern: a forecast is itself the derived figure
+          (there's no separate "real" amount underneath it to disclose
+          from), so the distinguishing signal is the card's own presence
+          and styling rather than a click-to-reveal detail row. */}
+      {forecastTo && (
+        <Card className="border-dashed bg-muted/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarClock className="text-muted-foreground size-4" />
+              Forecast (projected)
+            </CardTitle>
+            <p className="text-muted-foreground text-xs">
+              Projected activity from pending recurring occurrences, through{' '}
+              {forecastTo} — never a real transaction until materialised.{' '}
+              <Link to="/recurring">Manage recurring rules</Link>
+            </p>
+          </CardHeader>
+          <CardContent>
+            {forecastError && (
+              <p role="alert" className="text-destructive text-sm">
+                {forecastError}
+              </p>
+            )}
+            {forecastLoading && !forecastError && (
+              <div className="flex items-center gap-2">
+                <Spinner className="size-3.5" />
+                <span className="text-muted-foreground text-sm">Loading…</span>
+              </div>
+            )}
+            {!forecastLoading &&
+              !forecastError &&
+              forecastData.length === 0 && (
+                <p className="text-muted-foreground text-sm">
+                  No projected activity through {forecastTo}. Generate upcoming
+                  occurrences from the Recurring screen.
+                </p>
+              )}
+            {!forecastLoading && !forecastError && forecastData.length > 0 && (
+              <ChartContainer
+                config={forecastChartConfig}
+                className="aspect-auto h-72 w-full"
+              >
+                <BarChart data={forecastData}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                  <YAxis tickLine={false} axisLine={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar
+                    dataKey="projectedInflow"
+                    fill="var(--color-projectedInflow)"
+                    fillOpacity={0.6}
+                    radius={4}
+                  />
+                  <Bar
+                    dataKey="projectedOutflow"
+                    fill="var(--color-projectedOutflow)"
+                    fillOpacity={0.6}
+                    radius={4}
+                  />
+                  <ChartLegend content={<ChartLegendContent />} />
+                </BarChart>
+              </ChartContainer>
+            )}
+            {forecast &&
+              forecast.unconverted &&
+              forecast.unconverted.length > 0 && (
+                <div className="mt-3 flex flex-col gap-1">
+                  {forecast.unconverted.map((u) => (
+                    <div key={u.occurrence_id} className="flex gap-2">
+                      <span className="text-sm tabular-nums">
+                        {u.amount} {u.currency}
+                      </span>
+                      <UnconvertedNote reason={u.reason} />
+                    </div>
+                  ))}
+                </div>
+              )}
+          </CardContent>
+        </Card>
       )}
     </div>
   )

@@ -19,6 +19,7 @@ vi.mock('@/lib/api', async () => {
     getTopTransactions: vi.fn(),
     getAverageTransactionSize: vi.fn(),
     getCategoryTrends: vi.fn(),
+    getForecast: vi.fn(),
     getReportingCurrency: vi.fn(),
     listAccounts: vi.fn(),
     fetchFxRates: vi.fn(),
@@ -31,6 +32,7 @@ import {
   getCashFlow,
   getCategoryBreakdown,
   getCategoryTrends,
+  getForecast,
   getReportingCurrency,
   getSavingsRate,
   getTopTransactions,
@@ -46,6 +48,7 @@ const mockedGetSavingsRate = vi.mocked(getSavingsRate)
 const mockedGetTopTransactions = vi.mocked(getTopTransactions)
 const mockedGetAverageTransactionSize = vi.mocked(getAverageTransactionSize)
 const mockedGetCategoryTrends = vi.mocked(getCategoryTrends)
+const mockedGetForecast = vi.mocked(getForecast)
 const mockedGetReportingCurrency = vi.mocked(getReportingCurrency)
 const mockedListAccounts = vi.mocked(listAccounts)
 
@@ -99,6 +102,7 @@ describe('AnalyticsPage', () => {
     mockedGetTopTransactions.mockReset()
     mockedGetAverageTransactionSize.mockReset()
     mockedGetCategoryTrends.mockReset()
+    mockedGetForecast.mockReset()
     mockedGetReportingCurrency.mockReset()
     mockedListAccounts.mockReset()
     mockedGetReportingCurrency.mockResolvedValue({
@@ -271,6 +275,89 @@ describe('AnalyticsPage', () => {
     renderPage()
 
     expect(await screen.findByText('Nothing to show yet')).toBeInTheDocument()
+  })
+
+  it('never fetches or renders a forecast until an end date is chosen', async () => {
+    mockedGetCategoryBreakdown.mockResolvedValue({ currency: 'USD', rows: [] })
+    mockedGetCashFlow.mockResolvedValue({ currency: 'USD', points: [] })
+    mockedGetTrends.mockResolvedValue(emptyTrends)
+    mockedGetSavingsRate.mockResolvedValue({
+      currency: 'USD',
+      income: '0.00',
+      outflow: '0.00',
+      net: '0.00',
+      rate: null,
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Nothing to show yet')).toBeInTheDocument()
+    expect(screen.queryByText('Forecast (projected)')).not.toBeInTheDocument()
+    expect(mockedGetForecast).not.toHaveBeenCalled()
+  })
+
+  // Issue #280/#282: Forecast is an opt-in card, entirely separate from
+  // the actuals grid above (it renders even though every actuals endpoint
+  // here resolves to "nothing to show" — see this test's own mocks). The
+  // chart's own SVG text isn't asserted on directly, per this file's
+  // established convention (ChartContainer's own doc comment, and the
+  // first test's own note above) — an empty-points result instead
+  // exercises the plain-HTML "nothing projected" copy, which is exactly
+  // as reliable a signal that the card actually reached its data branch.
+  it('fetches and renders the forecast card once "Forecast through" is set, without asking for a "from" date itself', async () => {
+    const user = userEvent.setup()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-15T12:00:00Z'))
+    try {
+      mockedGetCategoryBreakdown.mockResolvedValue({
+        currency: 'USD',
+        rows: [],
+      })
+      mockedGetCashFlow.mockResolvedValue({ currency: 'USD', points: [] })
+      mockedGetTrends.mockResolvedValue(emptyTrends)
+      mockedGetSavingsRate.mockResolvedValue({
+        currency: 'USD',
+        income: '0.00',
+        outflow: '0.00',
+        net: '0.00',
+        rate: null,
+      })
+      mockedGetForecast.mockResolvedValue({ currency: 'USD', points: [] })
+
+      renderPage()
+      await screen.findByRole('button', { name: 'Forecast through' })
+
+      await user.click(screen.getByRole('button', { name: 'Forecast through' }))
+      // "September 30th, 2026" (the full month name), not just /30th,
+      // 2026/ — the calendar's own showOutsideDays also renders the
+      // adjacent month's trailing/leading days (e.g. "August 30th, 2026"),
+      // which a bare day-number match resolves ambiguously.
+      await waitFor(async () => {
+        await user.click(
+          screen.getByRole('button', { name: /September 30th, 2026/ }),
+        )
+        expect(
+          screen.queryByRole('button', { name: /September 30th, 2026/ }),
+        ).not.toBeInTheDocument()
+      })
+
+      expect(
+        await screen.findByText('Forecast (projected)'),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText(/No projected activity through 2026-09-30/),
+      ).toBeInTheDocument()
+      // "from" is never sent — the server resolves it to today itself
+      // (normalize.DateOf), so this screen never computes "today" on its
+      // own to fill the gap.
+      expect(mockedGetForecast).toHaveBeenCalledWith(
+        { to: '2026-09-30' },
+        { currency: 'USD', policy: 'transaction_date' },
+        'month',
+      )
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('shows the server error on failure', async () => {

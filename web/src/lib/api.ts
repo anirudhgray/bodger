@@ -591,6 +591,187 @@ export function getNetWorthOverTime(
   )
 }
 
+// --- Forecast (issue #280, rendered by #282's Analytics extension) --------
+//
+// GET /api/v1/forecast reads only pending ScheduledOccurrence rows — see
+// internal/app/forecast.go's own doc comment. ForecastPoint's fields are
+// deliberately Projected* there, and stay that way here too (never
+// re-spelled to match CashFlowPoint's inflow/outflow/net), so a caller
+// can't accidentally treat a projected figure as an actual one
+// (data-model.md §11's "always visually and structurally distinguished
+// from actuals").
+//
+// filter.from/to are typed optional, same as every other AnalyticsFilter
+// call here, even though app.ForecastQuery requires both internally —
+// normalize.DateOf resolves an omitted date to "today" server-side (the
+// same normalize-once rule every other date field in this app follows),
+// so the caller never has to compute "today" itself to leave "from" at
+// its natural default while still picking an explicit "to".
+
+export type Forecast = components['schemas']['Forecast']
+export type ForecastPoint = components['schemas']['ForecastPoint']
+
+export function getForecast(
+  filter: AnalyticsFilter,
+  options: AnalyticsOptions,
+  granularity?: Granularity,
+): Promise<Forecast> {
+  return apiFetch<Forecast>(
+    `/api/v1/forecast${analyticsQuery(filter, options, granularity)}`,
+  )
+}
+
+// --- Recurring rules & occurrences (issue #282, wrapping #281/#294's REST
+// surface) -------------------------------------------------------------
+//
+// Three separate entities, kept structurally separate end-to-end per
+// data-model.md §11: a RecurringRule is a template (money has never
+// moved), a ScheduledOccurrence is a projection of one firing of a rule
+// on a date (still never moved), and materialising one produces a real
+// Transaction. No function here ever merges a RecurringRule or
+// ScheduledOccurrence into the same shape/list as a Transaction.
+
+export type Schedule = components['schemas']['Schedule']
+export type RecurringRule = components['schemas']['RecurringRule']
+export type ScheduledOccurrence = components['schemas']['ScheduledOccurrence']
+export type MaterialiseOccurrence =
+  components['schemas']['MaterialiseOccurrence']
+export type RefreshOccurrences = components['schemas']['RefreshOccurrences']
+
+export type ScheduleInput = {
+  frequency: Schedule['frequency']
+  interval: number
+  dayOfMonth?: number
+  weekday?: number
+  month?: number
+}
+
+function scheduleRequestBody(schedule: ScheduleInput) {
+  return {
+    frequency: schedule.frequency,
+    interval: schedule.interval,
+    day_of_month: schedule.dayOfMonth,
+    weekday: schedule.weekday,
+    month: schedule.month,
+  }
+}
+
+export function listRecurringRules(): Promise<RecurringRule[]> {
+  return apiFetch<RecurringRule[]>('/api/v1/recurring-rules')
+}
+
+export type CreateRecurringRuleInput = {
+  accountRef: string
+  categoryRef: string
+  amount: string
+  description: string
+  schedule: ScheduleInput
+  startsOn?: string
+  endsOn?: string
+}
+
+export function createRecurringRule(
+  input: CreateRecurringRuleInput,
+): Promise<RecurringRule> {
+  return apiFetch<RecurringRule>('/api/v1/recurring-rules', {
+    method: 'POST',
+    body: JSON.stringify({
+      account_ref: input.accountRef,
+      category_ref: input.categoryRef,
+      amount: input.amount,
+      description: input.description,
+      schedule: scheduleRequestBody(input.schedule),
+      starts_on: input.startsOn || undefined,
+      ends_on: input.endsOn || undefined,
+    }),
+  })
+}
+
+// updateRecurringRule mirrors PATCH /api/v1/recurring-rules/{id}'s own
+// contract exactly: account_ref/category_ref/starts_on aren't part of the
+// request body at all — a rule posts to exactly one fixed account/category
+// pair (data-model.md §11) and its start date doesn't move once created.
+// Only amount, description, schedule, and ends_on can change. Omitting
+// endsOn clears the rule to run indefinitely rather than leaving its
+// existing value untouched — the same "no partial-omission default"
+// contract updateBudget's startsOn has, just the other direction.
+export function updateRecurringRule(
+  id: string,
+  input: {
+    amount: string
+    description: string
+    schedule: ScheduleInput
+    endsOn?: string
+  },
+): Promise<RecurringRule> {
+  return apiFetch<RecurringRule>(`/api/v1/recurring-rules/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      amount: input.amount,
+      description: input.description,
+      schedule: scheduleRequestBody(input.schedule),
+      ends_on: input.endsOn || undefined,
+    }),
+  })
+}
+
+export function archiveRecurringRule(id: string): Promise<RecurringRule> {
+  return apiFetch<RecurringRule>(`/api/v1/recurring-rules/${id}`, {
+    method: 'DELETE',
+  })
+}
+
+export type ScheduledOccurrenceFilter = {
+  ruleId?: string
+  status?: ScheduledOccurrence['status']
+  from?: string
+  to?: string
+}
+
+export function listScheduledOccurrences(
+  filter: ScheduledOccurrenceFilter = {},
+): Promise<ScheduledOccurrence[]> {
+  return apiFetch<ScheduledOccurrence[]>(
+    `/api/v1/recurring-occurrences${buildQuery({
+      rule_id: filter.ruleId,
+      status: filter.status,
+      from: filter.from,
+      to: filter.to,
+    })}`,
+  )
+}
+
+// refreshOccurrences is #294's explicit, idempotent generation call —
+// ADR-0014 requires occurrence generation to always be "an action a
+// surface took," never a background job. Omitting ruleId refreshes every
+// active rule the actor owns, matching the CLI's own
+// `bodger recurring refresh` default. The result carries only the
+// occurrences this call actually created, never ones that already existed.
+export function refreshOccurrences(
+  ruleId?: string,
+): Promise<RefreshOccurrences> {
+  return apiFetch<RefreshOccurrences>(
+    `/api/v1/recurring-occurrences/refresh${buildQuery({ rule_id: ruleId })}`,
+    { method: 'POST' },
+  )
+}
+
+export function materialiseOccurrence(
+  id: string,
+): Promise<MaterialiseOccurrence> {
+  return apiFetch<MaterialiseOccurrence>(
+    `/api/v1/recurring-occurrences/${id}/materialise`,
+    { method: 'POST' },
+  )
+}
+
+export function skipOccurrence(id: string): Promise<ScheduledOccurrence> {
+  return apiFetch<ScheduledOccurrence>(
+    `/api/v1/recurring-occurrences/${id}/skip`,
+    { method: 'POST' },
+  )
+}
+
 // --- Import (issue #214, wrapping #212's REST surface) ---------------------
 //
 // ADR-0008's staged pipeline: upload stages a file's rows for review
