@@ -61,20 +61,21 @@ type errorView struct {
 // exception: it's derived from errs.Codes() directly below, since errs
 // isn't a domain package and is already this package's own dependency.
 var enumSets = map[string][]string{
-	"account_kind":                {"bank", "cash", "credit_card", "wallet", "investment", "loan", "other"},
-	"category_kind":               {"expense", "income"},
-	"transaction_kind":            {"outflow", "inflow", "transfer"},
-	"recordable_transaction_kind": {"outflow", "inflow"},
-	"conversion_policy":           {"transaction_date", "current", "pinned"},
-	"health_status":               {"ok"},
-	"error_code":                  errorCodeValues(),
-	"import_batch_status":         {"staged", "reviewed", "committed", "rolled_back"},
-	"import_record_status":        {"pending", "ready", "excluded", "committed"},
-	"import_duplicate_tier":       {"exact", "suspected_duplicate"},
-	"import_duplicate_resolution": {"pending", "confirmed_duplicate", "not_duplicate"},
-	"budget_period_type":          {"monthly"},
-	"recurring_frequency":         {"weekly", "monthly", "yearly"},
-	"occurrence_status":           {"pending", "materialised", "skipped"},
+	"account_kind":                       {"bank", "cash", "credit_card", "wallet", "investment", "loan", "other"},
+	"category_kind":                      {"expense", "income"},
+	"transaction_kind":                   {"outflow", "inflow", "transfer"},
+	"recordable_transaction_kind":        {"outflow", "inflow"},
+	"conversion_policy":                  {"transaction_date", "current", "pinned"},
+	"health_status":                      {"ok"},
+	"error_code":                         errorCodeValues(),
+	"import_batch_status":                {"staged", "reviewed", "committed", "rolled_back"},
+	"import_record_status":               {"pending", "ready", "excluded", "committed"},
+	"import_duplicate_tier":              {"exact", "suspected_duplicate"},
+	"import_duplicate_resolution":        {"pending", "confirmed_duplicate", "not_duplicate"},
+	"import_occurrence_match_resolution": {"pending", "materialized", "dismissed"},
+	"budget_period_type":                 {"monthly"},
+	"recurring_frequency":                {"weekly", "monthly", "yearly"},
+	"occurrence_status":                  {"pending", "materialised", "skipped"},
 }
 
 func errorCodeValues() []string {

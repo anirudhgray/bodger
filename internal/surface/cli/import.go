@@ -68,23 +68,32 @@ type duplicateMatchView struct {
 	Resolution           string `json:"resolution"`
 }
 
+// occurrenceMatchView is this package's shape for a candidate occurrence
+// match issue #301's detection found for a staged record — mirroring
+// duplicateMatchView's own field-for-field shape.
+type occurrenceMatchView struct {
+	OccurrenceID string `json:"occurrence_id"`
+	Resolution   string `json:"resolution"`
+}
+
 // importRecordView is this package's shape for one staged row.
 type importRecordView struct {
-	ID                        string              `json:"id"`
-	ImportBatchID             string              `json:"import_id"`
-	BookedDate                string              `json:"booked_date"`
-	PostedDate                string              `json:"posted_date,omitempty"`
-	Description               string              `json:"description"`
-	Amount                    string              `json:"amount"`
-	Currency                  string              `json:"currency"`
-	ExternalID                string              `json:"external_id,omitempty"`
-	ResolvedAccountID         string              `json:"resolved_account_id,omitempty"`
-	ResolvedCategoryID        string              `json:"resolved_category_id,omitempty"`
-	DuplicateMatch            *duplicateMatchView `json:"duplicate_match,omitempty"`
-	TransferCandidateRecordID string              `json:"transfer_candidate_record_id,omitempty"`
-	Status                    string              `json:"status"`
-	TransactionID             string              `json:"transaction_id,omitempty"`
-	SortOrder                 int                 `json:"sort_order"`
+	ID                        string               `json:"id"`
+	ImportBatchID             string               `json:"import_id"`
+	BookedDate                string               `json:"booked_date"`
+	PostedDate                string               `json:"posted_date,omitempty"`
+	Description               string               `json:"description"`
+	Amount                    string               `json:"amount"`
+	Currency                  string               `json:"currency"`
+	ExternalID                string               `json:"external_id,omitempty"`
+	ResolvedAccountID         string               `json:"resolved_account_id,omitempty"`
+	ResolvedCategoryID        string               `json:"resolved_category_id,omitempty"`
+	DuplicateMatch            *duplicateMatchView  `json:"duplicate_match,omitempty"`
+	TransferCandidateRecordID string               `json:"transfer_candidate_record_id,omitempty"`
+	OccurrenceMatch           *occurrenceMatchView `json:"occurrence_match,omitempty"`
+	Status                    string               `json:"status"`
+	TransactionID             string               `json:"transaction_id,omitempty"`
+	SortOrder                 int                  `json:"sort_order"`
 }
 
 func importRecordViewFrom(r app.ResolveImportRecordResult) importRecordView {
@@ -119,10 +128,22 @@ func importRecordViewFrom(r app.ResolveImportRecordResult) importRecordView {
 	if id, ok := rec.TransferCandidateRecordID(); ok {
 		v.TransferCandidateRecordID = id
 	}
+	if om, ok := rec.OccurrenceMatch(); ok {
+		v.OccurrenceMatch = &occurrenceMatchView{OccurrenceID: om.OccurrenceID(), Resolution: string(om.Resolution())}
+	}
 	if id, ok := rec.TransactionID(); ok {
 		v.TransactionID = id
 	}
 	return v
+}
+
+// occurrenceMatchResolutionViewFrom builds an importRecordView from
+// ResolveImportRecordOccurrenceMatch's own result shape, reusing
+// importRecordViewFrom by re-wrapping its Record — the same
+// already-established pattern StageImport/ListImportRecords use to share
+// this view builder across every command that produces an ImportRecord.
+func occurrenceMatchResolutionViewFrom(r app.ResolveImportRecordOccurrenceMatchResult) importRecordView {
+	return importRecordViewFrom(app.ResolveImportRecordResult{Record: r.Record})
 }
 
 // flagDescription is what printImportRecordTable's own FLAGS column
@@ -145,6 +166,16 @@ func flagDescription(v importRecordView) string {
 	}
 	if v.TransferCandidateRecordID != "" {
 		flags += "possible-transfer "
+	}
+	if v.OccurrenceMatch != nil {
+		switch v.OccurrenceMatch.Resolution {
+		case "pending":
+			flags += "matched-occurrence "
+		case "materialized":
+			flags += "occurrence-materialized "
+		case "dismissed":
+			flags += "occurrence-match-dismissed "
+		}
 	}
 	if flags == "" {
 		return "-"
@@ -209,6 +240,7 @@ func newImportCmd(factory ServiceFactory) *cobra.Command {
 		newImportShowCmd(factory),
 		newImportRecordsCmd(factory),
 		newImportResolveCmd(factory),
+		newImportResolveOccurrenceCmd(factory),
 		newImportCommitCmd(factory),
 		newImportRollbackCmd(factory),
 	)
@@ -364,7 +396,7 @@ func newImportShowCmd(factory ServiceFactory) *cobra.Command {
 func newImportRecordsCmd(factory ServiceFactory) *cobra.Command {
 	return &cobra.Command{
 		Use:   "records <import-id>",
-		Short: "List an import's staged records, with their duplicate/transfer flags",
+		Short: "List an import's staged records, with their duplicate/transfer/occurrence flags",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -416,6 +448,45 @@ func newImportResolveCmd(factory ServiceFactory) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&resolution, "resolution", "", `your decision: "confirmed_duplicate" or "not_duplicate" (required)`)
+	_ = cmd.MarkFlagRequired("resolution")
+	return cmd
+}
+
+func newImportResolveOccurrenceCmd(factory ServiceFactory) *cobra.Command {
+	var resolution string
+	cmd := &cobra.Command{
+		Use:   "resolve-occurrence <record-id>",
+		Short: "Record your decision on a staged record's matched pending occurrence",
+		Long: `--resolution "materialized" turns the matched occurrence into its own transaction (using its rule's ` +
+			`current amount and date) and excludes this record from commit, since the occurrence's transaction now ` +
+			`covers the same money. --resolution "dismissed" leaves the occurrence untouched and clears this record ` +
+			"for commit. Refused for a record with no matched occurrence to resolve, or one already resolved.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			svc, closeDB, err := factory(ctx)
+			if err != nil {
+				return err
+			}
+			defer closeQuietly(cmd, closeDB)
+
+			result, err := svc.ResolveImportRecordOccurrenceMatch(ctx, app.ResolveImportRecordOccurrenceMatchCommand{
+				ActorID: ports.SeededUserID, ImportRecordRef: args[0], Resolution: resolution,
+			})
+			if err != nil {
+				return err
+			}
+			view := occurrenceMatchResolutionViewFrom(result)
+			return render(cmd, view, func(w io.Writer) {
+				_, _ = fmt.Fprintf(w, "Record %s resolved: now %s.\n", view.ID, view.Status)
+				if result.Transaction != nil {
+					_, _ = fmt.Fprintf(w, "Materialised the matched occurrence as %q for %s.\n",
+						result.Transaction.Description(), result.Transaction.BookedDate().String())
+				}
+			})
+		},
+	}
+	cmd.Flags().StringVar(&resolution, "resolution", "", `your decision: "materialized" or "dismissed" (required)`)
 	_ = cmd.MarkFlagRequired("resolution")
 	return cmd
 }
