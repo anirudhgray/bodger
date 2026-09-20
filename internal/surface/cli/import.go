@@ -304,6 +304,14 @@ type importSuggestionsView struct {
 	TooManyCategoryOptions []string                  `json:"too_many_category_options,omitempty"`
 	RowsSuggested          int                       `json:"rows_suggested"`
 	RowsFailed             int                       `json:"rows_failed"`
+	// FailureReason is why RowsFailed rows got no answer -- one of
+	// typesafe.ai's own stable reason strings ("credential_rejected",
+	// "throttled", "provider_unreachable"), empty when RowsFailed is 0.
+	// Kept raw and machine-readable here (--json), the same way
+	// TooManyCategoryOptions is a list of IDs rather than prose;
+	// printImportSuggestions translates it into plain English for the
+	// human-readable table.
+	FailureReason string `json:"failure_reason,omitempty"`
 }
 
 func importSuggestionsViewFrom(r app.SuggestForImportBatchResult) importSuggestionsView {
@@ -312,11 +320,35 @@ func importSuggestionsViewFrom(r app.SuggestForImportBatchResult) importSuggesti
 		TooManyCategoryOptions: r.TooManyCategoryOptions,
 		RowsSuggested:          r.RowsSuggested,
 		RowsFailed:             r.RowsFailed,
+		FailureReason:          r.FailureReason,
 	}
 	for _, s := range r.Suggestions {
 		v.Suggestions = append(v.Suggestions, importRowSuggestionViewFrom(s))
 	}
 	return v
+}
+
+// explainFailureReason translates one of typesafe.ai's stable failure
+// reason strings (internal/adapters/typesafe/errors.go's
+// mapStatusError/mapTransportError — "credential_rejected", "throttled",
+// "provider_unreachable") into the plain-English clause
+// printImportSuggestions incorporates into its terminal message, matching
+// the tone of that package's own Explain(...) strings without printing
+// the raw code verbatim. A reason this CLI hasn't been taught yet (the
+// closed set grows without this switch being updated) falls back to a
+// generic clause rather than leaking the raw string into user-facing
+// copy.
+func explainFailureReason(reason string) string {
+	switch reason {
+	case "credential_rejected":
+		return "your typesafe.ai credential was rejected"
+	case "throttled":
+		return "typesafe.ai is rate-limiting this instance right now"
+	case "provider_unreachable":
+		return "typesafe.ai couldn't be reached"
+	default:
+		return "typesafe.ai didn't answer"
+	}
 }
 
 // printImportSuggestions renders `import suggest`'s human-readable
@@ -335,7 +367,12 @@ func printImportSuggestions(w io.Writer, v importSuggestionsView) {
 
 	if len(v.Suggestions) == 0 {
 		if v.RowsFailed > 0 {
-			_, _ = fmt.Fprintf(w, "Asked typesafe.ai about %d row(s), but got no answer back — try again shortly.\n", v.RowsFailed)
+			if v.FailureReason != "" {
+				_, _ = fmt.Fprintf(w, "Asked typesafe.ai about %d row(s), but got no answer back — %s. Try again shortly.\n",
+					v.RowsFailed, explainFailureReason(v.FailureReason))
+			} else {
+				_, _ = fmt.Fprintf(w, "Asked typesafe.ai about %d row(s), but got no answer back — try again shortly.\n", v.RowsFailed)
+			}
 		} else {
 			_, _ = fmt.Fprintln(w, "No suggestions for this import right now.")
 		}
@@ -357,7 +394,12 @@ func printImportSuggestions(w io.Writer, v importSuggestionsView) {
 		}
 		_ = tw.Flush()
 		if v.RowsFailed > 0 {
-			_, _ = fmt.Fprintf(w, "%d more row(s) were asked about but got no answer back from typesafe.ai this time.\n", v.RowsFailed)
+			if v.FailureReason != "" {
+				_, _ = fmt.Fprintf(w, "%d more row(s) were asked about but got no answer back from typesafe.ai — %s.\n",
+					v.RowsFailed, explainFailureReason(v.FailureReason))
+			} else {
+				_, _ = fmt.Fprintf(w, "%d more row(s) were asked about but got no answer back from typesafe.ai this time.\n", v.RowsFailed)
+			}
 		}
 	}
 
