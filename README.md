@@ -47,7 +47,7 @@ More screens — the fast-entry form, a bank statement mid-import — are in [`d
 The CLI and the MCP server, recorded with [VHS](https://github.com/charmbracelet/vhs):
 
 <p align="center">
-  <img src="docs/assets/gifs/cli-demo.gif" alt="Terminal recording of the bodger CLI: recording a spend, a transfer, checking balances and reports" width="820">
+  <img src="docs/assets/gifs/cli-demo.gif" alt="Terminal recording of the bodger CLI: recording a spend, a transfer, checking balances and reports, and asking for AI-assisted import suggestions" width="820">
 </p>
 
 <p align="center">

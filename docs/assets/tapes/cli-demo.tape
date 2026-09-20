@@ -11,6 +11,16 @@
 # India-based household (HDFC/ICICI/Groww accounts) rather than the
 # US/EUR-centric default.
 #
+# The closing segment runs `bodger import suggest` (issue #306) against a
+# small statement staged silently in the hidden setup block above (so the
+# recording doesn't spend a segment on the unrelated `import upload`
+# flow). BODGER_TYPESAFE_API_KEY is deliberately never set anywhere in
+# this tape, so this always records the "not configured" state -- the
+# one state of that command that's honestly re-renderable in a
+# checked-in asset: it needs no key and spends no credits, unlike a real
+# "suggestions present" recording, which would need a live typesafe.ai
+# key and would spend real credits on every re-render.
+#
 # Run from the repo root:
 #   vhs docs/assets/tapes/cli-demo.tape
 
@@ -39,6 +49,10 @@ Hide
 Type "export BODGER_DB_PATH=/tmp/bodger-vhs-cli-in.db"
 Enter
 Type "export PATH=$PWD/bin:$PATH"
+Enter
+Type "printf 'Date,Description,Amount\n2026-09-10,BigBasket Groceries,-1450.00\n2026-09-12,Swiggy Order,-620.00\n' > /tmp/bodger-vhs-statement.csv"
+Enter
+Type "IMPORT_ID=$(bodger import upload /tmp/bodger-vhs-statement.csv --account 'HDFC Savings' --date-column Date --description-column Description --amount-column Amount --json | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)"
 Enter
 Type "clear"
 Enter
@@ -69,5 +83,9 @@ Enter
 Sleep 3s
 
 Type "bodger recurring list"
+Enter
+Sleep 3s
+
+Type "bodger import suggest $IMPORT_ID"
 Enter
 Sleep 3s

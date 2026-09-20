@@ -229,6 +229,10 @@ func importRollbackViewFrom(r app.RollbackImportBatchResult) importRollbackView 
 // records, resolve, commit, and rollback — the surface issue #212 wires
 // onto StageImport (#210), CommitImportBatch/RollbackImportBatch (#211),
 // and this issue's own review use cases (internal/app/import_review.go).
+// "suggest" (issue #306) is this group's one read-only addition: it wires
+// onto SuggestForImportBatch (internal/app/import_suggest.go), a separate,
+// explicitly-invoked action rather than something upload/records triggers
+// on its own — ADR-0015's "a suggestion run is a user pressing a button."
 func newImportCmd(factory ServiceFactory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "import",
@@ -239,12 +243,164 @@ func newImportCmd(factory ServiceFactory) *cobra.Command {
 		newImportListCmd(factory),
 		newImportShowCmd(factory),
 		newImportRecordsCmd(factory),
+		newImportSuggestCmd(factory),
 		newImportResolveCmd(factory),
 		newImportResolveOccurrenceCmd(factory),
 		newImportCommitCmd(factory),
 		newImportRollbackCmd(factory),
 	)
 	return cmd
+}
+
+// suggestionSource is what every typesafe.ai suggestion this package
+// renders is attributed to (issue #306, ADR-0015, docs/ux-principles.md
+// §6). A literal, not something read off app.ImportRowSuggestion:
+// ports.SuggestionProvider deliberately carries no Name() (nothing it
+// returns is persisted, so there's no provenance column to fill), and an
+// instance has only ever one configured provider for a suggestion to have
+// come from.
+const suggestionSource = "typesafe.ai"
+
+// suggestedCategoryView is one staged row's surviving category
+// suggestion (app.SuggestedCategory) — a proposal, never a value.
+type suggestedCategoryView struct {
+	CategoryID string  `json:"category_id"`
+	Confidence float64 `json:"confidence"`
+}
+
+// suggestedOccurrenceView is one staged row's surviving occurrence-match
+// suggestion (app.SuggestedOccurrence).
+type suggestedOccurrenceView struct {
+	OccurrenceID string  `json:"occurrence_id"`
+	Confidence   float64 `json:"confidence"`
+}
+
+// importRowSuggestionView is one staged row's suggestion(s)
+// (app.ImportRowSuggestion) — Category and/or Occurrence are omitted
+// when there was nothing worth showing for that half of the row.
+type importRowSuggestionView struct {
+	RecordID   string                   `json:"record_id"`
+	Source     string                   `json:"source"`
+	Category   *suggestedCategoryView   `json:"category,omitempty"`
+	Occurrence *suggestedOccurrenceView `json:"occurrence,omitempty"`
+}
+
+func importRowSuggestionViewFrom(s app.ImportRowSuggestion) importRowSuggestionView {
+	v := importRowSuggestionView{RecordID: s.RecordID, Source: suggestionSource}
+	if s.Category != nil {
+		v.Category = &suggestedCategoryView{CategoryID: s.Category.CategoryID, Confidence: s.Category.Confidence}
+	}
+	if s.Occurrence != nil {
+		v.Occurrence = &suggestedOccurrenceView{OccurrenceID: s.Occurrence.OccurrenceID, Confidence: s.Occurrence.Confidence}
+	}
+	return v
+}
+
+// importSuggestionsView is `import suggest`'s own result shape
+// (app.SuggestForImportBatchResult).
+type importSuggestionsView struct {
+	Configured             bool                      `json:"configured"`
+	Suggestions            []importRowSuggestionView `json:"suggestions"`
+	TooManyCategoryOptions []string                  `json:"too_many_category_options,omitempty"`
+	RowsSuggested          int                       `json:"rows_suggested"`
+	RowsFailed             int                       `json:"rows_failed"`
+}
+
+func importSuggestionsViewFrom(r app.SuggestForImportBatchResult) importSuggestionsView {
+	v := importSuggestionsView{
+		Configured:             r.Configured,
+		TooManyCategoryOptions: r.TooManyCategoryOptions,
+		RowsSuggested:          r.RowsSuggested,
+		RowsFailed:             r.RowsFailed,
+	}
+	for _, s := range r.Suggestions {
+		v.Suggestions = append(v.Suggestions, importRowSuggestionViewFrom(s))
+	}
+	return v
+}
+
+// printImportSuggestions renders `import suggest`'s human-readable
+// output. No raw confidence decimal appears here (docs/ux-principles.md
+// §6's "progressive disclosure": confidence is for ordering only in
+// human output — the precise value is in --json) — Suggestions is
+// already ranked by confidence, best first, so the table's own row order
+// carries that information without printing the number.
+func printImportSuggestions(w io.Writer, v importSuggestionsView) {
+	if !v.Configured {
+		_, _ = fmt.Fprintln(w, "Suggestions aren't set up on this instance. An operator can turn them on by setting "+
+			"BODGER_TYPESAFE_API_KEY (see the user guide) — note that doing so sends this import's transaction "+
+			"descriptions and amounts to typesafe.ai.")
+		return
+	}
+
+	if len(v.Suggestions) == 0 {
+		if v.RowsFailed > 0 {
+			_, _ = fmt.Fprintf(w, "Asked typesafe.ai about %d row(s), but got no answer back — try again shortly.\n", v.RowsFailed)
+		} else {
+			_, _ = fmt.Fprintln(w, "No suggestions for this import right now.")
+		}
+	} else {
+		_, _ = fmt.Fprintf(w, "%d suggestion(s) from typesafe.ai, ranked by confidence. These are proposals only — "+
+			"nothing has been written. Accept one by committing the import and setting the resulting transaction's "+
+			"category yourself, or by resolving the matched occurrence.\n", len(v.Suggestions))
+		tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
+		_, _ = fmt.Fprintln(tw, "RECORD\tSUGGESTED CATEGORY\tSUGGESTED OCCURRENCE")
+		for _, s := range v.Suggestions {
+			cat, occ := "-", "-"
+			if s.Category != nil {
+				cat = s.Category.CategoryID
+			}
+			if s.Occurrence != nil {
+				occ = s.Occurrence.OccurrenceID
+			}
+			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", s.RecordID, cat, occ)
+		}
+		_ = tw.Flush()
+		if v.RowsFailed > 0 {
+			_, _ = fmt.Fprintf(w, "%d more row(s) were asked about but got no answer back from typesafe.ai this time.\n", v.RowsFailed)
+		}
+	}
+
+	if len(v.TooManyCategoryOptions) > 0 {
+		_, _ = fmt.Fprintf(w, "%d row(s) got no category suggestion: you have too many categories of that kind for "+
+			"typesafe.ai to choose between.\n", len(v.TooManyCategoryOptions))
+	}
+}
+
+// newImportSuggestCmd builds "import suggest": issue #306's CLI surface
+// for SuggestForImportBatch (internal/app/import_suggest.go, issue #305)
+// — ADR-0015's advisory category/occurrence suggestions for a staged
+// import's still-unresolved rows. This command writes nothing: it's a
+// separate, explicitly-invoked read, the same shape "fx rates fetch"
+// already established for a metered, user-triggered network call.
+func newImportSuggestCmd(factory ServiceFactory) *cobra.Command {
+	return &cobra.Command{
+		Use:   "suggest <import-id>",
+		Short: "Ask typesafe.ai for category and occurrence-match suggestions on an import's still-unresolved rows",
+		Long: "Suggestions are advisory only — nothing is written to your accounts, categories, or transactions by " +
+			"this command. Each suggestion is attributed to typesafe.ai by name and ranked by its own confidence; " +
+			"accepting one is exactly the same action you'd take without a suggestion — commit the import and set " +
+			"the resulting transaction's category, or resolve the matched occurrence. If this instance has no " +
+			"typesafe.ai key configured, this reports that plainly rather than failing.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			svc, closeDB, err := factory(ctx)
+			if err != nil {
+				return err
+			}
+			defer closeQuietly(cmd, closeDB)
+
+			result, err := svc.SuggestForImportBatch(ctx, app.SuggestForImportBatchQuery{
+				ActorID: ports.SeededUserID, ImportBatchRef: args[0],
+			})
+			if err != nil {
+				return err
+			}
+			view := importSuggestionsViewFrom(result)
+			return render(cmd, view, func(w io.Writer) { printImportSuggestions(w, view) })
+		},
+	}
 }
 
 type importUploadFlags struct {

@@ -21,6 +21,7 @@ import (
 
 	"github.com/anirudhgray/bodger/internal/adapters/fxprovider"
 	"github.com/anirudhgray/bodger/internal/adapters/sqlite"
+	"github.com/anirudhgray/bodger/internal/adapters/typesafe"
 	"github.com/anirudhgray/bodger/internal/app"
 	"github.com/anirudhgray/bodger/internal/platform/clock"
 	"github.com/anirudhgray/bodger/internal/platform/config"
@@ -176,6 +177,19 @@ func bootstrap(ctx context.Context) (*app.Service, func() error, error) {
 	if err != nil {
 		_ = db.Close()
 		return nil, nil, err
+	}
+
+	// Suggestions (M10 · Valinor, ADR-0015) is deliberately not one of
+	// NewService's constructor arguments — nil is a legitimate production
+	// value, not a missing dependency (Service.Suggestions' own doc
+	// comment, internal/app/service.go). It's wired in here, after
+	// construction, only when an operator has actually set
+	// BODGER_TYPESAFE_API_KEY; an absent key leaves it nil, which is what
+	// makes SuggestForImportBatch report {Configured: false} without ever
+	// constructing an adapter or touching the network (ADR-0015 "no key
+	// anywhere... must never prevent the binary from starting").
+	if cfg.TypesafeAPIKey != "" {
+		svc.Suggestions = typesafe.New(cfg.TypesafeAPIKey, cfg.TypesafeBaseURL, nil)
 	}
 
 	return svc, db.Close, nil

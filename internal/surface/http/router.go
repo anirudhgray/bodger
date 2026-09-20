@@ -656,6 +656,20 @@ var routeTable = []route{
 		Request: resolveImportRecordOccurrenceMatchRequest{}, Response: importRecordView{},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity, http.StatusPreconditionFailed},
 	},
+	{
+		Method: http.MethodGet, Pattern: "/api/v1/imports/{id}/suggestions",
+		Handler: func(h *handlers) http.HandlerFunc { return h.getImportSuggestions },
+
+		OperationID: "getImportSuggestions", Summary: "Get typesafe.ai's advisory suggestions for an import's still-unresolved rows.",
+		Description: "Read-only — writes nothing. A suggestion proposes a category and/or a pending-occurrence match for a " +
+			"staged row that has no resolved category yet; accepting one means committing the import and setting the " +
+			"resulting transaction's category yourself, or resolving the occurrence match, exactly as you would without " +
+			"this endpoint. Every suggestion is attributed to typesafe.ai by name. If this instance has no typesafe.ai " +
+			`key configured, "configured" is false and every other field is zero — not an error.`,
+		SuccessStatus: http.StatusOK, SuccessDescription: "The suggestions available for this import's still-unresolved rows.",
+		Response: importSuggestionsView{},
+		Errors:   []int{http.StatusNotFound},
+	},
 
 	{
 		Method: http.MethodGet, Pattern: "/api/v1/budgets",

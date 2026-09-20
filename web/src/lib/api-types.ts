@@ -779,6 +779,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/imports/{id}/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get typesafe.ai's advisory suggestions for an import's still-unresolved rows.
+         * @description Read-only — writes nothing. A suggestion proposes a category and/or a pending-occurrence match for a staged row that has no resolved category yet; accepting one means committing the import and setting the resulting transaction's category yourself, or resolving the occurrence match, exactly as you would without this endpoint. Every suggestion is attributed to typesafe.ai by name. If this instance has no typesafe.ai key configured, "configured" is false and every other field is zero — not an error.
+         */
+        get: operations["getImportSuggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/recurring-occurrences": {
         parameters: {
             query?: never;
@@ -1759,6 +1779,27 @@ export interface components {
         ImportRollbackEnvelope: {
             data: components["schemas"]["ImportRollback"];
         };
+        ImportRowSuggestion: {
+            category?: components["schemas"]["SuggestedCategory"];
+            occurrence?: components["schemas"]["SuggestedOccurrence"];
+            record_id: string;
+            /** @description Always "typesafe.ai" — which third party proposed this suggestion. */
+            source: string;
+        };
+        ImportSuggestions: {
+            /** @description False when this instance has no typesafe.ai key configured — not an error; every other field is then left zero. See docs/user-guide.md for how an operator enables this. */
+            configured: boolean;
+            /** @description How many of those rows typesafe.ai never answered. One row failing never discards another row's suggestion — every staged row is still fully listable and reviewable regardless. */
+            rows_failed: number;
+            /** @description How many staged rows actually had a suggestion request sent for them. */
+            rows_suggested: number;
+            suggestions: components["schemas"]["ImportRowSuggestion"][];
+            /** @description Staged record IDs that got no category suggestion because this actor has too many categories of the row's kind for typesafe.ai to be asked about. */
+            too_many_category_options?: string[];
+        };
+        ImportSuggestionsEnvelope: {
+            data: components["schemas"]["ImportSuggestions"];
+        };
         LoginRequest: {
             password: string;
         };
@@ -2002,6 +2043,24 @@ export interface components {
         };
         SetReportingCurrencyRequest: {
             currency: string;
+        };
+        SuggestedCategory: {
+            /** @description The suggested category's ID. */
+            category_id: string;
+            /**
+             * Format: double
+             * @description typesafe.ai's own confidence for this answer (0-1), already past bodger's 0.5 display threshold. Ordering only — not a value to act on by itself.
+             */
+            confidence: number;
+        };
+        SuggestedOccurrence: {
+            /**
+             * Format: double
+             * @description typesafe.ai's own confidence for this answer (0-1), already past bodger's 0.5 display threshold.
+             */
+            confidence: number;
+            /** @description The suggested pending occurrence's ID. */
+            occurrence_id: string;
         };
         TopTransactions: {
             currency: string;
@@ -3685,6 +3744,30 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             412: components["responses"]["PreconditionFailed"];
+        };
+    };
+    getImportSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's ID, or (for an account or category) its unique name. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The suggestions available for this import's still-unresolved rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportSuggestionsEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     listScheduledOccurrences: {

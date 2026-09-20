@@ -32,6 +32,8 @@ A few things you can set before you start, if the defaults don't suit you — no
 | `BODGER_DEFAULT_CURRENCY` | The currency used when nothing more specific applies | `USD` |
 | `BODGER_USER_TIMEZONE` | The timezone "today" and your dates are resolved in | `UTC` |
 | `BODGER_HTTP_BIND_ADDR` | Where `bodger serve` (see below) listens | `127.0.0.1:8080` |
+| `BODGER_TYPESAFE_API_KEY` | Turns on AI-assisted import suggestions (see below) — **setting this sends transaction descriptions and amounts to typesafe.ai** | unset (suggestions off) |
+| `BODGER_TYPESAFE_BASE_URL` | Where those suggestion requests are sent, if you're pointing at something other than typesafe.ai's own API | typesafe.ai's hosted API |
 
 For example, if you're in India and want dates and "today" resolved correctly:
 
@@ -341,7 +343,21 @@ bodger import rollback <import-id>
 
 This removes exactly the transactions that import created; everything else you've recorded is untouched. `bodger import list` shows every import you've started, and `bodger import show <import-id>` looks up one import's current status.
 
-The REST API offers the same operations: `POST /api/v1/imports` (the uploaded file's own bytes as the request body, with the account, filename, and column mapping as query parameters), `GET /api/v1/imports`, `GET /api/v1/imports/{id}`, `GET /api/v1/imports/{id}/records`, `POST /api/v1/import-records/{id}/resolve`, `POST /api/v1/import-records/{id}/resolve-occurrence-match`, `POST /api/v1/imports/{id}/commit`, and `POST /api/v1/imports/{id}/rollback`.
+### Getting AI-assisted suggestions
+
+If you've set `BODGER_TYPESAFE_API_KEY` (see [Installing and first run](#installing-and-first-run) above), you can ask for category and occurrence-match suggestions on a staged import's still-unresolved rows:
+
+```sh
+bodger import suggest <import-id>
+```
+
+This asks [typesafe.ai](https://typesafe.ai) which of your existing categories a row's description sounds like, and whether a row looks like a pending recurring occurrence (rent, a subscription) rather than a new transaction. **Setting the key sends that import's transaction descriptions and amounts to typesafe.ai** — nothing else, and nothing is sent at all unless you run this command.
+
+Every suggestion is a proposal, never a value: nothing is written by this command. Each one is attributed to typesafe.ai by name and ranked by its own confidence — accepting one means committing the import and setting the resulting transaction's category yourself, or resolving the occurrence match the normal way, exactly as you would without a suggestion. `--json` also carries the precise confidence and — for a row with too many categories of one kind for typesafe.ai to choose between — which rows got no category suggestion at all.
+
+If the key isn't set, this reports that plainly and doesn't fail. If typesafe.ai itself can't be reached (or rejects the key), your staged rows are still fully listable — nothing about reviewing an import depends on this working.
+
+The REST API offers the same operations: `POST /api/v1/imports` (the uploaded file's own bytes as the request body, with the account, filename, and column mapping as query parameters), `GET /api/v1/imports`, `GET /api/v1/imports/{id}`, `GET /api/v1/imports/{id}/records`, `GET /api/v1/imports/{id}/suggestions`, `POST /api/v1/import-records/{id}/resolve`, `POST /api/v1/import-records/{id}/resolve-occurrence-match`, `POST /api/v1/imports/{id}/commit`, and `POST /api/v1/imports/{id}/rollback`.
 
 Only CSV is supported today.
 
@@ -632,6 +648,7 @@ These are always available, need no confirmation, and aren't recorded in `bodger
 | `get_average_transaction_size` | The mean transaction amount, overall and by top-level category — the same as `bodger report average-transaction-size`. |
 | `get_category_trends` | Each top-level category's spending/income change between the current period and the preceding one — the same as `bodger report category-trends`. |
 | `get_transaction` | A single recorded transaction by ID — distinct from `list_transactions`' list/filter, the same as `GET /api/v1/transactions/{id}`. |
+| `get_import_suggestions` | AI-assisted category and occurrence-match suggestions, from typesafe.ai, for a staged import's still-unresolved rows — proposals only, writes nothing — the same as `bodger import suggest`. Reports plainly if this instance has no typesafe.ai key configured. |
 
 There's also `whoami`, which just reports the identity bodger's MCP server is acting as.
 
@@ -740,6 +757,7 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | `bodger import list` | List every import you've started |
 | `bodger import show <import-id>` | Look up one import's status |
 | `bodger import records <import-id>` | List an import's staged rows, with any duplicate/transfer/occurrence flags |
+| `bodger import suggest <import-id>` | Ask typesafe.ai for category and occurrence-match suggestions on an import's still-unresolved rows — proposals only, writes nothing; requires `BODGER_TYPESAFE_API_KEY` |
 | `bodger import resolve <record-id> --resolution <confirmed_duplicate\|not_duplicate>` | Record your decision on a row flagged as a suspected duplicate |
 | `bodger import resolve-occurrence <record-id> --resolution <materialized\|dismissed>` | Record your decision on a row matched to a pending recurring occurrence |
 | `bodger import commit <import-id>` | Write a staged import's cleared rows as real transactions |
