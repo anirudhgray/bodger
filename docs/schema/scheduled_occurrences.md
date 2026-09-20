@@ -29,7 +29,7 @@ CREATE TABLE scheduled_occurrences (
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| id | TEXT |  | false |  |  |  |
+| id | TEXT |  | false | [import_record](import_record.md) |  |  |
 | rule_id | TEXT |  | false |  | [recurring_rules](recurring_rules.md) |  |
 | occurrence_date | TEXT |  | false |  |  |  |
 | status | TEXT | 'pending' | false |  |  |  |
@@ -63,6 +63,7 @@ CREATE TABLE scheduled_occurrences (
 ```mermaid
 erDiagram
 
+"import_record" }o--o| "scheduled_occurrences" : "FOREIGN KEY (matched_occurrence_id) REFERENCES scheduled_occurrences (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "scheduled_occurrences" }o--|| "recurring_rules" : "FOREIGN KEY (rule_id) REFERENCES recurring_rules (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
 "scheduled_occurrences" }o--o| "transactions" : "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 
@@ -74,6 +75,30 @@ erDiagram
   TEXT transaction_id FK
   TEXT created_at
   TEXT updated_at
+}
+"import_record" {
+  TEXT id PK
+  TEXT import_batch_id FK
+  TEXT user_id FK
+  TEXT raw_payload
+  TEXT booked_date
+  TEXT posted_date
+  TEXT description
+  INTEGER amount_minor
+  TEXT currency FK
+  TEXT external_id
+  TEXT resolved_account_id FK
+  TEXT resolved_category_id FK
+  TEXT duplicate_tier
+  TEXT duplicate_matched_transaction_id FK
+  TEXT duplicate_resolution
+  TEXT status
+  TEXT transaction_id FK
+  INTEGER sort_order
+  TEXT created_at
+  TEXT updated_at
+  TEXT transfer_candidate_record_id FK
+  TEXT matched_occurrence_id FK
 }
 "recurring_rules" {
   TEXT id PK

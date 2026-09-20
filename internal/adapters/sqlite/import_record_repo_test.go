@@ -8,6 +8,7 @@ import (
 
 	"github.com/anirudhgray/bodger/internal/domain/importing"
 	"github.com/anirudhgray/bodger/internal/domain/ledger"
+	"github.com/anirudhgray/bodger/internal/domain/recurring"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
 )
@@ -160,6 +161,58 @@ func TestImportRecordRepository_TransferCandidateRoundTrips(t *testing.T) {
 	}
 	if _, ok := gotOther.TransferCandidateRecordID(); ok {
 		t.Error("TransferCandidateRecordID() ok = true for record-other, want false (never set)")
+	}
+}
+
+// TestImportRecordRepository_MatchedOccurrenceIDRoundTrips exercises the
+// advisory matched_occurrence_id column (issue #301): it must survive a
+// write/read round trip independently of any DuplicateMatch or transfer
+// candidate, and is nullable — most records never have one.
+func TestImportRecordRepository_MatchedOccurrenceIDRoundTrips(t *testing.T) {
+	db, _ := newTestDB(t)
+	ctx := context.Background()
+	batch := seedImportBatch(t, db, ports.SeededUserID, "batch-1", "acc-1")
+
+	// The referenced occurrence must exist first: matched_occurrence_id is
+	// a foreign key, and this database runs with foreign_keys=1.
+	ruleID := seedRule(t, db, ports.SeededUserID, "rule-1")
+	occ := mustOccurrence(t, "occ-1", ruleID, mustDate(t, 2026, time.August, 1))
+	if err := NewScheduledOccurrenceRepository(db).CreateBatch(ctx, ports.SeededUserID, []recurring.ScheduledOccurrence{occ}); err != nil {
+		t.Fatalf("seed occurrence: %v", err)
+	}
+
+	repo := NewImportRecordRepository(db)
+	record := mustImportRecord(t, "record-1", ports.SeededUserID, batch.ID(), 0,
+		importing.WithOccurrenceMatch("occ-1"),
+	)
+	if err := repo.CreateBatch(ctx, ports.SeededUserID, []importing.ImportRecord{record}); err != nil {
+		t.Fatalf("CreateBatch: %v", err)
+	}
+
+	got, err := repo.Get(ctx, ports.SeededUserID, "record-1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if v, ok := got.MatchedOccurrenceID(); !ok || v != "occ-1" {
+		t.Errorf("MatchedOccurrenceID() = (%q, %v), want (%q, true)", v, ok, "occ-1")
+	}
+	if _, ok := got.DuplicateMatch(); ok {
+		t.Error("DuplicateMatch() ok = true, want false — never set")
+	}
+	if _, ok := got.TransferCandidateRecordID(); ok {
+		t.Error("TransferCandidateRecordID() ok = true, want false — never set")
+	}
+
+	other := mustImportRecord(t, "record-2", ports.SeededUserID, batch.ID(), 1)
+	if err := repo.CreateBatch(ctx, ports.SeededUserID, []importing.ImportRecord{other}); err != nil {
+		t.Fatalf("CreateBatch(record-2): %v", err)
+	}
+	gotOther, err := repo.Get(ctx, ports.SeededUserID, "record-2")
+	if err != nil {
+		t.Fatalf("Get(record-2): %v", err)
+	}
+	if _, ok := gotOther.MatchedOccurrenceID(); ok {
+		t.Error("MatchedOccurrenceID() ok = true for record-2, want false (never set)")
 	}
 }
 
