@@ -145,6 +145,13 @@ endif
 .PHONY: test
 test: test-go test-web
 
+## check-typesafe-live: run the typesafe.ai adapter's live tests against the real API - spends credits, needs BODGER_TYPESAFE_API_KEY set, never run by `make check` or CI (see docs/contributing.md)
+.PHONY: check-typesafe-live
+check-typesafe-live:
+ifneq ($(HAS_GO),)
+	go test -tags typesafe_live -run TestLive -v ./internal/adapters/typesafe/...
+endif
+
 ## test-cover: run Go tests with a coverage profile
 .PHONY: test-cover
 test-cover:
