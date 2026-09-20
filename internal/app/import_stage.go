@@ -200,6 +200,22 @@ func (s *Service) buildImportRecord(ctx context.Context, actorID string, batch i
 		}
 	}
 
+	// Occurrence matching (issue #301) is independent of, and runs
+	// alongside, the transaction-shaped duplicate/transfer checks above —
+	// it looks at pending recurring.ScheduledOccurrences, not committed
+	// transactions or other staged records. Skipped for an already-excluded
+	// exact duplicate for the same reason transfer detection is: nothing
+	// about an excluded row's fate is still open to change.
+	if !isExact {
+		occurrenceID, found, err := s.findOccurrenceMatch(ctx, actorID, account.ID(), row.Amount, row.BookedDate, row.Description)
+		if err != nil {
+			return importing.ImportRecord{}, err
+		}
+		if found {
+			opts = append(opts, importing.WithOccurrenceMatch(occurrenceID))
+		}
+	}
+
 	record, err := importing.NewImportRecord(
 		s.IDs.NewID(), actorID, batch.ID(), row.RawPayload, row.BookedDate, row.Description, row.Amount, row.SortOrder, opts...,
 	)

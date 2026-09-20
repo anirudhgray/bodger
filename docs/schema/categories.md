@@ -109,6 +109,7 @@ erDiagram
   TEXT created_at
   TEXT updated_at
   TEXT transfer_candidate_record_id FK
+  TEXT matched_occurrence_id FK
 }
 "budget_lines" {
   TEXT id PK

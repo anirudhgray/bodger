@@ -17,7 +17,7 @@
 | [api_tokens](api_tokens.md) | 8 |  | table |
 | [fx_rates](fx_rates.md) | 6 |  | table |
 | [import_batch](import_batch.md) | 9 |  | table |
-| [import_record](import_record.md) | 21 |  | table |
+| [import_record](import_record.md) | 22 |  | table |
 | [budgets](budgets.md) | 9 |  | table |
 | [budget_lines](budget_lines.md) | 5 |  | table |
 | [mcp_tool_call](mcp_tool_call.md) | 8 |  | table |
@@ -48,6 +48,7 @@ erDiagram
 "api_tokens" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_batch" }o--|| "accounts" : "FOREIGN KEY (target_account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_batch" }o--|| "users" : "FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"import_record" }o--o| "scheduled_occurrences" : "FOREIGN KEY (matched_occurrence_id) REFERENCES scheduled_occurrences (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_record" }o--o| "import_record" : "FOREIGN KEY (transfer_candidate_record_id) REFERENCES import_record (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_record" }o--o| "transactions" : "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_record" }o--o| "transactions" : "FOREIGN KEY (duplicate_matched_transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
@@ -206,6 +207,7 @@ erDiagram
   TEXT created_at
   TEXT updated_at
   TEXT transfer_candidate_record_id FK
+  TEXT matched_occurrence_id FK
 }
 "budgets" {
   TEXT id PK

@@ -39,6 +39,40 @@ type MaterialiseOccurrenceResult struct {
 	Occurrence  recurring.ScheduledOccurrence
 }
 
+// resolveOccurrenceMoney resolves the account, category, and signed
+// money.Money value that materialising rule's next firing would use — the
+// one and only path through which anything may derive a monetary value for
+// one of rule's occurrences (ADR-0014). An occurrence itself carries no
+// account, no currency, and no Money; every value here comes from the
+// rule's own account, category, and amountMinor, exactly as
+// MaterialiseOccurrence's own doc comment describes, and rule.AmountMinor()
+// is always strictly positive — the returned money.Money's sign instead
+// follows category.Kind() the same way buildOutflowOrInflowPosting's
+// wantPositive dispatch does for a user-entered amount.
+//
+// MaterialiseOccurrence and (issue #301) findOccurrenceMatch both call this
+// rather than each computing their own account/category/sign lookup, so
+// there is exactly one place that knows how to turn a RecurringRule into a
+// concrete, signed amount.
+func (s *Service) resolveOccurrenceMoney(ctx context.Context, actorID string, rule recurring.RecurringRule) (ledger.Account, ledger.Category, money.Money, error) {
+	account, err := s.resolveOwnedAccount(ctx, actorID, rule.AccountID())
+	if err != nil {
+		return ledger.Account{}, ledger.Category{}, money.Money{}, err
+	}
+	category, err := s.resolveOwnedCategory(ctx, actorID, rule.CategoryID())
+	if err != nil {
+		return ledger.Account{}, ledger.Category{}, money.Money{}, err
+	}
+
+	wantPositive := category.Kind() == ledger.CategoryKindIncome
+	amountMinor := signedAmount(rule.AmountMinor(), wantPositive)
+	m, err := money.NewMoney(amountMinor, account.Currency())
+	if err != nil {
+		return ledger.Account{}, ledger.Category{}, money.Money{}, errs.New(errs.Internal).Wrap(err)
+	}
+	return account, category, m, nil
+}
+
 // MaterialiseOccurrence implements issue #279's materialisation use case.
 func (s *Service) MaterialiseOccurrence(ctx context.Context, cmd MaterialiseOccurrenceCommand) (MaterialiseOccurrenceResult, error) {
 	if err := requireActorID(cmd.ActorID); err != nil {
@@ -55,11 +89,7 @@ func (s *Service) MaterialiseOccurrence(ctx context.Context, cmd MaterialiseOccu
 		return MaterialiseOccurrenceResult{}, err
 	}
 
-	account, err := s.resolveOwnedAccount(ctx, cmd.ActorID, rule.AccountID())
-	if err != nil {
-		return MaterialiseOccurrenceResult{}, err
-	}
-	category, err := s.resolveOwnedCategory(ctx, cmd.ActorID, rule.CategoryID())
+	account, category, m, err := s.resolveOccurrenceMoney(ctx, cmd.ActorID, rule)
 	if err != nil {
 		return MaterialiseOccurrenceResult{}, err
 	}
@@ -71,11 +101,6 @@ func (s *Service) MaterialiseOccurrence(ctx context.Context, cmd MaterialiseOccu
 	// wantPositive dispatch buildOutflowOrInflowPosting uses for
 	// user-entered amounts.
 	wantPositive := category.Kind() == ledger.CategoryKindIncome
-	amountMinor := signedAmount(rule.AmountMinor(), wantPositive)
-	m, err := money.NewMoney(amountMinor, account.Currency())
-	if err != nil {
-		return MaterialiseOccurrenceResult{}, errs.New(errs.Internal).Wrap(err)
-	}
 	categoryID := category.ID()
 	posting, err := ledger.NewPosting(s.IDs.NewID(), account.ID(), m, &categoryID, 0)
 	if err != nil {

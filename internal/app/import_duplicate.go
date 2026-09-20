@@ -8,6 +8,7 @@ import (
 	"github.com/anirudhgray/bodger/internal/domain"
 	"github.com/anirudhgray/bodger/internal/domain/importing"
 	"github.com/anirudhgray/bodger/internal/domain/money"
+	"github.com/anirudhgray/bodger/internal/domain/recurring"
 	"github.com/anirudhgray/bodger/internal/ports"
 )
 
@@ -97,6 +98,104 @@ func (s *Service) findSuspectedDuplicate(ctx context.Context, actorID, accountID
 			}
 			return txn.ID(), true, nil
 		}
+	}
+	return "", false, nil
+}
+
+// findOccurrenceMatch implements issue #301's fix for a gap ADR-0008's own
+// two-tier model never covered: findExactDuplicate and findSuspectedDuplicate
+// both search s.Transactions — already-committed money — so a pending
+// recurring.ScheduledOccurrence (rent, a subscription, generated ahead of
+// time by GenerateOccurrences but never yet paid) was invisible to duplicate
+// detection. Import a bank row for that same payment before today's fix and
+// nothing flagged it: the row committed as a brand-new transaction and the
+// occurrence sat there pending forever, the same money now counted once in
+// the ledger and once in the forecast.
+//
+// The heuristic itself mirrors findSuspectedDuplicate's own tier-2 exactly —
+// same account, exact amount and currency, occurrence_date within
+// duplicateDateWindowDays days, and a similar description — deliberately
+// reusing tier-2's shape (rather than, say, a wider or narrower window)
+// because the two heuristics are answering the same question ("is this row
+// something the ledger already knows about, in a different form") for two
+// different kinds of "already knows about." What differs is where the
+// candidates and their amounts come from:
+//
+//   - Candidates are s.ScheduledOccurrences.List's pending occurrences, not
+//     s.Transactions.List's committed rows.
+//   - An occurrence carries no account, no currency, and no Money
+//     (ADR-0014) — there is nothing on it to compare against amount
+//     directly. Its effective amount only exists through its owning rule,
+//     so this resolves the rule (s.RecurringRules.Get) and then calls
+//     resolveOccurrenceMoney — the exact same account/category/sign path
+//     MaterialiseOccurrence itself uses to build a real transaction — rather
+//     than re-deriving a signed amount here. Reusing that path is what
+//     keeps this function from ever reading a monetary value "through" the
+//     occurrence itself, which ADR-0014 forbids.
+//   - The description compared against is the rule's own Description(), an
+//     occurrence's only stand-in for a transaction's description (an
+//     occurrence carries none of its own either).
+//
+// The result is deliberately not surfaced as a DuplicateMatch. A
+// DuplicateMatch's matched side names a transaction, and its two
+// resolutions are "exclude this row" (something else already covers this
+// money) or "dismiss" — neither fits an occurrence match, where this row
+// should still become the real transaction on commit and the actual open
+// question is what happens to the *occurrence* (materialise it or skip it,
+// verbs this package doesn't apply). buildImportRecord instead records the
+// match as importing.WithOccurrenceMatch — a bare, purely advisory ID, the
+// same shape WithTransferCandidate already uses for pointing at a
+// different-shaped entity — leaving the "what do we do about the
+// occurrence" decision to a later, separate use case.
+//
+// Like findSuspectedDuplicate, the first matching occurrence
+// ScheduledOccurrenceRepository.List returns wins on multiple candidates —
+// an arbitrary but deterministic and, in practice, vanishingly rare choice
+// (two rules generating identical pending occurrences on the same date is
+// not the common case findSuspectedDuplicate's own "two genuine identical
+// coffees" scenario is).
+func (s *Service) findOccurrenceMatch(ctx context.Context, actorID, accountID string, amount money.Money, bookedDate domain.Date, description string) (string, bool, error) {
+	from := addDays(bookedDate, -duplicateDateWindowDays)
+	to := addDays(bookedDate, duplicateDateWindowDays)
+
+	candidates, err := s.ScheduledOccurrences.List(ctx, actorID, ports.ScheduledOccurrenceFilter{
+		Status:   recurring.OccurrenceStatusPending,
+		FromDate: &from,
+		ToDate:   &to,
+	})
+	if err != nil {
+		return "", false, err
+	}
+
+	for _, occ := range candidates {
+		rule, err := s.RecurringRules.Get(ctx, actorID, occ.RuleID())
+		if err != nil {
+			// A pending occurrence should always have a live owning rule
+			// (rules are only ever archived, never deleted); treating a
+			// missing one as "not a candidate" rather than failing the
+			// whole import is the same defensive posture
+			// ImportBatchTransactions takes for a rolled-back record's
+			// transaction (import_commit.go's own isNotFound).
+			if isNotFound(err) {
+				continue
+			}
+			return "", false, err
+		}
+		if rule.AccountID() != accountID {
+			continue
+		}
+
+		_, _, occAmount, err := s.resolveOccurrenceMoney(ctx, actorID, rule)
+		if err != nil {
+			return "", false, err
+		}
+		if !occAmount.Equal(amount) {
+			continue
+		}
+		if !descriptionsSimilar(description, rule.Description()) {
+			continue
+		}
+		return occ.ID(), true, nil
 	}
 	return "", false, nil
 }

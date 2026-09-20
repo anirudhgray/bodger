@@ -56,7 +56,7 @@ CREATE TABLE import_record (
     -- transaction's postings.
     sort_order                        INTEGER NOT NULL DEFAULT 0,
     created_at                        TEXT NOT NULL,
-    updated_at                        TEXT NOT NULL, transfer_candidate_record_id TEXT REFERENCES import_record (id),
+    updated_at                        TEXT NOT NULL, transfer_candidate_record_id TEXT REFERENCES import_record (id), matched_occurrence_id TEXT REFERENCES scheduled_occurrences (id),
     -- Table-level constraints must come after every column definition
     -- (SQLite syntax) — both cross-column invariants live here rather
     -- than inline next to the columns they mention.
@@ -92,20 +92,22 @@ CREATE TABLE import_record (
 | created_at | TEXT |  | false |  |  |  |
 | updated_at | TEXT |  | false |  |  |  |
 | transfer_candidate_record_id | TEXT |  | true |  | [import_record](import_record.md) |  |
+| matched_occurrence_id | TEXT |  | true |  | [scheduled_occurrences](scheduled_occurrences.md) |  |
 
 ## Constraints
 
 | Name | Type | Definition |
 | ---- | ---- | ---------- |
 | id | PRIMARY KEY | PRIMARY KEY (id) |
-| - (Foreign key ID: 0) | FOREIGN KEY | FOREIGN KEY (transfer_candidate_record_id) REFERENCES import_record (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE |
-| - (Foreign key ID: 1) | FOREIGN KEY | FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE |
-| - (Foreign key ID: 2) | FOREIGN KEY | FOREIGN KEY (duplicate_matched_transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE |
-| - (Foreign key ID: 3) | FOREIGN KEY | FOREIGN KEY (resolved_category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE |
-| - (Foreign key ID: 4) | FOREIGN KEY | FOREIGN KEY (resolved_account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE |
-| - (Foreign key ID: 5) | FOREIGN KEY | FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE |
-| - (Foreign key ID: 6) | FOREIGN KEY | FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE |
-| - (Foreign key ID: 7) | FOREIGN KEY | FOREIGN KEY (import_batch_id) REFERENCES import_batch (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE |
+| - (Foreign key ID: 0) | FOREIGN KEY | FOREIGN KEY (matched_occurrence_id) REFERENCES scheduled_occurrences (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE |
+| - (Foreign key ID: 1) | FOREIGN KEY | FOREIGN KEY (transfer_candidate_record_id) REFERENCES import_record (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE |
+| - (Foreign key ID: 2) | FOREIGN KEY | FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE |
+| - (Foreign key ID: 3) | FOREIGN KEY | FOREIGN KEY (duplicate_matched_transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE |
+| - (Foreign key ID: 4) | FOREIGN KEY | FOREIGN KEY (resolved_category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE |
+| - (Foreign key ID: 5) | FOREIGN KEY | FOREIGN KEY (resolved_account_id) REFERENCES accounts (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE |
+| - (Foreign key ID: 6) | FOREIGN KEY | FOREIGN KEY (currency) REFERENCES currencies (code) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE |
+| - (Foreign key ID: 7) | FOREIGN KEY | FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE |
+| - (Foreign key ID: 8) | FOREIGN KEY | FOREIGN KEY (import_batch_id) REFERENCES import_batch (id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE |
 | sqlite_autoindex_import_record_1 | PRIMARY KEY | PRIMARY KEY (id) |
 | - | CHECK | CHECK (duplicate_tier IN ('exact', 'suspected_duplicate')) |
 | - | CHECK | CHECK (duplicate_resolution IN ('pending', 'confirmed_duplicate', 'not_duplicate')) |
@@ -134,6 +136,7 @@ erDiagram
 "import_record" }o--o| "categories" : "FOREIGN KEY (resolved_category_id) REFERENCES categories (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_record" }o--o| "transactions" : "FOREIGN KEY (duplicate_matched_transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 "import_record" }o--o| "transactions" : "FOREIGN KEY (transaction_id) REFERENCES transactions (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+"import_record" }o--o| "scheduled_occurrences" : "FOREIGN KEY (matched_occurrence_id) REFERENCES scheduled_occurrences (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
 
 "import_record" {
   TEXT id PK
@@ -157,6 +160,7 @@ erDiagram
   TEXT created_at
   TEXT updated_at
   TEXT transfer_candidate_record_id FK
+  TEXT matched_occurrence_id FK
 }
 "import_batch" {
   TEXT id PK
@@ -222,6 +226,15 @@ erDiagram
   TEXT updated_at
   TEXT fx_rate_used
   TEXT fx_rate_source
+}
+"scheduled_occurrences" {
+  TEXT id PK
+  TEXT rule_id FK
+  TEXT occurrence_date
+  TEXT status
+  TEXT transaction_id FK
+  TEXT created_at
+  TEXT updated_at
 }
 ```
 
