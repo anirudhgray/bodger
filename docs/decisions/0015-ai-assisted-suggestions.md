@@ -13,12 +13,30 @@ Two constraints from the existing system shape everything below, and they pull i
 1. **[ADR-0002](0002-authoritative-ledger-and-corrections.md): the ledger is authoritative.** A category is part of a transaction's meaning. Nothing may write one because a model was confident.
 2. **[ADR-0012](0012-fx-rate-provider.md): the last external provider was chosen specifically to avoid a key.** Frankfurter won partly *because* it needs "no API key, no signup, no per-instance secret", so self-hosting stays "run the binary". typesafe.ai reintroduces exactly that dependency — an account, a key, and metered credits. This ADR has to reconcile that rather than quietly walk it back.
 
-Four facts about the vendor, verified against its documentation, constrain the design harder than a general "should we add AI" discussion would:
+### The vendor's own design guidance is the spine of this decision
 
-- **There is no Go SDK.** Python and JavaScript only. [ADR-0001](0001-technology-stack.md) ships a single Go binary, so the adapter is a hand-written HTTP client against `POST https://api.typesafe.ai/v1/systemone` — roughly the same size as `internal/adapters/fxprovider`, and no new runtime dependency.
-- **64k tokens per request, of which `state` plus the longest single question may be at most 32k.** A batch of staged rows is not unbounded input; something has to chunk.
-- **Questions in one call are independent and the `state` is charged once.** The vendor's own measurement of batching 13 questions over one document is *12.2× cheaper and 10.0× faster* than 13 single-question calls. Batching is therefore the default shape, not an optimisation.
-- **`confidence` is returned on Choice and Score answers only — never on Noul**, which returns a bare probability. Anything that wants a calibrated certainty must ask a Choice.
+typesafe.ai's ["How to build with System One"](https://docs.typesafe.ai/concepts/how-to-build-with-system-one) states the principle this ADR is organised around: **"code owns the workflow and AI handles narrow, structured decisions"**, and **"use code when you can. It is reliable and cheap."** Deterministic rules, control flow, and side effects stay in code; the model gets atomic, constrained judgements over unstructured text and nothing else.
+
+That is not a stylistic preference here. It is what makes the feature safe to add to a ledger, and — combined with the model's documented limitations below — it decides the shape of the port, the call site, and which half of each question code answers before the model sees it.
+
+### Model limitations that directly constrain this design
+
+The vendor publishes a per-version [known-jaggedness page](https://docs.typesafe.ai/model-jaggedness/jev-1.13), and three entries on it are load-bearing rather than trivia:
+
+- **"Jev reads dates as text, not as ordered quantities."** It cannot reliably tell which of two dates comes first, compute an interval, or verify a date window.
+- **"Jev is not a calculator."** It cannot reliably count or compare numeric magnitudes, and performs worse on numeric representations than semantic ones.
+- **"Accuracy falls as the state grows with content unrelated to the decision."** Irrelevant context in `state` acts as a distractor.
+
+The first two would silently wreck occurrence matching, which is fundamentally "is this 2026-09-03 debit of ₹42,000 the same money as this occurrence projected for 2026-09-01?" — a date-window and amount comparison. The third decides how rows are batched. Both are resolved below.
+
+### Other vendor facts the design had to accommodate
+
+- **There is no Go SDK.** Python and JavaScript only. [ADR-0001](0001-technology-stack.md) ships a single Go binary, so the adapter is a hand-written HTTP client against `POST https://api.typesafe.ai/v1/systemone` — roughly the size of `internal/adapters/fxprovider`, and no new runtime dependency.
+- **64k tokens per request, of which `state` plus the longest single question may be at most 32k.**
+- **Questions in one call are evaluated independently and in parallel, and the `state` is charged once** — so several questions *about the same content* cost one state and add no latency.
+- **`confidence` is returned on Choice and Score answers only — never on Noul**, which returns a bare probability. Anything that needs a calibrated certainty must ask a Choice.
+- **A Choice takes at most 255 options.**
+- **`state` must be a string, JSON object, or array of text values**, with objects preferred so each part has a descriptive name.
 
 ## Decision
 
@@ -41,59 +59,98 @@ So when a user imports a bank CSV containing the rent payment that is already si
 
 **This ADR therefore re-scopes the second use case to: suggesting that a staged import row is an instance of a pending `ScheduledOccurrence`.** The confirm step already exists (`MaterialiseOccurrence` / `SkipOccurrence`), the candidate set already exists (pending occurrences), and the suggestion lands at the same review step as the category suggestion — so both use cases share one call site, one port, and one failure path.
 
-`architecture.md` §8's M10 description is corrected in the same PR as this ADR.
+`architecture.md` §8's M10 description is corrected in the same PR as this ADR. The underlying detection gap is tracked separately as [#301](https://github.com/anirudhgray/bodger/issues/301), because fixing it must not depend on an optional, off-by-default feature.
+
+### Code answers the arithmetic. The model answers only the semantics.
+
+This is the single most important rule in this ADR, and it follows directly from "use code when you can" plus the two jaggedness entries above.
+
+**Dates and amounts are never a model judgement.** The application layer narrows the occurrence candidate set *deterministically* before any request is built, using the comparison logic `findSuspectedDuplicate` already implements — same currency, equal absolute amount, `booked_date` within the existing `duplicateDateWindowDays` window. Only the survivors are offered to the model, and the only question it is asked is the one it is actually good at:
+
+> Of these already date- and amount-eligible occurrences, which one does this row's **description** refer to?
+
+The model never sees the question "is 2026-09-03 within seven days of 2026-09-01?", because it demonstrably cannot answer it. Likewise for categorisation: the row's **amount sign already determines whether an expense or income category applies**, so the app layer filters the option set by `CategoryKind` in code rather than offering both and hoping. A deterministic filter that halves the option set is free accuracy and free spend reduction, and it is exactly what the vendor means by keeping code in control.
+
+If the deterministic filter leaves **no** candidate occurrences for a row, no occurrence question is asked for that row at all. The model is never invited to invent a match out of an empty or irrelevant set.
+
+### One request per row — *not* one request carrying every row
+
+The vendor's batching cookbook reports 12.2× cheaper and 10.0× faster for 13 questions batched into one call, and it is tempting to read that as "put 200 staged rows in one `state`". **That reading is wrong here, and following it would degrade accuracy.**
+
+The cookbook's win comes from many questions about *one document*, where the document is the shared cost. Staged import rows are *independent* records: in a 200-row state, every row's question has 199 rows of unrelated content alongside it — precisely the documented "large irrelevant state" distractor failure. The economics would improve and the answers would get worse.
+
+So the unit of request is **one row**:
+
+- `state` is that row as an object (description, amount, currency, date) — small, entirely relevant.
+- `questions` carries the category Choice and, when code left candidates, the occurrence Choice. **Two questions, one state, one round trip, no added latency** — this is where the genuine batching win applies, because both questions are about the same content.
+
+The adapter then issues those per-row requests **concurrently**, through a bounded worker pool, so wall-clock time is set by the pool width rather than the row count. Go makes that the natural shape; it is the reason no contortion is needed to recover the throughput the single-giant-state approach appeared to offer.
+
+The 32k `state` limit stops being a design concern entirely at one row per request — a single transaction row is a few hundred tokens. It remains an adapter-level guard, not a chunking algorithm.
 
 ### One port, `ports.SuggestionProvider`, in bodger's vocabulary
 
 Defined in `internal/ports`, consumer-owned, per [ADR-0007](0007-persistence-and-migrations.md).
 
 ```go
-// CategoryOption / OccurrenceOption are the bounded candidate sets.
+// CategoryOption is one category the provider may choose from, already
+// filtered to the kind the row's amount sign implies.
 type CategoryOption struct {
 	ID   string
 	Name string
-	Kind string // disambiguates a same-named expense and income category
 }
 
+// OccurrenceOption is one pending occurrence the application layer has
+// ALREADY established is date- and amount-eligible for its row. The
+// provider is never asked to compare a date or an amount.
 type OccurrenceOption struct {
 	OccurrenceID string
 	Description  string
-	Amount       money.Money
-	Date         domain.Date
 }
 
-// SuggestionRow is the minimal projection of a staged row — see
-// "What leaves the machine" below. Never an importing.ImportRecord.
+// SuggestionRow is the minimal projection of a staged row — see "What
+// leaves the machine". Never an importing.ImportRecord.
 type SuggestionRow struct {
 	RecordID    string
 	Description string
 	Amount      money.Money
 	Date        domain.Date
+
+	// Categories and OccurrenceCandidates are this row's own bounded
+	// option sets, narrowed deterministically by the caller. An empty
+	// OccurrenceCandidates means the occurrence question is not asked
+	// for this row at all.
+	Categories           []CategoryOption
+	OccurrenceCandidates []OccurrenceOption
 }
 
-type CategorySuggestion struct {
-	RecordID   string
-	CategoryID string
-	Confidence float64 // 0..1, the provider's own, unfiltered
-}
-
-type OccurrenceSuggestion struct {
-	RecordID     string
-	OccurrenceID string
-	Confidence   float64
+// RowSuggestion carries both answers for one row. An empty CategoryID or
+// OccurrenceID means "no answer" — not an error, and not a match.
+// Confidence is the provider's own, unfiltered: the display threshold is
+// application-layer policy, applied above this port.
+type RowSuggestion struct {
+	RecordID             string
+	CategoryID           string
+	CategoryConfidence   float64
+	OccurrenceID         string
+	OccurrenceConfidence float64
 }
 
 type SuggestionProvider interface {
-	SuggestCategories(ctx context.Context, rows []SuggestionRow, options []CategoryOption) ([]CategorySuggestion, error)
-	SuggestOccurrenceMatches(ctx context.Context, rows []SuggestionRow, options []OccurrenceOption) ([]OccurrenceSuggestion, error)
+	// Suggest answers every row's questions, fanning out concurrently.
+	// The returned slice is sparse and unordered; callers index it by
+	// RecordID and never assume positional alignment with rows.
+	Suggest(ctx context.Context, rows []SuggestionRow) ([]RowSuggestion, error)
 }
 ```
 
-Three properties of that signature are load-bearing:
+Four properties of that signature are load-bearing:
 
-**It is batch-shaped, like `FetchRange` and unlike `FetchRate`.** A slice of rows in, a slice of suggestions out, one provider round trip. A per-row method would multiply the request count by the batch size and re-send the option set every time — the exact thing the vendor's own batching measurement says not to do.
+**It is batch-shaped at the port, per-row on the wire.** A slice in, a slice out; how that becomes requests — one per row, concurrently, bounded — is adapter mechanism the application layer does not express an opinion about. This mirrors `FxRateProvider.FetchRange`, where the port says "this range" and the adapter owns how many HTTP calls that is.
 
-**The returned slice is sparse.** A row the provider had no answer for simply has no entry. Callers index by `RecordID`; they never assume positional alignment with the input.
+**Each row carries its own option sets**, because the deterministic narrowing above is per-row: two rows in the same batch legitimately have different eligible occurrences and different category kinds.
+
+**One method, not two.** Both questions concern the same row and the same `state`, so splitting them into `SuggestCategories` and `SuggestOccurrenceMatches` would send each row twice and double the latency for no accuracy gain — the vendor's parallel-questions property makes the combined call strictly better here.
 
 **`Choice`, `Score`, `Noul`, `state`, `criteria`, and `jev` appear nowhere in it.** The port speaks about categories and occurrences; the mapping onto typed questions is entirely the adapter's. This follows `FxRateProvider` exactly — that port says `FetchRate(base, quote, date)`, not `GET /v2/rate` — and it is what keeps the vendor swappable. A locally-hosted classifier could satisfy this interface without a line changing above it.
 
@@ -101,7 +158,7 @@ Three properties of that signature are load-bearing:
 
 ### Call site: one new read-only method, and **not** `StageImport`
 
-`Service.SuggestForImportBatch(ctx, SuggestForImportBatchQuery) (SuggestForImportBatchResult, error)` — a new method in `internal/app`, read-only, writing nothing.
+`Service.SuggestForImportBatch(ctx, SuggestForImportBatchQuery) (SuggestForImportBatchResult, error)` — a new method in `internal/app`, read-only, writing nothing. It is where the deterministic narrowing happens, and it is the only caller of the port.
 
 **`StageImport` does not call the provider**, and neither does `CommitImportBatch`, `ResolveImportRecord`, or any recurring-rule method. Staging is the write that must always succeed; putting a metered network round trip inside it would make an import fail because a vendor was down, which is precisely the hard dependency ADR-0012 refused. It would also spend credits on every row of every batch, including the ones nobody ever reviews.
 
@@ -128,21 +185,25 @@ The vendor documents three bands and recommends acting automatically above 0.9. 
 
 Never pre-selected, never applied on commit, never a default a distracted user accepts by pressing enter. There is no threshold anywhere in this system above which a category is assigned without a person choosing it.
 
-Three reasons, in increasing order of how badly they would bite:
+Four reasons, in increasing order of how badly they would bite:
 
 1. ADR-0002 makes the ledger authoritative; a silently-applied category is the ledger holding something nobody asserted.
 2. An import is a *batch*. A threshold that auto-applies at 0.9 across 200 rows produces 200 plausible, confidently-wrong-in-the-tail categorisations that look reviewed and are not — the same class of failure as ADR-0012's "store the requested date instead of the returned one": no error, no flag, and every report built on it quietly wrong.
-3. **Confidence is calibrated per model version**, and the vendor says so explicitly when recommending that callers pin a version if they have calibrated thresholds against one. A threshold that only *filters display* degrades gracefully when the model moves. A threshold that *writes* silently changes meaning under a model upgrade nobody in this repository triggered.
+3. **The 0.5 cutoff is uncalibrated.** The vendor is explicit that thresholds should be set empirically, "by plotting confidence against accuracy on real data" — which nobody has done for bodger's data, because that data does not exist yet. 0.5 is adopted as the vendor's own band boundary and nothing more. A number chosen that way is fit to decide what is *displayed*; it is not fit to decide what is *written*.
+4. **Confidence is calibrated per model version**, and the vendor says so explicitly when recommending that callers pin a version. A display threshold degrades gracefully when the model moves. A writing threshold silently changes meaning under a model upgrade nobody in this repository triggered.
 
-The 0.5 cutoff itself is app-layer policy, not adapter behaviour: the adapter returns whatever confidence it received, and `internal/app` filters. [ADR-0005](0005-shared-application-layer.md) puts every default and policy decision in the application layer, and it makes the threshold testable against the fake without a network.
+The threshold itself is app-layer policy, not adapter behaviour: the adapter returns whatever confidence it received, and `internal/app` filters. [ADR-0005](0005-shared-application-layer.md) puts every default and policy decision in the application layer, and it makes the threshold testable against the fake without a network.
 
 ### Pin the model to `jev-1.13.0`. Never `jev-latest`.
 
-Following directly from the point above. `jev-latest` is an alias that moves without a release on bodger's side, and it moves the calibration of a number this system makes decisions about. The pinned version is a constant in the adapter, bumped deliberately in its own PR.
+Following directly from the point above. `jev-latest` is an alias that moves without a release on bodger's side, and it moves the calibration of a number this system makes decisions about. The pinned version is a constant in the adapter, bumped deliberately in its own PR — and a bump means re-reading that version's jaggedness page, since the limitations this design routes around are published per version.
 
-### Credentials: instance-level, optional, and absent by default
+### Credentials and endpoint: instance-level, optional, absent by default
 
-`BODGER_TYPESAFE_API_KEY`, resolved in `internal/platform/config` — the only package permitted to read the environment (ADR-0005) — following `EnvFxProviderBaseURL`'s existing pattern.
+Two values, resolved in `internal/platform/config` — the only package permitted to read the environment (ADR-0005) — following `EnvFxProviderBaseURL`'s existing pattern:
+
+- `BODGER_TYPESAFE_API_KEY` — empty by default. Empty means the feature is off.
+- `BODGER_TYPESAFE_BASE_URL` — empty by default, meaning the adapter's own `https://api.typesafe.ai`. Configurable for the same reasons ADR-0012 made the Frankfurter endpoint configurable, and because the JS SDK treats the base URL as ordinary configuration too.
 
 **Instance-level, not per-user.** It is the operator's billing relationship, not a user preference like `ReportingCurrency`. When multi-user arrives ([ADR-0006](0006-authentication-and-multi-user-path.md)) this does not become a per-user column; every actor on an instance shares the operator's key and the operator's spend. Stating that now so M2's successor does not have to guess.
 
@@ -162,9 +223,12 @@ The adapter receives `[]SuggestionRow` — **never `importing.ImportRecord`.** T
 | Sent | Not sent |
 | --- | --- |
 | Description, amount, currency, booked date | `RawPayload` — the raw source row |
-| Category names and kinds (the option set) | Account names, IDs, or numbers |
-| Pending occurrence descriptions, amounts, dates | `ExternalID`, running balances, any other parsed column |
+| Category names (the kind-filtered option set) | Account names, IDs, or numbers |
+| Eligible pending occurrence descriptions | `ExternalID`, running balances, any other parsed column |
 | | Any data for an actor other than the one reviewing |
+| | Any row other than the one this request is about |
+
+Privacy and accuracy happen to point the same way here, which is worth noticing rather than treating as luck: the vendor's own guidance is to **"send only relevant context"**, because irrelevant state measurably degrades answers. The minimal projection is both the private choice and the accurate one, and the one-row-per-request decision above reinforces it — no row is ever exposed alongside another row's question.
 
 The explicit projection type is what makes this enforceable rather than aspirational: adding a field to `SuggestionRow` is a visible change to a port, reviewed on its own terms.
 
@@ -172,73 +236,102 @@ Because the key defaults to empty, **the privacy posture defaults to closed.** A
 
 The user guide documents plainly, in the operator's own words rather than this ADR's, that setting the key sends transaction descriptions and amounts to typesafe.ai.
 
-### Failure and latency: never blocks, and `Unavailable` almost always
+### Failing gracefully **and informatively**
 
 The suggestion call is not on the path of any write. When it fails, the review screen still renders every staged row and every action on it — ADR-0012's rule that "a network error must never become an error page over data that is sitting in SQLite" applies verbatim.
 
-| Condition | App-layer result |
-| --- | --- |
-| No key configured | **Not an error.** Result carries `Configured: false` and no suggestions; no HTTP call is made |
-| `401` invalid key | `Unavailable` |
-| Insufficient credits, or any other unlisted 4xx | `Unavailable` |
-| `429` rate limited, `529` overloaded | `Unavailable`. Not retried in a loop (ADR-0012's rule) |
-| `5xx`, timeout, DNS, connection refused | `Unavailable` |
-| `422` validation failed | `Internal` |
+Graceful is not enough on its own, though: an operator whose key has expired or whose credits have run out must be able to tell that from an outage, or they will debug the wrong thing. So the result distinguishes **why** there are no suggestions, and the surfaces render that distinction:
 
-Two of those are deliberate and worth defending.
+| Condition | App-layer result | What the operator can tell |
+| --- | --- | --- |
+| No key configured | **Not an error.** `Configured: false`; no HTTP call is made | "Suggestions aren't set up on this instance" |
+| `401` invalid key | `Unavailable`, reason `credential_rejected` | The key is wrong or revoked — an operator action |
+| `403` permission denied | `Unavailable`, reason `credential_rejected` | Entitlement or credits — an operator/billing action |
+| `429` rate limited | `Unavailable`, reason `throttled` | Transient; try again shortly |
+| `529` overloaded, `5xx`, timeout, DNS, refused | `Unavailable`, reason `provider_unreachable` | The vendor, not this instance |
+| `422` validation failed | `Internal` | A bodger bug; goes to the log |
 
-**`401` is `Unavailable`, not `Unauthenticated`.** ADR-0011's `Unauthenticated` means *the actor* presented no valid credential, and it renders as "You need to sign in before doing that" with HTTP 401. The person reviewing an import is perfectly well authenticated; it is the *operator's instance key* that is wrong, which they very likely cannot fix and must certainly not be told to sign in over. `Unavailable`'s "This isn't available right now" is the honest message. The specific cause goes in the internal chain for the operator's log, per ADR-0011's safe/internal split.
+Three of those are deliberate and worth defending.
+
+**`401`/`403` are `Unavailable`, not `Unauthenticated`.** ADR-0011's `Unauthenticated` means *the actor* presented no valid credential, and it renders as "You need to sign in before doing that" with HTTP 401. The person reviewing an import is perfectly well authenticated; it is the *operator's instance key* that is wrong or out of credit, which they very likely cannot fix and must certainly not be told to sign in over.
+
+**Out-of-credits cannot be detected precisely, and the ADR does not pretend otherwise.** The published error table lists `401`, `422`, `429`, and `529`; the SDKs additionally map `403` to a permission-denied class. Nothing documents a distinct billing or quota status. So `403` is reported as a credential/entitlement problem — the honest superset — rather than asserting "you are out of credits" on a guess. If the vendor later documents a specific status, this table gains a row; it does not need a redesign.
 
 **`422` is `Internal`, not `InvalidInput`.** A malformed question is bodger constructing a request wrongly. `InvalidInput` would blame the user's CSV for the adapter's bug.
 
 The unconfigured case being a *result field rather than an error* is the load-bearing part: it lets a surface render "AI suggestions aren't set up on this instance" as ordinary state, instead of every surface learning to special-case one error code into a non-error.
 
-A client timeout is set explicitly, and the request is never retried in a loop.
+**Partial success is a success.** With one request per row, some rows can succeed while others fail. `Suggest` returns the suggestions it obtained plus a count of rows that failed; it returns an error only when *every* row failed, which is the case that actually means "the provider is unavailable". A single row erroring must never discard 199 good answers.
+
+### Retries, timeouts, and the client contract
+
+ADR-0012 bound the Frankfurter adapter to "never retry in a loop", because that service's abuse limiter is undocumented. That reasoning does not transfer wholesale: typesafe.ai documents its rate limits, returns `429` with a server-supplied retry delay, and its own SDKs retry with capped exponential backoff plus jitter, honouring `Retry-After`. Copying the vendor's client behaviour is more correct than inheriting a rule written for a different service's constraints.
+
+So the adapter takes the JS SDK's shape, minus what bodger does not need:
+
+- **At most 2 retries**, only for `429`, `529`, `5xx`, timeouts, and connection failures. Never for `401`, `403`, or `422`, which will not improve by being asked again.
+- **Exponential backoff with jitter**, honouring a server-supplied retry delay, capped so a single user action cannot hang.
+- **An overall deadline on the whole `Suggest` call**, propagated via `context`, so the bounded worker pool cannot outlive the request that started it.
+- **A `User-Agent` identifying bodger and its version**, as the vendor's own clients do.
 
 ### Bounding the spend
 
-The adapter chunks to respect the 32k `state`-plus-longest-question limit; that is a vendor mechanism and belongs nowhere else. Above it, the application layer caps a single suggestion run at **200 rows**, so a 5,000-row CSV cannot silently become a twenty-five-request spend from one click. The cap is a constant, not configuration — an operator who wants a different number is better served by the implementation issue revisiting it with real usage than by a knob nobody knows to turn.
+The application layer caps a single suggestion run at **200 rows**, so a 5,000-row CSV cannot silently become a 5,000-request spend from one click. The cap is a constant, not configuration — an operator who wants a different number is better served by the implementation issue revisiting it with real usage than by a knob nobody knows to turn.
 
-A Choice question takes at most **255 options**. One slot is always reserved for an explicit "none of these" option, so the effective ceiling is 254 categories or 254 pending occurrences. Over that, the app layer **returns no suggestions rather than truncating the list**: a truncated option set means the correct answer was never offered, and the model will confidently pick the closest wrong one with no signal that anything was omitted.
+A Choice takes at most **255 options**, and one slot is always reserved for an explicit "none of these" so the model has somewhere honest to put an unmatched row. The `CategoryKind` filter already roughly halves the list, and an actor with more than 254 categories *of a single kind* is well past what this design serves. In that case the app layer **returns no category suggestion rather than truncating**: a truncated option set means the correct answer was never offered, and the model will confidently pick the closest wrong one with no signal that anything was omitted. The vendor's [hierarchical-classification technique](https://docs.typesafe.ai/cookbooks/hierarchical_classification) is the documented way past that ceiling if anyone ever genuinely needs it; it is deliberately not built now, for a limit no realistic personal ledger reaches.
 
 ### Testing: mocks in CI, credits never
 
 `make check` and CI must never spend a credit or require a key. Three layers, none of which touch the network by default:
 
-1. **App-layer tests** against a fake `SuggestionProvider`, alongside the existing in-memory repositories — the same role `FxRateProvider`'s fake plays. This is where the 0.5 threshold, the sparse-result indexing, the unconfigured path, the 200-row cap, the 254-option refusal, and "a provider failure leaves every row reviewable" are proven.
-2. **Adapter tests** against a fake `http.RoundTripper`, following `internal/adapters/fxprovider`'s existing `roundTripFunc`/`jsonResponse` helpers exactly — canned JSON for a normal answer, and one case per row of the error table above. This is also where a test pins that `RawPayload` never appears in a serialised request body, which is the privacy rule made executable rather than documented.
+1. **App-layer tests** against a fake `SuggestionProvider`, alongside the existing in-memory repositories — the same role `FxRateProvider`'s fake plays. This is where the 0.5 threshold, the sparse-result indexing, the unconfigured path, the 200-row cap, the 254-option refusal, partial-failure tolerance, and "a provider failure leaves every row reviewable" are proven. **Critically, this is also where the deterministic narrowing is tested** — that a row gets only same-currency, same-amount, in-window occurrence candidates, and only categories of the kind its amount sign implies — because that narrowing is the thing standing between this feature and the model's documented inability to compare dates.
+2. **Adapter tests** against a fake `http.RoundTripper`, following `internal/adapters/fxprovider`'s existing `roundTripFunc`/`jsonResponse` helpers exactly — canned JSON for a normal answer, one case per row of the error table, and the retry/backoff policy. This is also where a test pins that `RawPayload` never appears in a serialised request body, and that no request ever carries more than one row, which are the privacy and accuracy rules made executable rather than documented.
 3. **Live tests, opt-in and excluded from CI**, behind a `//go:build typesafe_live` tag and skipped unless `BODGER_TYPESAFE_API_KEY` is set, run via their own `make` target. Deliberately minimal — enough to catch the request or response schema drifting out from under the adapter, which no fake can detect, and nothing more. One or two rows, a handful of options, single-digit calls per run.
 
 The build tag is new to this repository; the only existing tags are `//go:build ignore` on the `nocompile` fixtures. It is the right mechanism regardless — a test that costs money and needs a secret must be impossible to run by accident, and a `t.Skip` on an unset environment variable alone would still compile it into the default `go test ./...` run.
+
+### A standalone Go SDK is explicitly out of scope
+
+There is no official Go SDK, and writing one is a genuinely appealing separate project — the JS client is a readable reference for the parts that matter (retry policy, error classification, header contract). **It must not become a dependency of this milestone.** bodger ships a minimal in-repo client covering exactly the one endpoint and three question types it uses, on the `fxprovider` precedent. If a standalone Go SDK later exists, the adapter can adopt it with no change above the port — which is the whole reason the port is expressed in bodger's vocabulary rather than the vendor's.
 
 ## Alternatives considered
 
 **One `ports.DecisionProvider` exposing Choice/Score/Noul directly**, with both use cases composing their own questions. This is the option the issue names first, and it is tempting because it is closer to the vendor and would absorb a third use case without a port change. Rejected because it puts *question construction* — the option descriptions, the rubric wording, the instruction text — in `internal/app`. That is vendor-coupled prompt engineering, and ADR-0005 makes the application layer the place that owns orchestration and policy, not provider mechanics. It would also make the port untestable in the way that matters: a fake `DecisionProvider` proves the app can ask a question, not that it asks the *right* one. And it inverts ADR-0007's boundary rule, which exists so the implementer's vocabulary does not become the consumer's.
 
-**One port method returning both suggestion kinds in a single call.** Genuinely attractive on the vendor's own economics: both use cases run over the same rows at the same moment, `state` is charged once, and a mixed `questions` map is explicitly supported. Rejected after costing it. At $0.042 per million input tokens, a 200-row batch is on the order of 20k tokens, so sending the rows twice costs roughly **$0.0008 extra per import review**. That is not a number worth deforming an interface over. Two methods named for what they do are clearer, independently testable, and independently skippable — an actor with no pending occurrences never makes the second call at all. If the economics ever change, merging them is an adapter-and-port change with no call-site redesign.
+**Every staged row in one `state`, with one question per row.** The reading the batching cookbook invites, and the design this ADR originally took before the jaggedness page was read closely. Rejected on accuracy: the cookbook's 12.2× saving comes from many questions about *one document*, whereas staged rows are independent records, so a 200-row state makes every question 99.5% distractor content — the documented "accuracy falls as the state grows with content unrelated to the decision" failure. The throughput it appeared to buy is recovered properly by a bounded concurrent worker pool, and the per-row state is also the more private shape.
+
+**Two port methods, one per use case.** Clearer to name, and the shape this ADR first took. Rejected once the request became per-row: both questions concern the same row and the same `state`, and the vendor evaluates questions in one call independently and in parallel at no extra latency. Splitting them would send every row twice and double the wall-clock time to buy nothing but a tidier interface.
+
+**Let the model do the date and amount comparison** — offer every pending occurrence and ask which one matches. Rejected outright on the vendor's own published limitations: jev "reads dates as text, not as ordered quantities" and "is not a calculator". This is the single most seductive mistake available here, because it would *appear* to work — a model asked whether a ₹42,000 debit on 2026-09-03 matches a ₹42,000 occurrence on 2026-09-01 will usually say yes — while failing unpredictably at exactly the boundaries (a near-miss amount, a window edge, a month boundary) where the answer matters and nobody is checking.
 
 **A locally-trained classifier, no external provider.** The option that would have preserved ADR-0012's no-key property completely. Rejected on cold start and on churn: categories are user-defined, renamed, merged and added at will, and a new instance has zero labelled transactions. A classifier would be useless for exactly the user who most needs help — the one who just imported their first year of history — and would need retraining every time someone renames "Groceries" to "Food". Worth revisiting if bodger ever accumulates enough confirmed categorisations per instance to train on, which is precisely the data this feature's confirm step generates. The port is shaped so that adapter could drop in unchanged.
 
-**A general chat model with a JSON-mode prompt.** Rejected for the reason this vendor is interesting at all: a bounded Choice *cannot* return a category that does not exist, while a chat model can and eventually will, leaving the app layer to validate prose against the option set and decide what to do when it does not match. The calibrated `confidence` is also not reconstructible from a chat completion, and it is what the display threshold is built on.
+**A general chat model with a JSON-mode prompt.** Rejected for the reason this vendor is interesting at all: a bounded Choice *cannot* return a category that does not exist, while a chat model can and eventually will, leaving the app layer to validate prose against the option set and decide what to do when it does not match. The vendor names this explicitly as an anti-pattern — "generating values outside the schema" — and the calibrated `confidence` the display threshold is built on is not reconstructible from a chat completion.
+
+**Decompose categorisation into atomic yes/no questions**, per the vendor's "probably the most important concept" guidance on question decomposition. Considered seriously and rejected as a misreading: decomposition targets *broad questions hiding several judgements* ("is this spam?" → credentials, sender mismatch, unexpected reward). "Which category does this belong to?" is a single judgement over a bounded set, which is what Choice exists for and what the vendor's own classification cookbooks do. Decomposing it into one Noul per category would also forfeit `confidence`, which Noul does not return.
 
 **Suggest during `StageImport`, so suggestions are ready when review opens.** Better-feeling UX, and rejected on both halves of the dependency posture: it makes a vendor outage able to fail an import, and it spends credits on every row of every batch including those never reviewed. The latency it saves is on an action the user has to arrive at deliberately anyway.
 
 **Persist suggestions on `ImportRecord`.** Would let a review be resumed without re-spending, and would give ADR-0002's audit trail a record of what was proposed. Rejected: it needs a migration and ADR-0008 export/restore handling for data with no financial meaning, it participates in the byte-identical round-trip assertion, and a stored suggestion outlives the category list it was computed against — a stale proposal presented with a confidence number is worse than no proposal.
 
-**Auto-apply above 0.9, as the vendor recommends.** Rejected on all three grounds in the confidence section, but the decisive one is the model-version argument: bodger would be making an irreversible-by-default write against a threshold whose calibration is owned by someone else's release process.
+**Auto-apply above 0.9, as the vendor recommends.** Rejected on all four grounds in the confidence section. The decisive one is that bodger would be making a write against a threshold it has never calibrated, whose calibration is owned by someone else's release process.
+
+**Write a standalone Go SDK first and depend on it.** Rejected as sequencing, not as an idea — see the scope note above. A milestone should not block on a library that does not exist, and the port boundary means adopting one later costs nothing above the adapter.
 
 ## Consequences
 
-**Good.** The feature is off until an operator opts in, so an instance that ignores M10 is unchanged in behaviour, dependencies, and privacy. Nothing it produces can reach the ledger without a person choosing it, structurally rather than by convention — the suggestion method writes nothing at all. The port speaks bodger's vocabulary, so the vendor is replaceable, including by a local model later. Suggestions cost one round trip per batch rather than one per row. And re-scoping the second use case surfaced a real, pre-existing bug: an imported transaction that duplicates a pending occurrence is invisible to duplicate detection today.
+**Good.** The feature is off until an operator opts in, so an instance that ignores M10 is unchanged in behaviour, dependencies, and privacy. Nothing it produces can reach the ledger without a person choosing it, structurally rather than by convention — the suggestion method writes nothing at all. Every judgement the model makes is one it is documented to be good at, because code answers the dates and the arithmetic first. The port speaks bodger's vocabulary, so the vendor is replaceable, including by a local model or a future Go SDK. A failure degrades to "no suggestion" with enough detail for an operator to tell a wrong key from an outage. And re-scoping the second use case surfaced a real, pre-existing bug (#301): an imported transaction that duplicates a pending occurrence is invisible to duplicate detection today.
 
 **Bad, and worth stating plainly:**
 
 - **ADR-0012's "no key anywhere" property is gone for anyone who wants this feature.** It survives only as a default. A self-hoster who wants AI suggestions now needs an account, a key, and a billing relationship with a commercial vendor — precisely the setup friction ADR-0012 rejected exchangerate.host and Open Exchange Rates over. The difference is that FX was load-bearing for a core feature and this is not, but that is a difference of degree, and anyone reading ADR-0012 as "bodger does not do vendor keys" is now reading it too broadly.
-- **Financial data leaves the machine, which for a self-hosted personal-finance app is a real change in kind.** Defaulting to off and sending a minimal projection reduces the blast radius; it does not eliminate it. Transaction descriptions are not anonymous — merchant names, people's names, and medical or legal providers all routinely appear in them. An operator enabling this is making a privacy decision on behalf of every user on the instance, and under ADR-0006's multi-user path they may not be the same person.
+- **Financial data leaves the machine, which for a self-hosted personal-finance app is a real change in kind.** Defaulting to off and sending a minimal per-row projection reduces the blast radius; it does not eliminate it. Transaction descriptions are not anonymous — merchant names, people's names, and medical or legal providers all routinely appear in them. An operator enabling this is making a privacy decision on behalf of every user on the instance, and under ADR-0006's multi-user path they may not be the same person.
+- **One request per row costs more than the batched alternative.** Accuracy was chosen over the cookbook's headline saving, and the honest framing is that this design deliberately spends more money for better answers. At roughly $0.042 per million input tokens a 200-row review is still fractions of a cent, but the scaling is now linear in rows with no state-sharing discount.
 - **The spend is real and unmetered from bodger's side.** There is no in-app budget, quota display, or credit-remaining check, because the API exposes none the adapter could read cheaply. The 200-row cap bounds a single click, not a day; an operator can spend more than they expected by reviewing many large imports, and will find out from the vendor's dashboard rather than from bodger.
-- **Rate limits are documented as "adjusting dynamically" and may change without notice.** The adapter cannot treat published limits as a contract, which is why `429` is a routine `Unavailable` with no retry loop rather than something clever.
-- **The model is pinned, so it will go stale.** `jev-1.13.0` gets no improvements until someone bumps it deliberately, and the vendor publishes a known-jaggedness page per version. That is the correct trade against silently-moving calibration, but it is maintenance nobody is scheduled to do.
+- **"Out of credits" is a guess dressed as `credential_rejected`.** No documented status distinguishes exhausted credits from a revoked key, so the operator-facing message names both possibilities. That is honest but unsatisfying, and it will read as vague to whoever hits it at 2am.
+- **Rate limits are documented as "adjusting dynamically" and may change without notice**, so published limits are not a contract the adapter can rely on — which is why the retry policy is small, bounded, and defers to the server's own retry delay rather than being clever.
+- **The model is pinned, so it will go stale.** `jev-1.13.0` gets no improvements until someone bumps it deliberately, and each bump requires re-reading that version's jaggedness page, because this design routes around limitations that are published per version and could change in either direction.
+- **The design is built on a published limitations page, which is a dependency on the vendor's candour.** The date and arithmetic workarounds exist because jev-1.13's page says those are weak. An undocumented weakness gets no workaround, and bodger would not know.
 - **A build-tagged live test is a test that will rot.** Excluded from CI means nothing runs it, which means schema drift is caught whenever someone remembers, not when it happens. The alternative — running it in CI — trades that for a secret in the repository's CI configuration and a bill attached to every push, which is worse.
-- **Two calls where one would do**, by choice, costing about $0.0008 per review. Defensible now and worth re-measuring if a third use case ever joins the same call site.
-- **The 254-option ceiling is a real cliff, not a soft limit.** An actor with more than 254 categories gets no category suggestions at all, silently as far as the model is concerned. That is the right failure — truncation would be worse — but it needs a clear surface message rather than an empty result, or it will read as the feature being broken.
-- **`SuggestionRow` is a projection someone will eventually be tempted to widen.** The privacy rule holds only as long as adding a field to it is treated as the boundary change it is. The adapter test that asserts `RawPayload` never reaches the wire is the only thing that will actually stop it.
+- **The 254-option ceiling is a real cliff, not a soft limit**, even after the kind filter halves the list. An actor past it gets no category suggestions at all. That is the right failure — truncation would be worse — but it needs a clear surface message rather than an empty result, or it will read as the feature being broken.
+- **`SuggestionRow` is a projection someone will eventually be tempted to widen.** The privacy rule holds only as long as adding a field to it is treated as the boundary change it is. The adapter tests that assert `RawPayload` never reaches the wire, and that no request carries a second row, are the only things that will actually stop it.
