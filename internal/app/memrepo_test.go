@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -1413,8 +1414,12 @@ func (f *fakeSuggestionProvider) setFails(recordID string) {
 // (and internal/adapters/typesafe.Client.Suggest's actual behaviour,
 // which that contract is written from): every row not marked to fail gets
 // its canned answer (if one is configured) appended to the result: an
-// error is returned only when every row passed to this call failed.
-func (f *fakeSuggestionProvider) Suggest(_ context.Context, rows []ports.SuggestionRow) ([]ports.RowSuggestion, error) {
+// error is returned only when every row passed to this call failed, and
+// the returned ports.SuggestOutcome carries FailedRows/FailureReason
+// (read off f.failErr's own tagged "reason" detail, the same way
+// internal/adapters/typesafe.Client.Suggest does) whenever any row failed
+// — including a partial failure, where the error return itself stays nil.
+func (f *fakeSuggestionProvider) Suggest(_ context.Context, rows []ports.SuggestionRow) ([]ports.RowSuggestion, ports.SuggestOutcome, error) {
 	f.calls = append(f.calls, rows)
 
 	var out []ports.RowSuggestion
@@ -1428,10 +1433,31 @@ func (f *fakeSuggestionProvider) Suggest(_ context.Context, rows []ports.Suggest
 			out = append(out, answer)
 		}
 	}
-	if len(rows) > 0 && failed == len(rows) {
-		return out, f.failErr
+
+	var outcome ports.SuggestOutcome
+	if failed > 0 {
+		reason, _ := failErrReason(f.failErr)
+		outcome = ports.SuggestOutcome{FailedRows: failed, FailureReason: reason}
 	}
-	return out, nil
+
+	if len(rows) > 0 && failed == len(rows) {
+		return out, outcome, f.failErr
+	}
+	return out, outcome, nil
+}
+
+// failErrReason extracts the "reason" detail an *errs.Error was tagged
+// with — the same errors.As + Details["reason"] read
+// internal/adapters/typesafe's own tests use to assert on it — so this
+// fake's SuggestOutcome mirrors the real adapter's without hardcoding a
+// reason string independent of f.failErr.
+func failErrReason(err error) (string, bool) {
+	var e *errs.Error
+	if !errors.As(err, &e) {
+		return "", false
+	}
+	reason, ok := e.Details["reason"].(string)
+	return reason, ok
 }
 
 var _ ports.SuggestionProvider = (*fakeSuggestionProvider)(nil)

@@ -78,6 +78,38 @@ type RowSuggestion struct {
 	OccurrenceConfidence float64
 }
 
+// SuggestOutcome carries a Suggest call's own failure accounting —
+// alongside the returned suggestion slice and the existing error return,
+// never instead of either. It exists because ADR-0015's "partial success
+// is a success" contract reserves Suggest's error return for "every row
+// failed": on a partial failure (some rows answered, some didn't) that
+// error stays nil, so without a separate signal the reason a row got no
+// answer would be observed by the adapter and then simply lost. Repurposing
+// the error return to also mean "something failed" would conflate two
+// different signals callers already rely on being distinct — see
+// Suggest's own doc comment — so this is a third return value instead.
+//
+// FailedRows is how many rows in this call failed — 0 when nothing did,
+// in which case FailureReason is always "".
+//
+// FailureReason is one dominant reason for the whole call, not a per-row
+// account: every row in a single Suggest call shares the same instance
+// credential and the same provider, so a real failure (a rejected
+// credential, a rate limit, an outage) overwhelmingly produces the same
+// reason on every failed row in that call — per-row tracking would be more
+// precision than any surface actually needs. When failures genuinely
+// differ within one call (rare — e.g. a mid-run rate limit after some rows
+// already succeeded on a still-valid connection), an adapter reporting its
+// last-observed reason here is an acceptable, honest simplification, not a
+// hidden one. Its value is one of an adapter's own stable reason strings
+// (e.g. internal/adapters/typesafe/errors.go's "credential_rejected",
+// "throttled", "provider_unreachable") — this port has no closed set of
+// its own, the same way it names no vendor vocabulary elsewhere.
+type SuggestOutcome struct {
+	FailedRows    int
+	FailureReason string
+}
+
 // SuggestionProvider answers two advisory questions per staged import
 // row — which category and which pending occurrence it most likely
 // corresponds to — without ever writing anything (ADR-0015, M10 ·
@@ -111,6 +143,11 @@ type SuggestionProvider interface {
 	//
 	// It returns the suggestions it did obtain, plus an error only when
 	// every row failed — ADR-0015's "partial success is a success": one
-	// row erroring must never discard every other row's good answer.
-	Suggest(ctx context.Context, rows []SuggestionRow) ([]RowSuggestion, error)
+	// row erroring must never discard every other row's good answer. The
+	// returned SuggestOutcome carries that same failure alongside a
+	// partial failure too, which the error return alone cannot (see
+	// SuggestOutcome's own doc comment) — FailedRows is 0 and
+	// FailureReason is "" when nothing failed, on both a total success and
+	// an empty rows slice.
+	Suggest(ctx context.Context, rows []SuggestionRow) ([]RowSuggestion, SuggestOutcome, error)
 }

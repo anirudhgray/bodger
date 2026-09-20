@@ -1789,6 +1789,8 @@ export interface components {
         ImportSuggestions: {
             /** @description False when this instance has no typesafe.ai key configured — not an error; every other field is then left zero. See docs/user-guide.md for how an operator enables this. */
             configured: boolean;
+            /** @description Why rows_failed rows got no answer -- "credential_rejected", "throttled", or "provider_unreachable" -- empty when rows_failed is 0. One dominant reason for the whole request, not tracked per row. */
+            failure_reason?: string;
             /** @description How many of those rows typesafe.ai never answered. One row failing never discards another row's suggestion — every staged row is still fully listable and reviewable regardless. */
             rows_failed: number;
             /** @description How many staged rows actually had a suggestion request sent for them. */

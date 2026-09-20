@@ -467,6 +467,9 @@ func TestSuggestForImportBatch_ProviderFailureLeavesEveryRowReviewable(t *testin
 	if result.RowsFailed != 2 {
 		t.Errorf("RowsFailed = %d, want 2", result.RowsFailed)
 	}
+	if result.FailureReason != "provider_unreachable" {
+		t.Errorf("FailureReason = %q, want %q (fakeSuggestionProvider's own failErr reason)", result.FailureReason, "provider_unreachable")
+	}
 
 	listed, err := svc.ListImportRecords(ctx, app.ListImportRecordsQuery{ActorID: testActorID, ImportBatchRef: staged.Batch.ID()})
 	if err != nil {
@@ -512,5 +515,13 @@ func TestSuggestForImportBatch_PartialFailure(t *testing.T) {
 	}
 	if result.RowsFailed != 1 {
 		t.Errorf("RowsFailed = %d, want 1", result.RowsFailed)
+	}
+	// This is the gap #306 flagged and this change closes: before it,
+	// SuggestForImportBatch discarded ports.SuggestionProvider.Suggest's
+	// error return entirely (`provided, _ := s.Suggestions.Suggest(...)`),
+	// so a partial failure's reason never reached SuggestForImportBatchResult
+	// at all — only the count did.
+	if result.FailureReason != "provider_unreachable" {
+		t.Errorf("FailureReason = %q, want %q (fakeSuggestionProvider's own failErr reason)", result.FailureReason, "provider_unreachable")
 	}
 }
