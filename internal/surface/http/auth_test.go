@@ -117,8 +117,11 @@ func TestLogin_SetsSessionCookie_AndAuthenticatesSubsequentRequests(t *testing.T
 		t.Errorf("login actor_id = %v, want %v", data["actor_id"], ports.SeededUserID)
 	}
 	cookie := sessionCookieFrom(t, resp)
-	if !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode {
-		t.Errorf("session cookie attributes = %+v, want HttpOnly+Secure+SameSite=Lax", cookie)
+	// This server is plain HTTP (httptest.NewServer), not TLS — the
+	// session cookie must not be marked Secure here, or Safari (and any
+	// browser off localhost) silently refuses to store/send it (#85).
+	if !cookie.HttpOnly || cookie.Secure || cookie.SameSite != http.SameSiteLaxMode {
+		t.Errorf("session cookie attributes = %+v, want HttpOnly+non-Secure(plain HTTP)+SameSite=Lax", cookie)
 	}
 
 	resp2, decoded2 := rawDo(t, srv, http.MethodGet, "/api/v1/accounts", nil, func(r *http.Request) {
@@ -126,6 +129,25 @@ func TestLogin_SetsSessionCookie_AndAuthenticatesSubsequentRequests(t *testing.T
 	})
 	if resp2.StatusCode != http.StatusOK {
 		t.Fatalf("cookie-authenticated GET status = %d, want 200: %+v", resp2.StatusCode, decoded2)
+	}
+}
+
+// TestLogin_OverTLS_SetsSecureCookie guards the other half of #85's fix:
+// Secure must still be set whenever the connection actually is TLS, so a
+// deployment terminating TLS directly on bodger doesn't regress.
+func TestLogin_OverTLS_SetsSecureCookie(t *testing.T) {
+	svc := newTestService(t, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), "UTC")
+	srv := httptest.NewTLSServer(httpsurface.NewMux(svc, nil))
+	t.Cleanup(srv.Close)
+	setUpPassword(t, svc, "correct-horse-battery")
+
+	resp, decoded := rawDo(t, srv, http.MethodPost, "/api/v1/auth/login", map[string]any{"password": "correct-horse-battery"}, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("login status = %d, want 200: %+v", resp.StatusCode, decoded)
+	}
+	cookie := sessionCookieFrom(t, resp)
+	if !cookie.Secure {
+		t.Errorf("session cookie over TLS: Secure = false, want true")
 	}
 }
 

@@ -46,7 +46,7 @@ func (h *handlers) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setSessionCookie(w, result.Token, result.ExpiresAt)
+	setSessionCookie(r, w, result.Token, result.ExpiresAt)
 	respond(w, http.StatusOK, authView{ActorID: result.ActorID})
 }
 
@@ -66,7 +66,7 @@ func (h *handlers) logout(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, r, err)
 		return
 	}
-	clearSessionCookie(w)
+	clearSessionCookie(r, w)
 	respond(w, http.StatusOK, okView{OK: true})
 }
 
@@ -80,7 +80,7 @@ func (h *handlers) logoutAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if sessionID(r) != "" {
-		clearSessionCookie(w)
+		clearSessionCookie(r, w)
 	}
 	respond(w, http.StatusOK, okView{OK: true})
 }
@@ -111,7 +111,7 @@ func (h *handlers) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if sessionID(r) != "" {
-		clearSessionCookie(w)
+		clearSessionCookie(r, w)
 	}
 	respond(w, http.StatusOK, okView{OK: true})
 }

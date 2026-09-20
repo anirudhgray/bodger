@@ -72,17 +72,29 @@ func isSafeMethod(method string) bool {
 	return method == http.MethodGet || method == http.MethodHead
 }
 
+// requestIsSecure reports whether r reached this handler over TLS, per
+// ADR-0006's amended credential-table note: the session cookie's Secure
+// attribute must reflect the connection bodger itself terminated, not an
+// assumption that one always exists. A reverse proxy terminating TLS in
+// front of bodger forwards plain HTTP, so r.TLS is nil there too — that
+// deployment shape needs a trusted X-Forwarded-Proto mode, deliberately
+// left as the future issue ADR-0006 already calls out, rather than trusting
+// a client-settable header with no configured trust boundary here.
+func requestIsSecure(r *http.Request) bool {
+	return r.TLS != nil
+}
+
 // setSessionCookie sets the session cookie's value and expiry, per
-// ADR-0006's credential table: HttpOnly, Secure, SameSite=Lax, sliding
-// expiry.
-func setSessionCookie(w http.ResponseWriter, token string, expiresAt time.Time) {
+// ADR-0006's credential table: HttpOnly, Secure (only when r is actually
+// TLS — see requestIsSecure), SameSite=Lax, sliding expiry.
+func setSessionCookie(r *http.Request, w http.ResponseWriter, token string, expiresAt time.Time) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    token,
 		Path:     "/",
 		Expires:  expiresAt,
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   requestIsSecure(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -90,14 +102,14 @@ func setSessionCookie(w http.ResponseWriter, token string, expiresAt time.Time) 
 // clearSessionCookie expires the session cookie immediately — used on
 // logout, and whenever a presented session cookie turns out to be invalid,
 // so a browser stops resending a token that will never authenticate again.
-func clearSessionCookie(w http.ResponseWriter) {
+func clearSessionCookie(r *http.Request, w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   requestIsSecure(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -137,7 +149,7 @@ func (h *handlers) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 
 		result, aerr := h.svc.AuthenticateSession(r.Context(), cookie.Value)
 		if aerr != nil {
-			clearSessionCookie(w)
+			clearSessionCookie(r, w)
 			h.respondError(w, r, aerr)
 			return
 		}
@@ -148,7 +160,7 @@ func (h *handlers) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		setSessionCookie(w, cookie.Value, result.ExpiresAt)
+		setSessionCookie(r, w, cookie.Value, result.ExpiresAt)
 		next(w, withActor(r, result.ActorID, result.SessionID))
 	}
 }

@@ -30,8 +30,10 @@ Four surfaces with authorisation in middleware would mean four authorisation mod
 
 | Credential | Used by | Mechanism |
 | --- | --- | --- |
-| **Session cookie** | Web UI | Opaque random token, stored hashed server-side; `HttpOnly`, `Secure`, `SameSite=Lax`; sliding expiry |
+| **Session cookie** | Web UI | Opaque random token, stored hashed server-side; `HttpOnly`, `Secure` (only when the request actually arrived over TLS — see amendment below), `SameSite=Lax`; sliding expiry |
 | **API token** | CLI (remote mode), scripts, external clients | `bdg_<random>`, stored as a SHA-256 hash; `Authorization: Bearer`; named, listable, revocable, optional expiry |
+
+**Amendment (issue #85).** `Secure` was originally set unconditionally, which the credential table above described flatly. That breaks login over plain HTTP: Safari (correctly, per the cookie spec) never stores a `Secure` cookie on a non-TLS connection, even on `localhost` — Chromium's `localhost` exception masked this in dev, but any browser reaching a basic self-hosted install directly over `http://<lan-ip>:8080` (no reverse proxy — the exact "basic install" case this ADR's "delegate to a reverse proxy" alternative above says shouldn't be required) hit the same failure. `Secure` is now conditional on `r.TLS != nil`. A reverse-proxy deployment that terminates TLS in front of bodger forwards plain HTTP, so `r.TLS` is nil there too — a trusted `X-Forwarded-Proto` mode would restore `Secure` for that shape, but is deliberately left for the "trusted-header mode" future issue this ADR already flags, rather than trusting a client-settable header with no configured trust boundary in this fix.
 
 Server-side sessions rather than JWTs: revocation is a `DELETE`, there is no refresh-token dance, and a self-hosted single-instance deployment gains nothing from stateless tokens. Passwords are hashed with **Argon2id**.
 
