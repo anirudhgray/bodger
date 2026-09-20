@@ -135,6 +135,13 @@ type ToolDef struct {
 // refreshOccurrencesTool (issue #294) is also write tier: #281 missed
 // wiring GenerateOccurrences to any surface, so a created rule could
 // never actually produce a pending occurrence.
+//
+// getImportSuggestionsTool is issue #306's M10 · Valinor surface wiring:
+// ADR-0015's advisory category/occurrence suggestions for a staged
+// import's still-unresolved rows (SuggestForImportBatch, issue #305).
+// Read tier, like every tool above it in this list back to whoAmITool —
+// the method writes nothing at all, unlike commitImportTool/
+// rollbackImportTool below, which is why this isn't grouped with them.
 func Tools() []ToolDef {
 	return []ToolDef{
 		whoAmITool(),
@@ -177,5 +184,6 @@ func Tools() []ToolDef {
 		skipOccurrenceTool(),
 		refreshOccurrencesTool(),
 		archiveRecurringRuleTool(),
+		getImportSuggestionsTool(),
 	}
 }
