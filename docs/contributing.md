@@ -42,6 +42,7 @@ The [`Makefile`](../Makefile) is the build contract. **Every PR runs `make check
 | `make release-dry-run` | Build every release target locally (goreleaser snapshot mode, no tag or publish) — see [`releasing.md`](releasing.md#local-dry-runs) |
 | `make analyze-web` | Build the web UI and open a bundle-size treemap (`vite-bundle-visualizer`) — use this before assuming a `make build` chunk-size warning is (or isn't) worth chasing; it shows which package is actually responsible, not just the total |
 | `make test-cover` | Tests with a coverage profile |
+| `make check-typesafe-live` | Run the typesafe.ai adapter's live tests against the real API — spends credits, needs `BODGER_TYPESAFE_API_KEY` set, never run by `make check` or CI — see [Build tags for tests that cost money](#build-tags-for-tests-that-cost-money) |
 | `make docker-up` | Run the self-hosted stack |
 | `make help` | List everything |
 
@@ -147,6 +148,28 @@ A red test means the code is wrong. Do not adjust an expectation to match curren
 **The web e2e smoke test** (`web/e2e/smoke.spec.ts`, [Playwright](https://playwright.dev), issue #65) is the one deliberately sparse exception: log in, record a transaction, see the updated balance, log out — the golden path, proving the real pieces integrate, not a substitute for each screen's own Vitest tests (which mock the API). It runs against a real build of the production binary, not `npm run dev`: `web/e2e/global-setup.ts` runs `npm run build` and a real `go build` (the same artefacts `make build` produces — ADR-0001, one binary serves the API and the embedded static UI), seeds a temp SQLite database with a password and one account/category via the CLI (`bodger auth set-password`, `bodger accounts add`, `bodger categories add`), starts that binary on a fixed loopback port over plain HTTP, and tears it down after. It deliberately does not use `npm run dev`: that dev server serves over real HTTPS via `vite-plugin-mkcert`, which installs a local CA through an interactive `sudo` prompt on first run (`web/vite.config.ts`'s own comment; issues #86/#85) — unusable in CI or any unattended run. `npm run test` (and so `make test`/`make check`) runs it automatically as its last step; run it alone with `cd web && npm run test:e2e`. It needs Chromium installed once per machine: `cd web && npx playwright install --with-deps chromium` (CI does this before `make check-web`, caching the downloaded browser so only a genuinely new Chromium version pays for a fresh download).
 
 **Proving a validating constructor is the only way in.** A domain value object (`Money`, `Date`, `Tag`, `Account`, …) has unexported fields precisely so nothing outside its package can construct one without going through validation. Prove it with a `//go:build ignore` file in a `nocompile` subpackage attempting a keyed struct literal from outside — run it without the tag to confirm the real compiler error, then restore the tag so it's excluded from normal builds and tests. See `internal/domain/money/nocompile`, `internal/domain/nocompile`, or `internal/domain/ledger/nocompile` for the pattern.
+
+### Build tags for tests that cost money
+
+`internal/adapters/typesafe` (ADR-0015, issue #304) is the first package with tests that make real network calls against a paid, metered API. `//go:build ignore` (above) isn't the right tool for these — it's for a file that must never compile at all. What's needed here is a test that runs, but only when someone deliberately asks for it and has paid for the privilege.
+
+The pattern: put the live test(s) in their own `_test.go` file, gated with a dedicated build tag —
+
+```go
+//go:build typesafe_live
+
+package typesafe_test
+```
+
+— and wire a `make` target that passes `-tags` explicitly:
+
+```
+go test -tags typesafe_live -run TestLive -v ./internal/adapters/typesafe/...
+```
+
+Without `-tags typesafe_live`, the file isn't part of the build at all: `go build ./...`, `go test ./...`, `go vet ./...`, `golangci-lint run`, and so `make check`/CI, never even compile it. That's the point — a `t.Skip` on an unset environment variable alone would still compile the file into the default `go test ./...` run, so it's one accidental `go test ./...` away from a bill. The build tag makes running it by accident structurally impossible; a `t.Skip` inside the tagged file (see `typesafe_live_test.go`) is only there to skip cleanly when someone runs the tagged target itself without having exported a key yet.
+
+A new tagged live-test package should follow the same shape: its own build tag named after the package/vendor, its own `make check-<name>-live` target (never folded into `check`, `check-go`, or `test`), and a short mention here of what it costs and what it needs.
 
 ---
 
