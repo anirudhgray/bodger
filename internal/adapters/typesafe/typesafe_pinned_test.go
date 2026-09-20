@@ -49,7 +49,7 @@ func TestPinned_RequestBodyNeverCarriesMoreThanSuggestionRow(t *testing.T) {
 	row := categoryRow(sentinelRecordID)
 	row.OccurrenceCandidates = []ports.OccurrenceOption{{OccurrenceID: "occ-1", Description: "Monthly rent"}}
 
-	if _, err := p.Suggest(context.Background(), []ports.SuggestionRow{row}); err != nil {
+	if _, _, err := p.Suggest(context.Background(), []ports.SuggestionRow{row}); err != nil {
 		t.Fatalf("Suggest: %v", err)
 	}
 	if capturedBody == nil {
@@ -127,7 +127,7 @@ func TestPinned_NeverMoreThanOneRowPerRequest(t *testing.T) {
 		rows[i] = row
 	}
 
-	if _, err := p.Suggest(context.Background(), rows); err != nil {
+	if _, _, err := p.Suggest(context.Background(), rows); err != nil {
 		t.Fatalf("Suggest: %v", err)
 	}
 

@@ -24,7 +24,7 @@ func TestSuggest_Retry429ThenSuccess(t *testing.T) {
 	})
 	p := typesafe.New("test-key", "http://example.invalid", client)
 
-	got, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
+	got, _, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
 	if err != nil {
 		t.Fatalf("Suggest: %v, want success after one retry", err)
 	}
@@ -47,7 +47,7 @@ func TestSuggest_401NotRetried(t *testing.T) {
 	})
 	p := typesafe.New("bad-key", "http://example.invalid", client)
 
-	_, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
+	_, _, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
 	wantErrCode(t, err, errs.Unavailable)
 	if calls != 1 {
 		t.Fatalf("got %d HTTP calls for a 401, want exactly 1 (401 must never be retried)", calls)
@@ -63,7 +63,7 @@ func TestSuggest_403NotRetried(t *testing.T) {
 	})
 	p := typesafe.New("bad-key", "http://example.invalid", client)
 
-	_, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
+	_, _, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
 	wantErrCode(t, err, errs.Unavailable)
 	if calls != 1 {
 		t.Fatalf("got %d HTTP calls for a 403, want exactly 1 (403 must never be retried)", calls)
@@ -80,7 +80,7 @@ func TestSuggest_422NotRetried(t *testing.T) {
 	})
 	p := typesafe.New("test-key", "http://example.invalid", client)
 
-	_, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
+	_, _, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
 	wantErrCode(t, err, errs.Internal)
 	if calls != 1 {
 		t.Fatalf("got %d HTTP calls for a 422, want exactly 1 (422 must never be retried)", calls)
@@ -98,7 +98,7 @@ func TestSuggest_RetryCeiling(t *testing.T) {
 	})
 	p := typesafe.New("test-key", "http://example.invalid", client)
 
-	_, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
+	_, _, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
 	wantErrCode(t, err, errs.Unavailable)
 	if calls != 3 {
 		t.Fatalf("got %d HTTP calls, want exactly 3 (1 initial + 2 retries, then give up)", calls)
@@ -115,7 +115,7 @@ func TestSuggest_RetryCeiling_ConnectionFailures(t *testing.T) {
 	})
 	p := typesafe.New("test-key", "http://example.invalid", client)
 
-	_, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
+	_, _, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
 	wantErrCode(t, err, errs.Unavailable)
 	if calls != 3 {
 		t.Fatalf("got %d HTTP calls, want exactly 3 (1 initial + 2 retries)", calls)

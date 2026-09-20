@@ -15,11 +15,13 @@ package typesafe
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/anirudhgray/bodger/internal/platform/errs"
 	"github.com/anirudhgray/bodger/internal/ports"
 )
 
@@ -114,6 +116,22 @@ type rowResult struct {
 	err        error
 }
 
+// reasonTag extracts the "reason" detail mapStatusError/mapTransportError
+// (errors.go) tag a returned *errs.Error with, the same errors.As +
+// Details["reason"] read this package's own tests already use to assert
+// on it (typesafe_errors_test.go). It returns "" for a nil error or one
+// that isn't a tagged *errs.Error — every 422 mapping is exactly that,
+// deliberately: a malformed-question failure is a bodger bug, not a
+// distinguishable operator-facing reason.
+func reasonTag(err error) string {
+	var e *errs.Error
+	if !errors.As(err, &e) {
+		return ""
+	}
+	reason, _ := e.Details["reason"].(string)
+	return reason
+}
+
 // Suggest implements ports.SuggestionProvider. It issues one HTTP request
 // per row (ADR-0015 "One request per row"), concurrently through a
 // workerPoolWidth-wide worker pool, and honours ctx for both cancellation
@@ -124,9 +142,20 @@ type rowResult struct {
 // A row skipped for having nothing to ask is neither a success nor a
 // failure — it simply has no entry, per the port's "sparse and unordered"
 // contract.
-func (c *Client) Suggest(ctx context.Context, rows []ports.SuggestionRow) ([]ports.RowSuggestion, error) {
+//
+// The returned ports.SuggestOutcome carries FailedRows/FailureReason
+// whenever failed > 0, including on a partial failure where the error
+// return itself stays nil — that's the one thing changing here versus the
+// error return, which keeps its exact existing "only on total failure"
+// meaning. FailureReason is lastErr's own tagged reason: since every row
+// in one Suggest call shares this Client's single credential and base
+// URL, a real failure overwhelmingly tags every failed row the same way,
+// and the rare case where it doesn't (e.g. a mid-run rate limit) is
+// reported as the last-observed reason — see SuggestOutcome's own doc
+// comment for why that's an acceptable simplification, not a hidden one.
+func (c *Client) Suggest(ctx context.Context, rows []ports.SuggestionRow) ([]ports.RowSuggestion, ports.SuggestOutcome, error) {
 	if len(rows) == 0 {
-		return nil, nil
+		return nil, ports.SuggestOutcome{}, nil
 	}
 
 	rowCh := make(chan ports.SuggestionRow)
@@ -176,8 +205,13 @@ func (c *Client) Suggest(ctx context.Context, rows []ports.SuggestionRow) ([]por
 		suggestions = append(suggestions, res.suggestion)
 	}
 
-	if attempted > 0 && failed == attempted {
-		return suggestions, lastErr
+	var outcome ports.SuggestOutcome
+	if failed > 0 {
+		outcome = ports.SuggestOutcome{FailedRows: failed, FailureReason: reasonTag(lastErr)}
 	}
-	return suggestions, nil
+
+	if attempted > 0 && failed == attempted {
+		return suggestions, outcome, lastErr
+	}
+	return suggestions, outcome, nil
 }

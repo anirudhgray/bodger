@@ -86,7 +86,7 @@ func TestSuggest_NormalAnswer_BothQuestionTypes(t *testing.T) {
 	})
 	p := typesafe.New("test-key", "http://example.invalid", client)
 
-	got, err := p.Suggest(context.Background(), []ports.SuggestionRow{rowWithOccurrence("rec-1")})
+	got, _, err := p.Suggest(context.Background(), []ports.SuggestionRow{rowWithOccurrence("rec-1")})
 	if err != nil {
 		t.Fatalf("Suggest: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestSuggest_LowConfidenceStillPassedThrough(t *testing.T) {
 	})
 	p := typesafe.New("test-key", "http://example.invalid", client)
 
-	got, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
+	got, _, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
 	if err != nil {
 		t.Fatalf("Suggest: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestSuggest_NoneOfTheseIsEmptyIDNotError(t *testing.T) {
 	})
 	p := typesafe.New("test-key", "http://example.invalid", client)
 
-	got, err := p.Suggest(context.Background(), []ports.SuggestionRow{rowWithOccurrence("rec-1")})
+	got, _, err := p.Suggest(context.Background(), []ports.SuggestionRow{rowWithOccurrence("rec-1")})
 	if err != nil {
 		t.Fatalf("Suggest: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestSuggest_EmptyOccurrenceCandidates_NoOccurrenceQuestionAsked(t *testing.
 	p := typesafe.New("test-key", "http://example.invalid", client)
 
 	row := categoryRow("rec-1") // no OccurrenceCandidates
-	got, err := p.Suggest(context.Background(), []ports.SuggestionRow{row})
+	got, _, err := p.Suggest(context.Background(), []ports.SuggestionRow{row})
 	if err != nil {
 		t.Fatalf("Suggest: %v", err)
 	}
@@ -210,12 +210,67 @@ func TestSuggest_PartialFailure_ThreeRowsOneFails_TwoSuggestionsNoError(t *testi
 		categoryRow("rec-3"),
 	}
 
-	got, err := p.Suggest(context.Background(), rows)
+	got, outcome, err := p.Suggest(context.Background(), rows)
 	if err != nil {
 		t.Fatalf("Suggest: %v (partial failure must not be an error)", err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("got %d suggestions, want 2 (one row failed, two succeeded)", len(got))
+	}
+	if outcome.FailedRows != 1 {
+		t.Errorf("outcome.FailedRows = %d, want 1", outcome.FailedRows)
+	}
+}
+
+// TestSuggest_PartialFailure_ReasonSurvives is this fix's own regression
+// test: before it, a partial failure's reason (mapStatusError's tagged
+// "reason" detail) was observed by suggestRow, folded into lastErr, and
+// then silently dropped — Suggest returned only a nil error and the two
+// good suggestions, with no trace that two other rows failed for a real,
+// identifiable reason (a rejected credential, here). Three rows, one
+// succeeds and two fail the same way (401), proving both that
+// SuggestOutcome.FailedRows counts every failed row (not just the last
+// one) and that FailureReason carries the adapter's own tagged reason
+// through a partial failure, not only a total one.
+func TestSuggest_PartialFailure_ReasonSurvives(t *testing.T) {
+	client := synchronizedRoundTripper(func(r *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("reading request body: %v", err)
+		}
+		if strings.Contains(string(body), "FAIL") {
+			return jsonResponse(401, `{"message": "invalid key"}`), nil
+		}
+		return jsonResponse(200, `{"answers": {"category": {"choice": "cat-food", "confidence": 0.8}}}`), nil
+	})
+	p := typesafe.New("bad-key", "http://example.invalid", client)
+
+	rows := []ports.SuggestionRow{
+		categoryRow("rec-ok"),
+		func() ports.SuggestionRow {
+			r := categoryRow("rec-fail-1")
+			r.Description = "SWIGGY-FAIL-1"
+			return r
+		}(),
+		func() ports.SuggestionRow {
+			r := categoryRow("rec-fail-2")
+			r.Description = "SWIGGY-FAIL-2"
+			return r
+		}(),
+	}
+
+	got, outcome, err := p.Suggest(context.Background(), rows)
+	if err != nil {
+		t.Fatalf("Suggest: %v (partial failure must not be an error)", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d suggestions, want 1 (one row succeeded, two failed)", len(got))
+	}
+	if outcome.FailedRows != 2 {
+		t.Errorf("outcome.FailedRows = %d, want 2", outcome.FailedRows)
+	}
+	if outcome.FailureReason != "credential_rejected" {
+		t.Errorf("outcome.FailureReason = %q, want %q", outcome.FailureReason, "credential_rejected")
 	}
 }
 
@@ -225,7 +280,7 @@ func TestSuggest_EveryRowFails_ReturnsError(t *testing.T) {
 	})
 	p := typesafe.New("bad-key", "http://example.invalid", client)
 
-	got, err := p.Suggest(context.Background(), []ports.SuggestionRow{
+	got, outcome, err := p.Suggest(context.Background(), []ports.SuggestionRow{
 		categoryRow("rec-1"),
 		categoryRow("rec-2"),
 	})
@@ -236,6 +291,12 @@ func TestSuggest_EveryRowFails_ReturnsError(t *testing.T) {
 		t.Errorf("got %d suggestions, want 0", len(got))
 	}
 	wantErrCode(t, err, errs.Unavailable)
+	if outcome.FailedRows != 2 {
+		t.Errorf("outcome.FailedRows = %d, want 2", outcome.FailedRows)
+	}
+	if outcome.FailureReason != "credential_rejected" {
+		t.Errorf("outcome.FailureReason = %q, want %q", outcome.FailureReason, "credential_rejected")
+	}
 }
 
 func TestSuggest_EmptyRows_ReturnsNilNil(t *testing.T) {
@@ -244,7 +305,7 @@ func TestSuggest_EmptyRows_ReturnsNilNil(t *testing.T) {
 		return nil, nil
 	}))
 
-	got, err := p.Suggest(context.Background(), nil)
+	got, _, err := p.Suggest(context.Background(), nil)
 	if err != nil || got != nil {
 		t.Fatalf("Suggest(nil) = %v, %v, want nil, nil", got, err)
 	}
@@ -257,7 +318,7 @@ func TestSuggest_RowWithNoQuestions_SkippedSilently(t *testing.T) {
 	}))
 
 	row := ports.SuggestionRow{RecordID: "rec-1", Description: "mystery", Amount: mustMoney(-100, "INR"), Date: mustDate(2026, time.January, 1)}
-	got, err := p.Suggest(context.Background(), []ports.SuggestionRow{row})
+	got, _, err := p.Suggest(context.Background(), []ports.SuggestionRow{row})
 	if err != nil {
 		t.Fatalf("Suggest: %v, want nil (nothing to ask isn't a failure)", err)
 	}

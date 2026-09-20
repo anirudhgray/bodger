@@ -84,7 +84,7 @@ func TestSuggest_ErrorMapping(t *testing.T) {
 			client := clientReturning(tt.respond)
 			p := typesafe.New("test-key", "http://example.invalid", client)
 
-			_, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
+			_, outcome, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
 			wantErrCode(t, err, tt.wantCode)
 			if tt.wantReason != "" {
 				var e *errs.Error
@@ -94,6 +94,16 @@ func TestSuggest_ErrorMapping(t *testing.T) {
 				if got, _ := e.Details["reason"].(string); got != tt.wantReason {
 					t.Errorf("reason detail = %q, want %q", got, tt.wantReason)
 				}
+				// The same reason must also reach SuggestOutcome, not
+				// only the error's own Details — this is what a partial
+				// failure (unlike this single-row total failure) has to
+				// rely on, since its error return stays nil.
+				if outcome.FailureReason != tt.wantReason {
+					t.Errorf("outcome.FailureReason = %q, want %q", outcome.FailureReason, tt.wantReason)
+				}
+			}
+			if outcome.FailedRows != 1 {
+				t.Errorf("outcome.FailedRows = %d, want 1", outcome.FailedRows)
 			}
 		})
 	}
@@ -107,13 +117,16 @@ func TestSuggest_530Overloaded_And5xx_MapToUnavailableProviderUnreachable(t *tes
 			})
 			p := typesafe.New("test-key", "http://example.invalid", client)
 
-			_, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
+			_, outcome, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
 			wantErrCode(t, err, errs.Unavailable)
 			var e *errs.Error
 			if errors.As(err, &e) {
 				if got, _ := e.Details["reason"].(string); got != "provider_unreachable" {
 					t.Errorf("reason detail = %q, want provider_unreachable", got)
 				}
+			}
+			if outcome.FailureReason != "provider_unreachable" {
+				t.Errorf("outcome.FailureReason = %q, want provider_unreachable", outcome.FailureReason)
 			}
 		})
 	}
@@ -125,12 +138,15 @@ func TestSuggest_429_MapsToUnavailableThrottled(t *testing.T) {
 	})
 	p := typesafe.New("test-key", "http://example.invalid", client)
 
-	_, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
+	_, outcome, err := p.Suggest(context.Background(), []ports.SuggestionRow{categoryRow("rec-1")})
 	wantErrCode(t, err, errs.Unavailable)
 	var e *errs.Error
 	if errors.As(err, &e) {
 		if got, _ := e.Details["reason"].(string); got != "throttled" {
 			t.Errorf("reason detail = %q, want throttled", got)
 		}
+	}
+	if outcome.FailureReason != "throttled" {
+		t.Errorf("outcome.FailureReason = %q, want throttled", outcome.FailureReason)
 	}
 }
