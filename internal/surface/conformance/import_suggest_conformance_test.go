@@ -47,7 +47,7 @@ func (f *fakeSuggestionProvider) setFails(recordID string) {
 	f.fail[recordID] = true
 }
 
-func (f *fakeSuggestionProvider) Suggest(_ context.Context, rows []ports.SuggestionRow) ([]ports.RowSuggestion, error) {
+func (f *fakeSuggestionProvider) Suggest(_ context.Context, rows []ports.SuggestionRow) ([]ports.RowSuggestion, ports.SuggestOutcome, error) {
 	var out []ports.RowSuggestion
 	failed := 0
 	for _, row := range rows {
@@ -59,10 +59,16 @@ func (f *fakeSuggestionProvider) Suggest(_ context.Context, rows []ports.Suggest
 			out = append(out, answer)
 		}
 	}
-	if len(rows) > 0 && failed == len(rows) {
-		return out, errs.New(errs.Unavailable).Explain("fake suggestion provider: simulated failure").With("reason", "provider_unreachable")
+
+	var outcome ports.SuggestOutcome
+	if failed > 0 {
+		outcome = ports.SuggestOutcome{FailedRows: failed, FailureReason: "provider_unreachable"}
 	}
-	return out, nil
+
+	if len(rows) > 0 && failed == len(rows) {
+		return out, outcome, errs.New(errs.Unavailable).Explain("fake suggestion provider: simulated failure").With("reason", "provider_unreachable")
+	}
+	return out, outcome, nil
 }
 
 var _ ports.SuggestionProvider = (*fakeSuggestionProvider)(nil)
@@ -235,10 +241,13 @@ func TestImportSuggestionsConformance_Configured(t *testing.T) {
 // that fails every row and asserts all three surfaces still report a
 // non-error, still-fully-reviewable result: Configured stays true (the
 // call reached the provider, unlike the unconfigured case), RowsFailed
-// reflects the failure, Suggestions is empty, and — the acceptance
-// criterion this proves — the staged row is still fully listable
-// afterward (ADR-0015 "a network error must never become an error page
-// over data that is sitting in SQLite").
+// reflects the failure, failure_reason reaches every surface identically
+// (the gap #306 flagged and this change closes — an operator can now
+// tell a rejected credential from throttling from an unreachable
+// provider on every surface, not just an aggregate count), Suggestions is
+// empty, and — the acceptance criterion this proves — the staged row is
+// still fully listable afterward (ADR-0015 "a network error must never
+// become an error page over data that is sitting in SQLite").
 func TestImportSuggestionsConformance_ProviderFailure(t *testing.T) {
 	h := newHarness(t)
 	h.seed()
@@ -272,6 +281,9 @@ func TestImportSuggestionsConformance_ProviderFailure(t *testing.T) {
 		rowsFailed, _ := data["rows_failed"].(float64)
 		if rowsFailed != 1 {
 			t.Errorf("%s: rows_failed = %v, want 1", name, data["rows_failed"])
+		}
+		if reason, _ := data["failure_reason"].(string); reason != "provider_unreachable" {
+			t.Errorf("%s: failure_reason = %v, want %q", name, data["failure_reason"], "provider_unreachable")
 		}
 	}
 
