@@ -244,6 +244,15 @@ type importSuggestionsView struct {
 	TooManyCategoryOptions []string `json:"too_many_category_options,omitempty" doc:"Staged record IDs that got no category suggestion because this actor has too many categories of the row's kind for typesafe.ai to be asked about."`
 	RowsSuggested          int      `json:"rows_suggested" doc:"How many staged rows actually had a suggestion request sent for them."`
 	RowsFailed             int      `json:"rows_failed" doc:"How many of those rows typesafe.ai never answered. One row failing never discards another row's suggestion — every staged row is still fully listable and reviewable regardless."`
+	// FailureReason is why RowsFailed rows got no answer — one dominant
+	// reason for this whole request, not a per-row account (see
+	// app.SuggestForImportBatchResult.FailureReason's own doc comment for
+	// why). Empty when RowsFailed is 0. Its possible values are typesafe.ai's
+	// own stable reason strings ("credential_rejected", "throttled",
+	// "provider_unreachable" — internal/adapters/typesafe/errors.go), not
+	// translated here: this is the machine-readable REST response, the same
+	// way too_many_category_options is a list of IDs rather than prose.
+	FailureReason string `json:"failure_reason,omitempty" doc:"Why rows_failed rows got no answer -- \"credential_rejected\", \"throttled\", or \"provider_unreachable\" -- empty when rows_failed is 0. One dominant reason for the whole request, not tracked per row."`
 }
 
 func importSuggestionsViewFrom(r app.SuggestForImportBatchResult) importSuggestionsView {
@@ -252,6 +261,7 @@ func importSuggestionsViewFrom(r app.SuggestForImportBatchResult) importSuggesti
 		TooManyCategoryOptions: r.TooManyCategoryOptions,
 		RowsSuggested:          r.RowsSuggested,
 		RowsFailed:             r.RowsFailed,
+		FailureReason:          r.FailureReason,
 	}
 	v.Suggestions = make([]importRowSuggestionView, 0, len(r.Suggestions))
 	for _, s := range r.Suggestions {
