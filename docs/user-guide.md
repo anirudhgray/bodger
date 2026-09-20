@@ -318,6 +318,15 @@ bodger import resolve <record-id> --resolution not_duplicate       # keep it
 bodger import resolve <record-id> --resolution confirmed_duplicate # leave it out
 ```
 
+A row can also be flagged because it matches a pending occurrence from one of your recurring rules (rent, a subscription — anything `bodger recurring refresh` generated ahead of time but hasn't happened yet). That needs its own decision, since committing the row as-is would record the same money twice — once as the occurrence, once as this new transaction:
+
+```sh
+bodger import resolve-occurrence <record-id> --resolution materialized # the occurrence becomes its own transaction; this row is left out
+bodger import resolve-occurrence <record-id> --resolution dismissed    # not the same payment; the occurrence is left untouched, this row commits
+```
+
+A row can be flagged for both reasons at once — resolving one doesn't resolve the other, and the row can't commit until both are settled. If a materialized occurrence and a dismissed duplicate disagree, the row is left out either way, since the occurrence's own new transaction already covers that money.
+
 Once every flagged row has been resolved, commit the import to actually record the transactions:
 
 ```sh
@@ -332,7 +341,7 @@ bodger import rollback <import-id>
 
 This removes exactly the transactions that import created; everything else you've recorded is untouched. `bodger import list` shows every import you've started, and `bodger import show <import-id>` looks up one import's current status.
 
-The REST API offers the same operations: `POST /api/v1/imports` (the uploaded file's own bytes as the request body, with the account, filename, and column mapping as query parameters), `GET /api/v1/imports`, `GET /api/v1/imports/{id}`, `GET /api/v1/imports/{id}/records`, `POST /api/v1/import-records/{id}/resolve`, `POST /api/v1/imports/{id}/commit`, and `POST /api/v1/imports/{id}/rollback`.
+The REST API offers the same operations: `POST /api/v1/imports` (the uploaded file's own bytes as the request body, with the account, filename, and column mapping as query parameters), `GET /api/v1/imports`, `GET /api/v1/imports/{id}`, `GET /api/v1/imports/{id}/records`, `POST /api/v1/import-records/{id}/resolve`, `POST /api/v1/import-records/{id}/resolve-occurrence-match`, `POST /api/v1/imports/{id}/commit`, and `POST /api/v1/imports/{id}/rollback`.
 
 Only CSV is supported today.
 
@@ -730,8 +739,9 @@ All commands default to plain-text output; add `--json` to any of them for machi
 | `bodger import upload <file> --account <account> --date-column <col> --description-column <col> --amount-column <col> [--filename] [--format] [--posted-date-column] [--currency-column] [--external-id-column] [--category-column]` | Stage a CSV file for review — nothing is recorded yet |
 | `bodger import list` | List every import you've started |
 | `bodger import show <import-id>` | Look up one import's status |
-| `bodger import records <import-id>` | List an import's staged rows, with any duplicate/transfer flags |
-| `bodger import resolve <record-id> --resolution <confirmed_duplicate\|not_duplicate>` | Record your decision on a flagged row |
+| `bodger import records <import-id>` | List an import's staged rows, with any duplicate/transfer/occurrence flags |
+| `bodger import resolve <record-id> --resolution <confirmed_duplicate\|not_duplicate>` | Record your decision on a row flagged as a suspected duplicate |
+| `bodger import resolve-occurrence <record-id> --resolution <materialized\|dismissed>` | Record your decision on a row matched to a pending recurring occurrence |
 | `bodger import commit <import-id>` | Write a staged import's cleared rows as real transactions |
 | `bodger import rollback <import-id>` | Undo a committed import |
 | `bodger restore [file] --yes` | **Overwrites everything you have** with a JSON backup — reads from `file`, or from standard input if omitted; refuses to run without `--yes` |
