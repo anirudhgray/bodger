@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/anirudhgray/bodger/internal/domain/importing"
+	"github.com/anirudhgray/bodger/internal/domain/ledger"
+	"github.com/anirudhgray/bodger/internal/domain/recurring"
 	"github.com/anirudhgray/bodger/internal/platform/errs"
 )
 
@@ -143,6 +145,19 @@ func (s *Service) ListImportRecords(ctx context.Context, q ListImportRecordsQuer
 // TransferCandidateRecordID (ListImportRecords) for display — this
 // method just isn't where acting on it happens, because ADR-0008 gives it
 // nothing to act on.
+//
+// An occurrence match (importing.WithOccurrenceMatch, issue #301) is
+// different from a transfer candidate: unlike a transfer, it does gate
+// commit (buildImportRecord, issue #309), and has its own resolve verb,
+// ResolveImportRecordOccurrenceMatch, rather than this method — an
+// occurrence match's two outcomes (materialise or dismiss the occurrence)
+// don't fit DuplicateResolution's vocabulary, and materialising has a
+// side effect (a new transaction) this method has no business triggering.
+// A record can be pending for an unresolved DuplicateMatch, an unresolved
+// occurrence match, or both at once; resolving one here never resolves or
+// bypasses the other, and this method's own record.SettleStatus call
+// leaves the record pending until every reason on it has cleared — see
+// that method's own doc comment (internal/domain/importing/record.go).
 type ResolveImportRecordCommand struct {
 	ActorID         string
 	ImportRecordRef string
@@ -215,18 +230,151 @@ func (s *Service) ResolveImportRecord(ctx context.Context, cmd ResolveImportReco
 		return ResolveImportRecordResult{}, errs.New(errs.Internal).Wrap(err)
 	}
 
-	switch resolution {
-	case importing.DuplicateResolutionConfirmed:
-		resolved, err = resolved.MarkExcluded()
-	case importing.DuplicateResolutionDismissed:
-		resolved, err = resolved.MarkReady()
-	}
+	// SettleStatus, not a direct MarkExcluded/MarkReady switch on
+	// resolution: a record can also carry an unresolved occurrence match
+	// (issue #309), and resolving this DuplicateMatch alone must never
+	// bypass that — see SettleStatus's own doc comment for the full
+	// "leaves pending until every reason clears" rule and its
+	// exclusion-wins-over-ready tiebreak.
+	settled, err := resolved.SettleStatus()
 	if err != nil {
 		return ResolveImportRecordResult{}, errs.New(errs.Internal).Wrap(err)
 	}
 
-	if err := s.ImportRecords.Update(ctx, cmd.ActorID, resolved); err != nil {
+	if err := s.ImportRecords.Update(ctx, cmd.ActorID, settled); err != nil {
 		return ResolveImportRecordResult{}, err
 	}
-	return ResolveImportRecordResult{Record: resolved}, nil
+	return ResolveImportRecordResult{Record: settled}, nil
+}
+
+// ResolveImportRecordOccurrenceMatchCommand records the user's decision
+// about one staged record's occurrence match (issue #309's counterpart to
+// ResolveImportRecordCommand, for the match findOccurrenceMatch attaches
+// via importing.WithOccurrenceMatch — see that function's own doc comment,
+// import_duplicate.go, for why an occurrence match was never shaped like a
+// DuplicateMatch, and ResolveImportRecordCommand's doc comment for why
+// this needs its own command rather than reusing that one: different
+// resolution vocabulary, and a materialize outcome that — unlike anything
+// ResolveImportRecord does — has its own ledger side effect via
+// MaterialiseOccurrence).
+//
+// Resolution is one of importing.OccurrenceMatchResolutionMaterialized or
+// importing.OccurrenceMatchResolutionDismissed, passed straight through
+// rather than pre-validated here — the same reasoning
+// ResolveImportRecordCommand's own doc comment gives.
+//
+//   - Materialized calls MaterialiseOccurrence for the matched occurrence
+//     (the rule's own projected amount and date — overriding either at
+//     materialisation time is issue #289's separate, deferred concern),
+//     then excludes this record: the occurrence's own new transaction now
+//     authoritatively covers this row's money, so committing the row too
+//     would double it.
+//   - Dismissed leaves the matched occurrence completely untouched — still
+//     pending, for a human to separately materialise or skip later
+//     through the existing recurring-occurrences surface — and clears
+//     this record for commit.
+//
+// Deliberately no third "skip the occurrence" outcome: skipping is an
+// independent decision about the recurring rule's own schedule, already
+// reachable through SkipOccurrence/`bodger recurring skip`/
+// POST .../skip, and conflating it here would give this command two
+// unrelated reasons to touch the occurrence.
+type ResolveImportRecordOccurrenceMatchCommand struct {
+	ActorID         string
+	ImportRecordRef string
+	Resolution      string
+}
+
+// ResolveImportRecordOccurrenceMatchResult is the record
+// ResolveImportRecordOccurrenceMatch updated, together with the
+// occurrence and transaction a materialize resolution produced. Occurrence
+// and Transaction are both nil for a dismiss resolution, which leaves the
+// occurrence (and the ledger) completely untouched.
+type ResolveImportRecordOccurrenceMatchResult struct {
+	Record      importing.ImportRecord
+	Occurrence  *recurring.ScheduledOccurrence
+	Transaction *ledger.Transaction
+}
+
+// ResolveImportRecordOccurrenceMatch implements issue #309's occurrence-
+// match review use case — see ResolveImportRecordOccurrenceMatchCommand's
+// own doc comment for the two outcomes.
+//
+// It refuses (PreconditionFailed) a record with no OccurrenceMatch at all,
+// or one whose occurrence match was already resolved — a record is
+// resolved exactly once, matching ADR-0008's "recorded... for
+// auditability" reasoning DuplicateMatch already follows.
+//
+// SettleStatus, not a direct MarkExcluded/MarkReady switch, decides what
+// happens to the record's status afterward: the same record can also
+// carry an unresolved DuplicateMatch (issue #309's gating change means
+// both can coexist), and this method resolving the occurrence match alone
+// must never bypass that — see SettleStatus's own doc comment
+// (internal/domain/importing/record.go) for the full rule and its
+// exclusion-wins-over-ready tiebreak. Note that for a materialize
+// resolution, MaterialiseOccurrence's side effect (a new transaction, and
+// the occurrence itself moving to recurring.OccurrenceStatusMaterialised)
+// always happens regardless of whether the record's own status can settle
+// yet — only this record's own status transition waits on every pending
+// reason clearing, not the occurrence's.
+func (s *Service) ResolveImportRecordOccurrenceMatch(ctx context.Context, cmd ResolveImportRecordOccurrenceMatchCommand) (ResolveImportRecordOccurrenceMatchResult, error) {
+	if err := requireActorID(cmd.ActorID); err != nil {
+		return ResolveImportRecordOccurrenceMatchResult{}, err
+	}
+	recordID := strings.TrimSpace(cmd.ImportRecordRef)
+	if recordID == "" {
+		return ResolveImportRecordOccurrenceMatchResult{}, errs.New(errs.InvalidInput).Explain("An import record ID is required.").Field("import_record_ref")
+	}
+
+	resolution := importing.OccurrenceMatchResolution(strings.TrimSpace(cmd.Resolution))
+	if resolution != importing.OccurrenceMatchResolutionMaterialized && resolution != importing.OccurrenceMatchResolutionDismissed {
+		return ResolveImportRecordOccurrenceMatchResult{}, errs.New(errs.InvalidInput).
+			Explain("%q isn't a valid resolution.", cmd.Resolution).
+			Field("resolution").
+			With("valid_resolutions", []string{string(importing.OccurrenceMatchResolutionMaterialized), string(importing.OccurrenceMatchResolutionDismissed)})
+	}
+
+	record, err := s.ImportRecords.Get(ctx, cmd.ActorID, recordID)
+	if err != nil {
+		return ResolveImportRecordOccurrenceMatchResult{}, err
+	}
+
+	match, ok := record.OccurrenceMatch()
+	if !ok {
+		return ResolveImportRecordOccurrenceMatchResult{}, errs.New(errs.PreconditionFailed).
+			Explain("Import record %q has no matched occurrence to resolve.", record.ID()).
+			Field("import_record_ref")
+	}
+	if match.Resolved() {
+		return ResolveImportRecordOccurrenceMatchResult{}, errs.New(errs.PreconditionFailed).
+			Explain("Import record %q's occurrence match was already resolved as %s.", record.ID(), match.Resolution()).
+			Field("import_record_ref")
+	}
+
+	var occurrencePtr *recurring.ScheduledOccurrence
+	var txnPtr *ledger.Transaction
+	if resolution == importing.OccurrenceMatchResolutionMaterialized {
+		materialised, err := s.MaterialiseOccurrence(ctx, MaterialiseOccurrenceCommand{
+			ActorID: cmd.ActorID, OccurrenceID: match.OccurrenceID(),
+		})
+		if err != nil {
+			return ResolveImportRecordOccurrenceMatchResult{}, err
+		}
+		occ, txn := materialised.Occurrence, materialised.Transaction
+		occurrencePtr, txnPtr = &occ, &txn
+	}
+
+	resolved, err := record.ResolveOccurrenceMatch(resolution)
+	if err != nil {
+		return ResolveImportRecordOccurrenceMatchResult{}, errs.New(errs.Internal).Wrap(err)
+	}
+	settled, err := resolved.SettleStatus()
+	if err != nil {
+		return ResolveImportRecordOccurrenceMatchResult{}, errs.New(errs.Internal).Wrap(err)
+	}
+
+	if err := s.ImportRecords.Update(ctx, cmd.ActorID, settled); err != nil {
+		return ResolveImportRecordOccurrenceMatchResult{}, err
+	}
+	return ResolveImportRecordOccurrenceMatchResult{Record: settled, Occurrence: occurrencePtr, Transaction: txnPtr}, nil
 }

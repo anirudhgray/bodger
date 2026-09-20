@@ -134,12 +134,12 @@ func hashFileContent(content []byte) string {
 }
 
 // buildImportRecord resolves mapping (account/category) and runs
-// duplicate/transfer detection for one parsed row, returning the
-// ImportRecord ready to persist — already transitioned to
+// duplicate/transfer/occurrence detection for one parsed row, returning
+// the ImportRecord ready to persist — already transitioned to
 // ImportRecordStatusReady (nothing to review), ImportRecordStatusExcluded
 // (a tier-1 exact duplicate, auto-excluded per ADR-0008), or left at
-// ImportRecordStatusPending (a tier-2 suspected duplicate awaiting the
-// user's review).
+// ImportRecordStatusPending (a tier-2 suspected duplicate and/or a
+// matched occurrence, issue #309, awaiting the user's review).
 func (s *Service) buildImportRecord(ctx context.Context, actorID string, batch importing.ImportBatch, account ledger.Account, row importparse.Row) (importing.ImportRecord, error) {
 	var opts []importing.ImportRecordOption
 	if row.PostedDate != nil {
@@ -206,13 +206,19 @@ func (s *Service) buildImportRecord(ctx context.Context, actorID string, batch i
 	// transactions or other staged records. Skipped for an already-excluded
 	// exact duplicate for the same reason transfer detection is: nothing
 	// about an excluded row's fate is still open to change.
+	var hasOccurrenceMatch bool
 	if !isExact {
 		occurrenceID, found, err := s.findOccurrenceMatch(ctx, actorID, account.ID(), row.Amount, row.BookedDate, row.Description)
 		if err != nil {
 			return importing.ImportRecord{}, err
 		}
 		if found {
-			opts = append(opts, importing.WithOccurrenceMatch(occurrenceID))
+			match, err := importing.NewOccurrenceMatch(occurrenceID)
+			if err != nil {
+				return importing.ImportRecord{}, errs.New(errs.Internal).Wrap(err)
+			}
+			opts = append(opts, importing.WithOccurrenceMatch(match))
+			hasOccurrenceMatch = true
 		}
 	}
 
@@ -223,10 +229,19 @@ func (s *Service) buildImportRecord(ctx context.Context, actorID string, batch i
 		return importing.ImportRecord{}, errs.New(errs.Internal).Wrap(err)
 	}
 
+	// A record clears review immediately (ImportRecordStatusReady) only
+	// when neither of the two things that could hold it for review found
+	// anything: no suspected duplicate (ADR-0008), and no occurrence match
+	// (issue #309 — leaving an occurrence-matched row un-gated, as #301
+	// originally landed it, meant detection had zero observable effect on
+	// commit; see findOccurrenceMatch's and WithOccurrenceMatch's own doc
+	// comments). A record can be pending for either reason, both, or
+	// neither; ImportRecord.SettleStatus is what later clears it once
+	// every pending reason on it has been resolved.
 	switch {
 	case isExact:
 		record, err = record.MarkExcluded()
-	case !isSuspected:
+	case !isSuspected && !hasOccurrenceMatch:
 		record, err = record.MarkReady()
 	}
 	if err != nil {
