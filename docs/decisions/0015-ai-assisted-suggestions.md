@@ -194,6 +194,34 @@ Four reasons, in increasing order of how badly they would bite:
 
 The threshold itself is app-layer policy, not adapter behaviour: the adapter returns whatever confidence it received, and `internal/app` filters. [ADR-0005](0005-shared-application-layer.md) puts every default and policy decision in the application layer, and it makes the threshold testable against the fake without a network.
 
+### Every suggestion says it is a suggestion, and says where it came from
+
+[`ux-principles.md`](../ux-principles.md) §6 already settled the principle this inherits, for FX: **"every converted amount shows its rate, date, and source... this is the user's money, and a figure they can't check is a figure they won't believe."** A converted balance in the CLI renders `source: frankfurter` next to the rate, and the web UI discloses the same provenance. A machine-proposed category is the same kind of claim — something the system derived rather than something the user told it — and it gets the same treatment.
+
+Two things must therefore be visible at the point a suggestion is shown, on every surface:
+
+1. **That it is a suggestion, not a value.** §5 of the same document already committed to this before the feature existed: *"the system never quietly decides something significant... Automatic categorisation, if it ever exists, suggests."* Suggested categories are rendered as a proposal to accept, never as a pre-filled field.
+2. **That it came from typesafe.ai**, named plainly, the way `frankfurter` is named plainly. Not "AI", not "smart categorisation", not an unattributed sparkle — the vendor's name, because that is the checkable fact and because a user is entitled to know which third party saw their transaction description.
+
+The model version belongs with the attribution wherever the rate's *date* would belong — available, not shouted. Following §4's progressive-disclosure layering, the common path shows "suggested by typesafe.ai"; `--json` and the REST response carry the precise model identifier and confidence value, the same way `--json` already carries a rate's full provenance. **The raw confidence decimal is not common-path copy** — "0.87" is not checkable by the person reading it, unlike an exchange rate, so it is used for ordering and disclosed on demand rather than printed next to a category name.
+
+**The attribution does not survive confirmation, and that is not an inconsistency.** Once the user accepts a suggested category it is recorded as an ordinary manual assignment with no AI marker, per the call-site section above. The FX analogy breaks here for a real reason: a rate is *permanently part of* the converted figure, so it must travel with it forever, whereas a suggestion is *not part of* the confirmed transaction — the human's decision is. Labelling a confirmed category "AI-assigned" would misstate who asserted it. The transparency obligation is at the moment of decision, where it can still change the decision.
+
+### When there is no key, say so — once, clearly, and never again
+
+An operator who has not configured typesafe.ai gets **no AI features at all**, and the interface must make that legible rather than simply lacking a button nobody knows was supposed to be there.
+
+This cuts against the nearest existing precedent, so the divergence is deliberate and stated: `ux-principles.md` §6 says **"a single-currency user must never meet the currency system at all"** — hide machinery that does not apply. The cases differ in whether anything is actually missing. A single-currency user is not missing a capability; there is genuinely nothing to convert. An unconfigured instance *is* missing a capability that exists, is documented, and that the person may well have read about — and the absence is otherwise indistinguishable from the feature being broken, which is the failure mode #298 asked to avoid.
+
+The resolution is that visibility is bounded, not that it is loud:
+
+- **The import review screen shows one quiet, non-blocking line** where the suggestion affordance would be, saying suggestions are available but not set up on this instance. It is never a modal, never a banner on unrelated screens, and never blocks review — the screen is fully usable, exactly as it is today.
+- **Settings is where the detail lives**, including the environment variable an operator sets. An env var name is operator configuration, like `BODGER_DB_PATH`, not the internal jargon CLAUDE.md and §2 ban from user copy — but it belongs in the operator's surface, not in a sentence aimed at someone standing in a shop.
+- **The CLI states it where it would have printed a suggestion**, and `--json` carries the machine-readable "not configured" state so a script can branch on it rather than parsing prose.
+- **No nagging.** One statement of fact in the one place it is relevant. A self-hoster who has deliberately chosen not to send their data to a third party is making a legitimate choice, not neglecting setup, and the interface must not treat them as having an incomplete installation.
+
+This is the user-facing half of the `Configured: false` result field: a distinct, non-error state exists in the application layer precisely so every surface can render this without inventing its own interpretation of an error code.
+
 ### Pin the model to `jev-1.13.0`. Never `jev-latest`.
 
 Following directly from the point above. `jev-latest` is an alias that moves without a release on bodger's side, and it moves the calibration of a number this system makes decisions about. The pinned version is a constant in the adapter, bumped deliberately in its own PR — and a bump means re-reading that version's jaggedness page, since the limitations this design routes around are published per version.
@@ -320,7 +348,7 @@ There is no official Go SDK, and writing one is a genuinely appealing separate p
 
 ## Consequences
 
-**Good.** The feature is off until an operator opts in, so an instance that ignores M10 is unchanged in behaviour, dependencies, and privacy. Nothing it produces can reach the ledger without a person choosing it, structurally rather than by convention — the suggestion method writes nothing at all. Every judgement the model makes is one it is documented to be good at, because code answers the dates and the arithmetic first. The port speaks bodger's vocabulary, so the vendor is replaceable, including by a local model or a future Go SDK. A failure degrades to "no suggestion" with enough detail for an operator to tell a wrong key from an outage. And re-scoping the second use case surfaced a real, pre-existing bug (#301): an imported transaction that duplicates a pending occurrence is invisible to duplicate detection today.
+**Good.** The feature is off until an operator opts in, so an instance that ignores M10 is unchanged in behaviour, dependencies, and privacy. Nothing it produces can reach the ledger without a person choosing it, structurally rather than by convention — the suggestion method writes nothing at all. Every judgement the model makes is one it is documented to be good at, because code answers the dates and the arithmetic first. Every suggestion is attributed to typesafe.ai by name at the point someone acts on it, inheriting the transparency rule FX already established rather than inventing a softer one for AI. The port speaks bodger's vocabulary, so the vendor is replaceable, including by a local model or a future Go SDK. A failure degrades to "no suggestion" with enough detail for an operator to tell a wrong key from an outage. And re-scoping the second use case surfaced a real, pre-existing bug (#301): an imported transaction that duplicates a pending occurrence is invisible to duplicate detection today.
 
 **Bad, and worth stating plainly:**
 
@@ -334,4 +362,6 @@ There is no official Go SDK, and writing one is a genuinely appealing separate p
 - **The design is built on a published limitations page, which is a dependency on the vendor's candour.** The date and arithmetic workarounds exist because jev-1.13's page says those are weak. An undocumented weakness gets no workaround, and bodger would not know.
 - **A build-tagged live test is a test that will rot.** Excluded from CI means nothing runs it, which means schema drift is caught whenever someone remembers, not when it happens. The alternative — running it in CI — trades that for a secret in the repository's CI configuration and a bill attached to every push, which is worse.
 - **The 254-option ceiling is a real cliff, not a soft limit**, even after the kind filter halves the list. An actor past it gets no category suggestions at all. That is the right failure — truncation would be worse — but it needs a clear surface message rather than an empty result, or it will read as the feature being broken.
+- **The not-configured state is real UI work on four surfaces, for a feature the operator may never enable.** Every surface has to render a third state — suggestions present, suggestions failed, suggestions not set up — and ADR-0012's Frankfurter experience is the warning: getting an ordinary "couldn't reach it" state wrong is what turns a free service's routine flakiness into a broken-looking app. Here the same mistake turns a deliberate privacy choice into a nag.
+- **Attribution ends at confirmation, which some readers will call a gap.** There is deliberately no way to ask, later, "which of my categories did a model originally propose?" The reasoning is in the ADR — the human's decision is what the ledger records — but it does mean an operator who suspects a run of bad suggestions has no query that finds them, and would have to reason from the import batch instead.
 - **`SuggestionRow` is a projection someone will eventually be tempted to widen.** The privacy rule holds only as long as adding a field to it is treated as the boundary change it is. The adapter tests that assert `RawPayload` never reaches the wire, and that no request carries a second row, are the only things that will actually stop it.

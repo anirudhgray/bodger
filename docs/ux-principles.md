@@ -91,7 +91,7 @@ This is how "simple" and "powerful" coexist, and it's the part most likely to be
 - **Nothing is silently destructive.** Deletes are soft. Import commits are one transaction and roll back as a unit ([ADR-0008](decisions/0008-import-export-architecture.md)).
 - **Confirmation is reserved for genuinely destructive, hard-to-undo actions** — rolling back an import, deleting an account with history. Confirming an ordinary expense is friction that trains people to stop reading dialogs.
 - **Partial input is preserved.** A validation failure never discards what was typed.
-- **The system never quietly decides something significant.** Suspected duplicate imports and detected transfers are *proposed*, never auto-applied ([ADR-0008](decisions/0008-import-export-architecture.md)). Automatic categorisation, if it ever exists, suggests.
+- **The system never quietly decides something significant.** Suspected duplicate imports and detected transfers are *proposed*, never auto-applied ([ADR-0008](decisions/0008-import-export-architecture.md)). Automatic categorisation suggests and never assigns — no confidence score is high enough to skip the person ([ADR-0015](decisions/0015-ai-assisted-suggestions.md)).
 
 ---
 
@@ -107,6 +107,8 @@ The split that makes both possible: **domain detail** (which account, which valu
 - **Never silently wrong.** A missing FX rate fails loudly with a named error rather than falling back to 1.0 or dropping the row ([ADR-0004](decisions/0004-multi-currency-and-fx.md)). A number the user cannot trust is worse than an error they can act on.
 - **Every converted amount shows its rate, date, and source** ([ADR-0004](decisions/0004-multi-currency-and-fx.md)). Transparency *is* a UX property here: this is the user's money, and a figure they can't check is a figure they won't believe.
 - **A single-currency user must never meet the currency system at all.** No currency field on entry, no conversion policy, no rate, no "converted from" annotation — those appear only once a second currency actually exists in their data. Multi-currency is a first-class capability, not a first-class *presence*: the machinery in [ADR-0004](decisions/0004-multi-currency-and-fx.md) describes the converted case, and nothing in it should surface on the path most users are on.
+- **Anything the system proposed says so, and says where it came from.** The rule above about rates generalises: a figure or a value the system *derived* rather than being told carries its provenance at the point a person acts on it. A suggested category is labelled as a suggestion and attributed to `typesafe.ai` by name — the same way a converted amount says `source: frankfurter` — never as an unattributed hint, and never pre-filled into the field ([ADR-0015](decisions/0015-ai-assisted-suggestions.md)). Attribution stops at confirmation: once the person accepts it, it is their assignment and is recorded as one.
+- **A capability that exists but isn't configured says so once, where it would have appeared.** Absence and breakage look identical otherwise. This is the deliberate exception to the single-currency rule above: a single-currency user is missing nothing, whereas an instance with no AI key is missing something real and documented. One quiet, non-blocking line at the point of use, detail in settings, and no nagging anywhere — declining to send your data to a third party is a legitimate choice, not an incomplete installation.
 
 ---
 
