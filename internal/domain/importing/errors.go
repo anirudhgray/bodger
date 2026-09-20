@@ -98,4 +98,18 @@ var (
 	// definite duplicate and is skipped" automatically, with no user
 	// decision to record.
 	ErrDuplicateMatchExactNotResolvable = errors.New("importing: an exact duplicate match has no resolution to record — it is skipped automatically")
+
+	// ErrOccurrenceMatchEmptyOccurrenceID is returned when an
+	// OccurrenceMatch is constructed with an empty occurrence ID.
+	ErrOccurrenceMatchEmptyOccurrenceID = errors.New("importing: occurrence match occurrence id must not be empty")
+
+	// ErrOccurrenceMatchInvalidResolution is returned by
+	// OccurrenceMatch.Resolve when given a resolution outside the known
+	// set, or OccurrenceMatchResolutionPending (not a real decision).
+	ErrOccurrenceMatchInvalidResolution = errors.New("importing: invalid occurrence match resolution")
+
+	// ErrImportRecordNoOccurrenceMatch is returned by
+	// ImportRecord.ResolveOccurrenceMatch when the record has no
+	// OccurrenceMatch to resolve.
+	ErrImportRecordNoOccurrenceMatch = errors.New("importing: cannot resolve an occurrence match that was never recorded")
 )

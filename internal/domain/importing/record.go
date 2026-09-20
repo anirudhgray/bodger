@@ -75,23 +75,23 @@ var importRecordTransitions = map[ImportRecordStatus]map[ImportRecordStatus]bool
 // NewImportRecord, and the only way to move it through the status state
 // machine is MarkReady, MarkExcluded, and MarkCommitted.
 type ImportRecord struct {
-	id                  string
-	userID              string
-	importBatchID       string
-	rawPayload          string
-	bookedDate          domain.Date
-	postedDate          *domain.Date
-	description         string
-	amount              money.Money
-	externalID          *string
-	resolvedAccountID   *string
-	resolvedCategoryID  *string
-	duplicateMatch      *DuplicateMatch
-	transferCandidate   *string
-	matchedOccurrenceID *string
-	status              ImportRecordStatus
-	transactionID       *string
-	sortOrder           int
+	id                 string
+	userID             string
+	importBatchID      string
+	rawPayload         string
+	bookedDate         domain.Date
+	postedDate         *domain.Date
+	description        string
+	amount             money.Money
+	externalID         *string
+	resolvedAccountID  *string
+	resolvedCategoryID *string
+	duplicateMatch     *DuplicateMatch
+	transferCandidate  *string
+	occurrenceMatch    *OccurrenceMatch
+	status             ImportRecordStatus
+	transactionID      *string
+	sortOrder          int
 }
 
 // ImportRecordOption sets one of an ImportRecord's optional fields at
@@ -172,19 +172,16 @@ func WithTransferCandidate(recordID string) ImportRecordOption {
 	}
 }
 
-// WithOccurrenceMatch attaches occurrenceID — the ID of a pending
-// recurring.ScheduledOccurrence (internal/ports.ScheduledOccurrenceRepository)
-// that duplicate detection (a separate, out-of-scope issue for this
-// package, same as DuplicateMatch and transferCandidate above) believes
-// this row's own amount, currency, booked_date, and description settle —
-// issue #301's fix for the gap where a pending occurrence and an
-// importing row for the same money went undetected because neither
-// findExactDuplicate nor findSuspectedDuplicate ever looked past
-// committed transactions.
+// WithOccurrenceMatch attaches match — issue #301's fix for the gap where
+// a pending recurring.ScheduledOccurrence and an importing row for the
+// same money went undetected because neither findExactDuplicate nor
+// findSuspectedDuplicate ever looked past committed transactions
+// (internal/app/import_duplicate.go's findOccurrenceMatch).
 //
-// This is a bare ID, not a second DuplicateMatch, because an occurrence
-// match isn't shaped like one and forcing it through DuplicateMatch's
-// fields would misrepresent what's being pointed at:
+// This is a distinct OccurrenceMatch type, not a second DuplicateMatch,
+// because an occurrence match isn't shaped like one and forcing it
+// through DuplicateMatch's fields would misrepresent what's being pointed
+// at:
 //
 //   - DuplicateMatch.MatchedTransactionID names a committed transaction;
 //     an occurrence match names a recurring.ScheduledOccurrence, a
@@ -194,28 +191,27 @@ func WithTransferCandidate(recordID string) ImportRecordOption {
 //     that ADR's invariant).
 //   - DuplicateMatch.Resolve's two outcomes are
 //     DuplicateResolutionConfirmed ("exclude this row — some other
-//     transaction already covers this money") and -Dismissed. Neither
-//     describes an occurrence match: no other transaction covers this
-//     row's money yet, so it should still become a real transaction on
-//     commit like any other ready row. What's actually pending is a
-//     decision about the *occurrence* — materialise it
-//     (app.MaterialiseOccurrence) or skip it (app.SkipOccurrence) — verbs
-//     this package has no state machine for and isn't the layer that
-//     applies them.
+//     transaction already covers this money") and -Dismissed.
+//     OccurrenceMatch.Resolve's own two outcomes name the same underlying
+//     decision but through different verbs (issue #309):
+//     OccurrenceMatchResolutionMaterialized turns the occurrence into its
+//     own transaction (app.MaterialiseOccurrence) and excludes this row;
+//     -Dismissed leaves the occurrence untouched and clears this row for
+//     commit. Skipping the occurrence (app.SkipOccurrence) deliberately
+//     has no equivalent verb here — it's an independent decision about
+//     the recurring rule's own schedule, already reachable through the
+//     existing recurring-occurrences surface.
 //
-// A bare, unresolvable ID is exactly the shape WithTransferCandidate
-// already uses for the same reason (a transfer candidate points at
-// another ImportRecord, not a transaction, and carries no resolution of
-// its own either): both are purely advisory hints for a caller to act on
-// elsewhere, never something this package's own status transitions
-// consult. Like a transfer candidate, this coexists independently of
-// DuplicateMatch — a record can carry both, neither, or just one.
-func WithOccurrenceMatch(occurrenceID string) ImportRecordOption {
+// An OccurrenceMatch coexists independently of DuplicateMatch, the same
+// way WithTransferCandidate's target coexists with both — a record can
+// carry any combination of the three. Unlike a transfer candidate
+// (permanently advisory, never gates commit), an unresolved
+// OccurrenceMatch does hold a record at ImportRecordStatusPending — see
+// SettleStatus.
+func WithOccurrenceMatch(match OccurrenceMatch) ImportRecordOption {
 	return func(r *ImportRecord) {
-		if occurrenceID != "" {
-			v := occurrenceID
-			r.matchedOccurrenceID = &v
-		}
+		m := match
+		r.occurrenceMatch = &m
 	}
 }
 
@@ -369,16 +365,29 @@ func (r ImportRecord) TransferCandidateRecordID() (string, bool) {
 	return *r.transferCandidate, true
 }
 
+// OccurrenceMatch returns the occurrence-match candidate duplicate
+// detection found for this row, and false if none was found (issue #301).
+// Independent of DuplicateMatch — see WithOccurrenceMatch.
+func (r ImportRecord) OccurrenceMatch() (OccurrenceMatch, bool) {
+	if r.occurrenceMatch == nil {
+		return OccurrenceMatch{}, false
+	}
+	return *r.occurrenceMatch, true
+}
+
 // MatchedOccurrenceID returns the ID of the pending
 // recurring.ScheduledOccurrence duplicate detection believes this row's
-// money will settle, and false if none was found (issue #301). This is
-// advisory only, and independent of DuplicateMatch — see
-// WithOccurrenceMatch.
+// money will settle, and false if none was found (issue #301) — a
+// convenience over OccurrenceMatch().OccurrenceID() for a caller that only
+// needs the ID, matching TransferCandidateRecordID's own shape. This
+// keeps returning the ID once the match has been resolved (issue #309),
+// the same way DuplicateMatch's MatchedTransactionID stays visible after
+// resolution — a resolved match is still worth surfacing for audit.
 func (r ImportRecord) MatchedOccurrenceID() (string, bool) {
-	if r.matchedOccurrenceID == nil {
+	if r.occurrenceMatch == nil {
 		return "", false
 	}
-	return *r.matchedOccurrenceID, true
+	return r.occurrenceMatch.OccurrenceID(), true
 }
 
 // Status returns the record's current status in ADR-0008's state machine.
@@ -412,6 +421,65 @@ func (r ImportRecord) Resolve(resolution DuplicateResolution) (ImportRecord, err
 	}
 	r.duplicateMatch = &resolved
 	return r, nil
+}
+
+// ResolveOccurrenceMatch returns a copy of r with the user's decision
+// recorded on its OccurrenceMatch (issue #309's counterpart to Resolve);
+// r itself is unchanged. It returns ErrImportRecordNoOccurrenceMatch if r
+// has no OccurrenceMatch to resolve, and otherwise whatever
+// OccurrenceMatch.Resolve itself returns. Recording the resolution alone
+// never changes r's Status — call SettleStatus afterward to move r out of
+// ImportRecordStatusPending once every reason holding it there has
+// cleared.
+func (r ImportRecord) ResolveOccurrenceMatch(resolution OccurrenceMatchResolution) (ImportRecord, error) {
+	if r.occurrenceMatch == nil {
+		return ImportRecord{}, ErrImportRecordNoOccurrenceMatch
+	}
+	resolved, err := r.occurrenceMatch.Resolve(resolution)
+	if err != nil {
+		return ImportRecord{}, err
+	}
+	r.occurrenceMatch = &resolved
+	return r, nil
+}
+
+// SettleStatus returns a copy of r moved out of ImportRecordStatusPending
+// once every reason that put it there has been resolved — an unresolved
+// DuplicateMatch (Resolve) and/or an unresolved OccurrenceMatch
+// (ResolveOccurrenceMatch), issue #309's two independent, coexisting
+// pending reasons (a record can carry both, either, or neither). r is
+// returned unchanged if it isn't currently pending, or if either reason is
+// still unresolved: resolving one of two coexisting reasons never
+// silently resolves or bypasses the other, and a record only ever leaves
+// pending once every reason on it has been cleared.
+//
+// Once both reasons have cleared, the destination is
+// ImportRecordStatusExcluded if either resolved reason called for
+// exclusion (DuplicateResolutionConfirmed — some other transaction
+// already covers this money — or OccurrenceMatchResolutionMaterialized —
+// the occurrence's own new transaction now does), and
+// ImportRecordStatusReady otherwise. Exclusion wins over ready when both
+// are present and disagree: a materialized occurrence's transaction
+// covers this row's money regardless of what its own, independently
+// resolved DuplicateMatch decided (and vice versa), so committing the row
+// too would still double it.
+func (r ImportRecord) SettleStatus() (ImportRecord, error) {
+	if r.status != ImportRecordStatusPending {
+		return r, nil
+	}
+	if r.duplicateMatch != nil && !r.duplicateMatch.Resolved() {
+		return r, nil
+	}
+	if r.occurrenceMatch != nil && !r.occurrenceMatch.Resolved() {
+		return r, nil
+	}
+
+	wantExcluded := (r.duplicateMatch != nil && r.duplicateMatch.Resolution() == DuplicateResolutionConfirmed) ||
+		(r.occurrenceMatch != nil && r.occurrenceMatch.Resolution() == OccurrenceMatchResolutionMaterialized)
+	if wantExcluded {
+		return r.MarkExcluded()
+	}
+	return r.MarkReady()
 }
 
 // transition returns a copy of r moved to next, or

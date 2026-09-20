@@ -56,7 +56,8 @@ CREATE TABLE import_record (
     -- transaction's postings.
     sort_order                        INTEGER NOT NULL DEFAULT 0,
     created_at                        TEXT NOT NULL,
-    updated_at                        TEXT NOT NULL, transfer_candidate_record_id TEXT REFERENCES import_record (id), matched_occurrence_id TEXT REFERENCES scheduled_occurrences (id),
+    updated_at                        TEXT NOT NULL, transfer_candidate_record_id TEXT REFERENCES import_record (id), matched_occurrence_id TEXT REFERENCES scheduled_occurrences (id), matched_occurrence_resolution TEXT NOT NULL DEFAULT 'pending'
+    CHECK (matched_occurrence_resolution IN ('pending', 'materialized', 'dismissed')),
     -- Table-level constraints must come after every column definition
     -- (SQLite syntax) — both cross-column invariants live here rather
     -- than inline next to the columns they mention.
@@ -93,6 +94,7 @@ CREATE TABLE import_record (
 | updated_at | TEXT |  | false |  |  |  |
 | transfer_candidate_record_id | TEXT |  | true |  | [import_record](import_record.md) |  |
 | matched_occurrence_id | TEXT |  | true |  | [scheduled_occurrences](scheduled_occurrences.md) |  |
+| matched_occurrence_resolution | TEXT | 'pending' | false |  |  |  |
 
 ## Constraints
 
@@ -112,6 +114,7 @@ CREATE TABLE import_record (
 | - | CHECK | CHECK (duplicate_tier IN ('exact', 'suspected_duplicate')) |
 | - | CHECK | CHECK (duplicate_resolution IN ('pending', 'confirmed_duplicate', 'not_duplicate')) |
 | - | CHECK | CHECK (status IN ('pending', 'ready', 'excluded', 'committed')) |
+| - | CHECK | CHECK (matched_occurrence_resolution IN ('pending', 'materialized', 'dismissed')) |
 | - | CHECK | CHECK ((duplicate_tier IS NULL) = (duplicate_matched_transaction_id IS NULL)) |
 | - | CHECK | CHECK (status != 'committed' OR transaction_id IS NOT NULL) |
 
@@ -161,6 +164,7 @@ erDiagram
   TEXT updated_at
   TEXT transfer_candidate_record_id FK
   TEXT matched_occurrence_id FK
+  TEXT matched_occurrence_resolution
 }
 "import_batch" {
   TEXT id PK

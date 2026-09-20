@@ -181,9 +181,14 @@ func TestImportRecordRepository_MatchedOccurrenceIDRoundTrips(t *testing.T) {
 		t.Fatalf("seed occurrence: %v", err)
 	}
 
+	occMatch, err := importing.NewOccurrenceMatch("occ-1")
+	if err != nil {
+		t.Fatalf("NewOccurrenceMatch(...) = %v, want success", err)
+	}
+
 	repo := NewImportRecordRepository(db)
 	record := mustImportRecord(t, "record-1", ports.SeededUserID, batch.ID(), 0,
-		importing.WithOccurrenceMatch("occ-1"),
+		importing.WithOccurrenceMatch(occMatch),
 	)
 	if err := repo.CreateBatch(ctx, ports.SeededUserID, []importing.ImportRecord{record}); err != nil {
 		t.Fatalf("CreateBatch: %v", err)
@@ -195,6 +200,9 @@ func TestImportRecordRepository_MatchedOccurrenceIDRoundTrips(t *testing.T) {
 	}
 	if v, ok := got.MatchedOccurrenceID(); !ok || v != "occ-1" {
 		t.Errorf("MatchedOccurrenceID() = (%q, %v), want (%q, true)", v, ok, "occ-1")
+	}
+	if om, ok := got.OccurrenceMatch(); !ok || om.Resolution() != importing.OccurrenceMatchResolutionPending {
+		t.Errorf("OccurrenceMatch() = (%+v, %v), want (pending, true)", om, ok)
 	}
 	if _, ok := got.DuplicateMatch(); ok {
 		t.Error("DuplicateMatch() ok = true, want false — never set")
@@ -213,6 +221,82 @@ func TestImportRecordRepository_MatchedOccurrenceIDRoundTrips(t *testing.T) {
 	}
 	if _, ok := gotOther.MatchedOccurrenceID(); ok {
 		t.Error("MatchedOccurrenceID() ok = true for record-2, want false (never set)")
+	}
+}
+
+// TestImportRecordRepository_OccurrenceMatchResolutionRoundTrips exercises
+// issue #309's matched_occurrence_resolution column: a resolved
+// OccurrenceMatch (materialized or dismissed) must survive a write/read
+// round trip, independently of whatever DuplicateMatch the same record
+// carries — the two pending reasons resolve independently (see
+// importing.ImportRecord.SettleStatus).
+func TestImportRecordRepository_OccurrenceMatchResolutionRoundTrips(t *testing.T) {
+	db, _ := newTestDB(t)
+	ctx := context.Background()
+	batch := seedImportBatch(t, db, ports.SeededUserID, "batch-1", "acc-1")
+
+	ruleID := seedRule(t, db, ports.SeededUserID, "rule-1")
+	occ := mustOccurrence(t, "occ-1", ruleID, mustDate(t, 2026, time.August, 1))
+	if err := NewScheduledOccurrenceRepository(db).CreateBatch(ctx, ports.SeededUserID, []recurring.ScheduledOccurrence{occ}); err != nil {
+		t.Fatalf("seed occurrence: %v", err)
+	}
+
+	occMatch, err := importing.NewOccurrenceMatch("occ-1")
+	if err != nil {
+		t.Fatalf("NewOccurrenceMatch(...) = %v, want success", err)
+	}
+	resolvedMatch, err := occMatch.Resolve(importing.OccurrenceMatchResolutionMaterialized)
+	if err != nil {
+		t.Fatalf("Resolve(materialized) = %v, want success", err)
+	}
+
+	repo := NewImportRecordRepository(db)
+	record := mustImportRecord(t, "record-1", ports.SeededUserID, batch.ID(), 0,
+		importing.WithOccurrenceMatch(resolvedMatch),
+	)
+	if err := repo.CreateBatch(ctx, ports.SeededUserID, []importing.ImportRecord{record}); err != nil {
+		t.Fatalf("CreateBatch: %v", err)
+	}
+
+	got, err := repo.Get(ctx, ports.SeededUserID, "record-1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	om, ok := got.OccurrenceMatch()
+	if !ok {
+		t.Fatal("OccurrenceMatch() ok = false, want true")
+	}
+	if om.Resolution() != importing.OccurrenceMatchResolutionMaterialized {
+		t.Errorf("Resolution() = %q, want %q", om.Resolution(), importing.OccurrenceMatchResolutionMaterialized)
+	}
+
+	// A second, independently-resolved record (dismissed rather than
+	// materialized) must round-trip its own resolution too — not just
+	// whatever the first record happened to persist.
+	dismissedMatch, err := importing.NewOccurrenceMatch("occ-1")
+	if err != nil {
+		t.Fatalf("NewOccurrenceMatch(...) = %v, want success", err)
+	}
+	dismissedMatch, err = dismissedMatch.Resolve(importing.OccurrenceMatchResolutionDismissed)
+	if err != nil {
+		t.Fatalf("Resolve(dismissed) = %v, want success", err)
+	}
+	dismissedRecord := mustImportRecord(t, "record-2", ports.SeededUserID, batch.ID(), 1,
+		importing.WithOccurrenceMatch(dismissedMatch),
+	)
+	if err := repo.CreateBatch(ctx, ports.SeededUserID, []importing.ImportRecord{dismissedRecord}); err != nil {
+		t.Fatalf("CreateBatch(record-2): %v", err)
+	}
+	gotDismissed, err := repo.Get(ctx, ports.SeededUserID, "record-2")
+	if err != nil {
+		t.Fatalf("Get(record-2): %v", err)
+	}
+	omDismissed, ok := gotDismissed.OccurrenceMatch()
+	if !ok {
+		t.Fatal("OccurrenceMatch() ok = false for record-2, want true")
+	}
+	if omDismissed.Resolution() != importing.OccurrenceMatchResolutionDismissed {
+		t.Errorf("record-2 Resolution() = %q, want %q", omDismissed.Resolution(), importing.OccurrenceMatchResolutionDismissed)
 	}
 }
 

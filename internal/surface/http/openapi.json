@@ -1873,6 +1873,9 @@
             "description": "The import this record was staged into.",
             "type": "string"
           },
+          "occurrence_match": {
+            "$ref": "#/components/schemas/OccurrenceMatch"
+          },
           "posted_date": {
             "description": "Set only when the source distinguished it from booked_date.",
             "format": "date",
@@ -2061,6 +2064,29 @@
         "required": [
           "date",
           "amount"
+        ],
+        "type": "object"
+      },
+      "OccurrenceMatch": {
+        "description": "A pending recurring occurrence this record's money might already be accounted for by. Unlike transfer_candidate_record_id, an unresolved occurrence_match does block commit — see POST /api/v1/import-records/{id}/resolve-occurrence-match.",
+        "properties": {
+          "occurrence_id": {
+            "description": "The pending recurring occurrence this record was matched against.",
+            "type": "string"
+          },
+          "resolution": {
+            "description": "\"pending\" needs your decision — see POST /api/v1/import-records/{id}/resolve-occurrence-match.",
+            "enum": [
+              "pending",
+              "materialized",
+              "dismissed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "occurrence_id",
+          "resolution"
         ],
         "type": "object"
       },
@@ -2316,6 +2342,23 @@
         },
         "required": [
           "data"
+        ],
+        "type": "object"
+      },
+      "ResolveImportRecordOccurrenceMatchRequest": {
+        "properties": {
+          "resolution": {
+            "description": "\"materialized\" turns the matched occurrence into its own transaction and excludes this record from commit; \"dismissed\" leaves the occurrence untouched and clears this record for commit.",
+            "enum": [
+              "pending",
+              "materialized",
+              "dismissed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "resolution"
         ],
         "type": "object"
       },
@@ -5420,6 +5463,49 @@
         "summary": "Record your decision on a staged record's suspected duplicate."
       }
     },
+    "/api/v1/import-records/{id}/resolve-occurrence-match": {
+      "post": {
+        "description": "\"materialized\" turns the matched occurrence into its own transaction (using its rule's current amount and date) and excludes this record from commit, since the occurrence's transaction now covers the same money. \"dismissed\" leaves the occurrence untouched and clears this record for commit. Refused for a record with no matched occurrence to resolve, or one already resolved.",
+        "operationId": "resolveImportRecordOccurrenceMatch",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveImportRecordOccurrenceMatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportRecordEnvelope"
+                }
+              }
+            },
+            "description": "The updated record."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        },
+        "summary": "Record your decision on a staged record's matched pending occurrence."
+      }
+    },
     "/api/v1/imports": {
       "get": {
         "operationId": "listImportBatches",
@@ -5634,7 +5720,7 @@
             "$ref": "#/components/responses/NotFound"
           }
         },
-        "summary": "List an import's staged records, with their duplicate/transfer flags."
+        "summary": "List an import's staged records, with their duplicate/transfer/occurrence flags."
       }
     },
     "/api/v1/imports/{id}/rollback": {

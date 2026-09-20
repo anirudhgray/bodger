@@ -22,7 +22,10 @@ import (
 // This proves the fix: staging a CSV row whose amount (through the rule's
 // own account/category, never through the occurrence itself — ADR-0014),
 // booked_date, and description line up with a pending occurrence now
-// records that occurrence's ID on the resulting ImportRecord.
+// records that occurrence's ID on the resulting ImportRecord — and (issue
+// #309, the follow-up that gives detection an observable effect on
+// commit) holds the record pending until the match is resolved via
+// ResolveImportRecordOccurrenceMatch.
 func TestStageImport_PendingOccurrenceDetectedAsCandidateMatch(t *testing.T) {
 	svc := newTestService(t, time.Date(2026, time.August, 20, 0, 0, 0, 0, time.UTC), "UTC")
 	ctx := context.Background()
@@ -59,12 +62,13 @@ func TestStageImport_PendingOccurrenceDetectedAsCandidateMatch(t *testing.T) {
 		t.Errorf("MatchedOccurrenceID() = %q, want %q", got, occ.ID())
 	}
 
-	// An occurrence match is purely advisory (like a transfer candidate):
-	// no committed transaction covers this row's money yet, so it must
-	// still be cleared for commit, not held pending review or excluded the
-	// way a transaction-tier match would be.
-	if r.Status() != importing.ImportRecordStatusReady {
-		t.Errorf("Status() = %q, want %q — an occurrence match never blocks commit by itself", r.Status(), importing.ImportRecordStatusReady)
+	// Unlike a transfer candidate, an occurrence match does name a genuine
+	// double-counting risk (the same money, once as a pending occurrence,
+	// once as this freshly-imported row) — issue #309 gates commit on it
+	// the same way a suspected duplicate is, leaving the record pending
+	// until ResolveImportRecordOccurrenceMatch clears it.
+	if r.Status() != importing.ImportRecordStatusPending {
+		t.Errorf("Status() = %q, want %q — an unresolved occurrence match must block commit", r.Status(), importing.ImportRecordStatusPending)
 	}
 	if _, ok := r.DuplicateMatch(); ok {
 		t.Error("DuplicateMatch() ok = true, want false — no committed transaction exists for this row")

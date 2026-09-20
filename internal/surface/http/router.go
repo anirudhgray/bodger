@@ -608,7 +608,7 @@ var routeTable = []route{
 		Method: http.MethodGet, Pattern: "/api/v1/imports/{id}/records",
 		Handler: func(h *handlers) http.HandlerFunc { return h.listImportRecords },
 
-		OperationID: "listImportRecords", Summary: "List an import's staged records, with their duplicate/transfer flags.",
+		OperationID: "listImportRecords", Summary: "List an import's staged records, with their duplicate/transfer/occurrence flags.",
 		Description:   "Every row from the uploaded file, in its own original order - including a row already excluded as an exact duplicate, and one still awaiting your decision on a suspected duplicate (see POST /api/v1/import-records/{id}/resolve).",
 		SuccessStatus: http.StatusOK, SuccessDescription: "Every staged record.",
 		Response: []importRecordView{},
@@ -642,6 +642,18 @@ var routeTable = []route{
 		Description:   `"confirmed_duplicate" excludes the record from commit; "not_duplicate" clears it for commit. Refused for a record with no suspected duplicate to resolve, or one already resolved.`,
 		SuccessStatus: http.StatusOK, SuccessDescription: "The updated record.",
 		Request: resolveImportRecordRequest{}, Response: importRecordView{},
+		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity, http.StatusPreconditionFailed},
+	},
+	{
+		Method: http.MethodPost, Pattern: "/api/v1/import-records/{id}/resolve-occurrence-match",
+		Handler: func(h *handlers) http.HandlerFunc { return h.resolveImportRecordOccurrenceMatch },
+
+		OperationID: "resolveImportRecordOccurrenceMatch", Summary: "Record your decision on a staged record's matched pending occurrence.",
+		Description: `"materialized" turns the matched occurrence into its own transaction (using its rule's current amount and date) ` +
+			`and excludes this record from commit, since the occurrence's transaction now covers the same money. "dismissed" leaves the ` +
+			"occurrence untouched and clears this record for commit. Refused for a record with no matched occurrence to resolve, or one already resolved.",
+		SuccessStatus: http.StatusOK, SuccessDescription: "The updated record.",
+		Request: resolveImportRecordOccurrenceMatchRequest{}, Response: importRecordView{},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity, http.StatusPreconditionFailed},
 	},
 

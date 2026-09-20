@@ -39,6 +39,17 @@ type duplicateMatchView struct {
 	Resolution           string `json:"resolution" enum:"import_duplicate_resolution"`
 }
 
+// occurrenceMatchView is the JSON shape of a candidate occurrence match
+// issue #301's detection found for a staged record — mirroring
+// duplicateMatchView's own field-for-field shape, but pointing at a
+// pending recurring occurrence rather than a committed transaction (see
+// that detection's own doc comment, internal/app/import_duplicate.go, for
+// why the two aren't the same type).
+type occurrenceMatchView struct {
+	OccurrenceID string `json:"occurrence_id" doc:"The pending recurring occurrence this record was matched against."`
+	Resolution   string `json:"resolution" enum:"import_occurrence_match_resolution" doc:"\"pending\" needs your decision — see POST /api/v1/import-records/{id}/resolve-occurrence-match."`
+}
+
 // importRecordView is the JSON shape of one staged row.
 //
 // AccountID/CategoryID aren't named here — an import record's own
@@ -50,21 +61,22 @@ type duplicateMatchView struct {
 // resolved_category_id, and leaves them empty when unresolved rather than
 // inventing a placeholder.
 type importRecordView struct {
-	ID                        string              `json:"id"`
-	ImportBatchID             string              `json:"import_id" doc:"The import this record was staged into."`
-	BookedDate                string              `json:"booked_date" format:"date"`
-	PostedDate                string              `json:"posted_date,omitempty" doc:"Set only when the source distinguished it from booked_date." format:"date"`
-	Description               string              `json:"description"`
-	Amount                    string              `json:"amount" doc:"Signed: negative for money out, positive for money in." format:"money"`
-	Currency                  string              `json:"currency"`
-	ExternalID                string              `json:"external_id,omitempty" doc:"The source's own ID for this row, when it had one."`
-	ResolvedAccountID         string              `json:"resolved_account_id,omitempty"`
-	ResolvedCategoryID        string              `json:"resolved_category_id,omitempty"`
-	DuplicateMatch            *duplicateMatchView `json:"duplicate_match,omitempty"`
-	TransferCandidateRecordID string              `json:"transfer_candidate_record_id,omitempty" doc:"Another staged record this one might be the other leg of a transfer with. Informational only — resolving duplicate_match is what actually affects commit."`
-	Status                    string              `json:"status" enum:"import_record_status"`
-	TransactionID             string              `json:"transaction_id,omitempty" doc:"Set once this record has been committed."`
-	SortOrder                 int                 `json:"sort_order" doc:"This record's position in the uploaded file."`
+	ID                        string               `json:"id"`
+	ImportBatchID             string               `json:"import_id" doc:"The import this record was staged into."`
+	BookedDate                string               `json:"booked_date" format:"date"`
+	PostedDate                string               `json:"posted_date,omitempty" doc:"Set only when the source distinguished it from booked_date." format:"date"`
+	Description               string               `json:"description"`
+	Amount                    string               `json:"amount" doc:"Signed: negative for money out, positive for money in." format:"money"`
+	Currency                  string               `json:"currency"`
+	ExternalID                string               `json:"external_id,omitempty" doc:"The source's own ID for this row, when it had one."`
+	ResolvedAccountID         string               `json:"resolved_account_id,omitempty"`
+	ResolvedCategoryID        string               `json:"resolved_category_id,omitempty"`
+	DuplicateMatch            *duplicateMatchView  `json:"duplicate_match,omitempty"`
+	TransferCandidateRecordID string               `json:"transfer_candidate_record_id,omitempty" doc:"Another staged record this one might be the other leg of a transfer with. Informational only — resolving duplicate_match is what actually affects commit."`
+	OccurrenceMatch           *occurrenceMatchView `json:"occurrence_match,omitempty" doc:"A pending recurring occurrence this record's money might already be accounted for by. Unlike transfer_candidate_record_id, an unresolved occurrence_match does block commit — see POST /api/v1/import-records/{id}/resolve-occurrence-match."`
+	Status                    string               `json:"status" enum:"import_record_status"`
+	TransactionID             string               `json:"transaction_id,omitempty" doc:"Set once this record has been committed."`
+	SortOrder                 int                  `json:"sort_order" doc:"This record's position in the uploaded file."`
 }
 
 func importRecordViewFrom(r app.ResolveImportRecordResult) importRecordView {
@@ -101,10 +113,22 @@ func importRecordViewFrom(r app.ResolveImportRecordResult) importRecordView {
 	if id, ok := rec.TransferCandidateRecordID(); ok {
 		v.TransferCandidateRecordID = id
 	}
+	if om, ok := rec.OccurrenceMatch(); ok {
+		v.OccurrenceMatch = &occurrenceMatchView{OccurrenceID: om.OccurrenceID(), Resolution: string(om.Resolution())}
+	}
 	if id, ok := rec.TransactionID(); ok {
 		v.TransactionID = id
 	}
 	return v
+}
+
+// importRecordViewFromOccurrenceResolution builds an importRecordView from
+// ResolveImportRecordOccurrenceMatch's own result shape, reusing
+// importRecordViewFrom by re-wrapping its Record — the same pattern
+// createImportBatch/listImportRecords already use to share this view
+// builder across every handler that produces an ImportRecord.
+func importRecordViewFromOccurrenceResolution(r app.ResolveImportRecordOccurrenceMatchResult) importRecordView {
+	return importRecordViewFrom(app.ResolveImportRecordResult{Record: r.Record})
 }
 
 // importBatchWithRecordsView is POST /api/v1/imports' response shape: the

@@ -110,6 +110,7 @@ erDiagram
   TEXT updated_at
   TEXT transfer_candidate_record_id FK
   TEXT matched_occurrence_id FK
+  TEXT matched_occurrence_resolution
 }
 "budget_lines" {
   TEXT id PK

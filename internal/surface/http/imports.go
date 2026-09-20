@@ -174,3 +174,31 @@ func (h *handlers) resolveImportRecord(w http.ResponseWriter, r *http.Request) {
 	}
 	respond(w, http.StatusOK, importRecordViewFrom(result))
 }
+
+// resolveImportRecordOccurrenceMatchRequest is
+// POST /api/v1/import-records/{id}/resolve-occurrence-match's request
+// body: the user's decision on a staged record's matched pending
+// occurrence (issue #309). This handler passes Resolution straight
+// through to app.ResolveImportRecordOccurrenceMatchCommand, which
+// validates it — the same "no validation belongs here" reasoning
+// resolveImportRecordRequest's own doc comment gives.
+type resolveImportRecordOccurrenceMatchRequest struct {
+	Resolution string `json:"resolution" enum:"import_occurrence_match_resolution" doc:"\"materialized\" turns the matched occurrence into its own transaction and excludes this record from commit; \"dismissed\" leaves the occurrence untouched and clears this record for commit."`
+}
+
+func (h *handlers) resolveImportRecordOccurrenceMatch(w http.ResponseWriter, r *http.Request) {
+	var body resolveImportRecordOccurrenceMatchRequest
+	if err := decodeJSON(r, &body); err != nil {
+		h.respondError(w, r, err)
+		return
+	}
+
+	result, err := h.svc.ResolveImportRecordOccurrenceMatch(r.Context(), app.ResolveImportRecordOccurrenceMatchCommand{
+		ActorID: actorID(r), ImportRecordRef: r.PathValue("id"), Resolution: body.Resolution,
+	})
+	if err != nil {
+		h.respondError(w, r, err)
+		return
+	}
+	respond(w, http.StatusOK, importRecordViewFromOccurrenceResolution(result))
+}

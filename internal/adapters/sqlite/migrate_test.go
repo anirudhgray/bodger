@@ -15,7 +15,7 @@ import (
 
 // latestMigrationVersion is the highest numeric prefix under migrations/.
 // Update this alongside adding a new migration.
-const latestMigrationVersion = 17
+const latestMigrationVersion = 18
 
 func TestMigrateUp_SeedsUser(t *testing.T) {
 	db, _ := newTestDB(t)

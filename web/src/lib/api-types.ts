@@ -661,6 +661,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/import-records/{id}/resolve-occurrence-match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record your decision on a staged record's matched pending occurrence.
+         * @description "materialized" turns the matched occurrence into its own transaction (using its rule's current amount and date) and excludes this record from commit, since the occurrence's transaction now covers the same money. "dismissed" leaves the occurrence untouched and clears this record for commit. Refused for a record with no matched occurrence to resolve, or one already resolved.
+         */
+        post: operations["resolveImportRecordOccurrenceMatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/imports": {
         parameters: {
             query?: never;
@@ -727,7 +747,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List an import's staged records, with their duplicate/transfer flags.
+         * List an import's staged records, with their duplicate/transfer/occurrence flags.
          * @description Every row from the uploaded file, in its own original order - including a row already excluded as an exact duplicate, and one still awaiting your decision on a suspected duplicate (see POST /api/v1/import-records/{id}/resolve).
          */
         get: operations["listImportRecords"];
@@ -1708,6 +1728,7 @@ export interface components {
             id: string;
             /** @description The import this record was staged into. */
             import_id: string;
+            occurrence_match?: components["schemas"]["OccurrenceMatch"];
             /**
              * Format: date
              * @description Set only when the source distinguished it from booked_date.
@@ -1764,6 +1785,16 @@ export interface components {
             amount: string;
             /** Format: date */
             date: string;
+        };
+        /** @description A pending recurring occurrence this record's money might already be accounted for by. Unlike transfer_candidate_record_id, an unresolved occurrence_match does block commit — see POST /api/v1/import-records/{id}/resolve-occurrence-match. */
+        OccurrenceMatch: {
+            /** @description The pending recurring occurrence this record was matched against. */
+            occurrence_id: string;
+            /**
+             * @description "pending" needs your decision — see POST /api/v1/import-records/{id}/resolve-occurrence-match.
+             * @enum {string}
+             */
+            resolution: "pending" | "materialized" | "dismissed";
         };
         Ok: {
             ok: boolean;
@@ -1868,6 +1899,13 @@ export interface components {
         };
         ReportingCurrencyEnvelope: {
             data: components["schemas"]["ReportingCurrency"];
+        };
+        ResolveImportRecordOccurrenceMatchRequest: {
+            /**
+             * @description "materialized" turns the matched occurrence into its own transaction and excludes this record from commit; "dismissed" leaves the occurrence untouched and clears this record for commit.
+             * @enum {string}
+             */
+            resolution: "pending" | "materialized" | "dismissed";
         };
         ResolveImportRecordRequest: {
             /**
@@ -3438,6 +3476,36 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ResolveImportRecordRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated record. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRecordEnvelope"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            422: components["responses"]["InvalidInput"];
+        };
+    };
+    resolveImportRecordOccurrenceMatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's ID, or (for an account or category) its unique name. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveImportRecordOccurrenceMatchRequest"];
             };
         };
         responses: {

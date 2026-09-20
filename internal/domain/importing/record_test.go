@@ -379,3 +379,238 @@ func TestImportRecord_Resolve(t *testing.T) {
 		}
 	})
 }
+
+// TestImportRecord_ResolveOccurrenceMatch is TestImportRecord_Resolve's
+// counterpart for issue #309's OccurrenceMatch.
+func TestImportRecord_ResolveOccurrenceMatch(t *testing.T) {
+	t.Parallel()
+
+	t.Run("resolves the record's occurrence match", func(t *testing.T) {
+		t.Parallel()
+		match, err := importing.NewOccurrenceMatch("occ-1")
+		if err != nil {
+			t.Fatalf("NewOccurrenceMatch(...) = %v, want success", err)
+		}
+		r, err := importing.NewImportRecord(
+			"record-1", "user-1", "batch-1", "raw", mustRecordDate(t, 2026, 8, 14), "desc",
+			mustRecordMoney(t, -100, "USD"), 0,
+			importing.WithOccurrenceMatch(match),
+		)
+		if err != nil {
+			t.Fatalf("NewImportRecord(...) = %v, want success", err)
+		}
+
+		resolved, err := r.ResolveOccurrenceMatch(importing.OccurrenceMatchResolutionDismissed)
+		if err != nil {
+			t.Fatalf("ResolveOccurrenceMatch(dismissed) = %v, want success", err)
+		}
+		om, ok := resolved.OccurrenceMatch()
+		if !ok {
+			t.Fatal("OccurrenceMatch() ok = false after ResolveOccurrenceMatch, want true")
+		}
+		if om.Resolution() != importing.OccurrenceMatchResolutionDismissed {
+			t.Errorf("Resolution() = %q, want %q", om.Resolution(), importing.OccurrenceMatchResolutionDismissed)
+		}
+		// r itself must be unchanged (copy-transform, not mutation).
+		if orig, _ := r.OccurrenceMatch(); orig.Resolved() {
+			t.Error("original record's OccurrenceMatch Resolved() = true after ResolveOccurrenceMatch, want unchanged false")
+		}
+	})
+
+	t.Run("rejects resolving a record with no occurrence match", func(t *testing.T) {
+		t.Parallel()
+		r := mustRecord(t)
+		if _, err := r.ResolveOccurrenceMatch(importing.OccurrenceMatchResolutionDismissed); !errors.Is(err, importing.ErrImportRecordNoOccurrenceMatch) {
+			t.Fatalf("ResolveOccurrenceMatch(...) error = %v, want ErrImportRecordNoOccurrenceMatch", err)
+		}
+	})
+}
+
+// TestImportRecord_SettleStatus covers issue #309's rule that a record
+// only leaves ImportRecordStatusPending once every pending reason on it
+// (an unresolved DuplicateMatch and/or an unresolved OccurrenceMatch) has
+// cleared, and that exclusion wins over ready when the two disagree.
+func TestImportRecord_SettleStatus(t *testing.T) {
+	t.Parallel()
+
+	newPendingRecord := func(t *testing.T, opts ...importing.ImportRecordOption) importing.ImportRecord {
+		t.Helper()
+		opts = append(opts, importing.WithRecordStatus(importing.ImportRecordStatusPending))
+		r, err := importing.NewImportRecord(
+			"record-1", "user-1", "batch-1", "raw", mustRecordDate(t, 2026, 8, 14), "desc",
+			mustRecordMoney(t, -100, "USD"), 0, opts...,
+		)
+		if err != nil {
+			t.Fatalf("NewImportRecord(...) = %v, want success", err)
+		}
+		return r
+	}
+
+	t.Run("no-op when not pending", func(t *testing.T) {
+		t.Parallel()
+		r := mustRecord(t) // pending, no matches at all
+		ready, err := r.MarkReady()
+		if err != nil {
+			t.Fatalf("MarkReady() = %v, want success", err)
+		}
+		settled, err := ready.SettleStatus()
+		if err != nil {
+			t.Fatalf("SettleStatus() = %v, want success", err)
+		}
+		if settled.Status() != importing.ImportRecordStatusReady {
+			t.Errorf("Status() = %q, want unchanged %q", settled.Status(), importing.ImportRecordStatusReady)
+		}
+	})
+
+	t.Run("stays pending with an unresolved duplicate match and no occurrence match", func(t *testing.T) {
+		t.Parallel()
+		dm, err := importing.NewDuplicateMatch(importing.DuplicateMatchTierSuspected, "txn-1")
+		if err != nil {
+			t.Fatalf("NewDuplicateMatch(...) = %v, want success", err)
+		}
+		r := newPendingRecord(t, importing.WithDuplicateMatch(dm))
+		settled, err := r.SettleStatus()
+		if err != nil {
+			t.Fatalf("SettleStatus() = %v, want success", err)
+		}
+		if settled.Status() != importing.ImportRecordStatusPending {
+			t.Errorf("Status() = %q, want %q", settled.Status(), importing.ImportRecordStatusPending)
+		}
+	})
+
+	t.Run("stays pending with an unresolved occurrence match and no duplicate match", func(t *testing.T) {
+		t.Parallel()
+		om, err := importing.NewOccurrenceMatch("occ-1")
+		if err != nil {
+			t.Fatalf("NewOccurrenceMatch(...) = %v, want success", err)
+		}
+		r := newPendingRecord(t, importing.WithOccurrenceMatch(om))
+		settled, err := r.SettleStatus()
+		if err != nil {
+			t.Fatalf("SettleStatus() = %v, want success", err)
+		}
+		if settled.Status() != importing.ImportRecordStatusPending {
+			t.Errorf("Status() = %q, want %q", settled.Status(), importing.ImportRecordStatusPending)
+		}
+	})
+
+	t.Run("moves to ready once a lone duplicate match is dismissed", func(t *testing.T) {
+		t.Parallel()
+		dm, err := importing.NewDuplicateMatch(importing.DuplicateMatchTierSuspected, "txn-1")
+		if err != nil {
+			t.Fatalf("NewDuplicateMatch(...) = %v, want success", err)
+		}
+		dm, err = dm.Resolve(importing.DuplicateResolutionDismissed)
+		if err != nil {
+			t.Fatalf("Resolve(dismissed) = %v, want success", err)
+		}
+		r := newPendingRecord(t, importing.WithDuplicateMatch(dm))
+		settled, err := r.SettleStatus()
+		if err != nil {
+			t.Fatalf("SettleStatus() = %v, want success", err)
+		}
+		if settled.Status() != importing.ImportRecordStatusReady {
+			t.Errorf("Status() = %q, want %q", settled.Status(), importing.ImportRecordStatusReady)
+		}
+	})
+
+	t.Run("moves to excluded once a lone occurrence match is materialized", func(t *testing.T) {
+		t.Parallel()
+		om, err := importing.NewOccurrenceMatch("occ-1")
+		if err != nil {
+			t.Fatalf("NewOccurrenceMatch(...) = %v, want success", err)
+		}
+		om, err = om.Resolve(importing.OccurrenceMatchResolutionMaterialized)
+		if err != nil {
+			t.Fatalf("Resolve(materialized) = %v, want success", err)
+		}
+		r := newPendingRecord(t, importing.WithOccurrenceMatch(om))
+		settled, err := r.SettleStatus()
+		if err != nil {
+			t.Fatalf("SettleStatus() = %v, want success", err)
+		}
+		if settled.Status() != importing.ImportRecordStatusExcluded {
+			t.Errorf("Status() = %q, want %q", settled.Status(), importing.ImportRecordStatusExcluded)
+		}
+	})
+
+	t.Run("stays pending when only one of two reasons has resolved", func(t *testing.T) {
+		t.Parallel()
+		dm, err := importing.NewDuplicateMatch(importing.DuplicateMatchTierSuspected, "txn-1")
+		if err != nil {
+			t.Fatalf("NewDuplicateMatch(...) = %v, want success", err)
+		}
+		dm, err = dm.Resolve(importing.DuplicateResolutionDismissed)
+		if err != nil {
+			t.Fatalf("Resolve(dismissed) = %v, want success", err)
+		}
+		om, err := importing.NewOccurrenceMatch("occ-1") // still unresolved
+		if err != nil {
+			t.Fatalf("NewOccurrenceMatch(...) = %v, want success", err)
+		}
+		r := newPendingRecord(t, importing.WithDuplicateMatch(dm), importing.WithOccurrenceMatch(om))
+		settled, err := r.SettleStatus()
+		if err != nil {
+			t.Fatalf("SettleStatus() = %v, want success", err)
+		}
+		if settled.Status() != importing.ImportRecordStatusPending {
+			t.Errorf("Status() = %q, want %q — the occurrence match is still unresolved", settled.Status(), importing.ImportRecordStatusPending)
+		}
+	})
+
+	t.Run("excluded wins over ready when both reasons resolve and disagree", func(t *testing.T) {
+		t.Parallel()
+		dm, err := importing.NewDuplicateMatch(importing.DuplicateMatchTierSuspected, "txn-1")
+		if err != nil {
+			t.Fatalf("NewDuplicateMatch(...) = %v, want success", err)
+		}
+		dm, err = dm.Resolve(importing.DuplicateResolutionDismissed) // says "proceed"
+		if err != nil {
+			t.Fatalf("Resolve(dismissed) = %v, want success", err)
+		}
+		om, err := importing.NewOccurrenceMatch("occ-1")
+		if err != nil {
+			t.Fatalf("NewOccurrenceMatch(...) = %v, want success", err)
+		}
+		om, err = om.Resolve(importing.OccurrenceMatchResolutionMaterialized) // says "exclude"
+		if err != nil {
+			t.Fatalf("Resolve(materialized) = %v, want success", err)
+		}
+		r := newPendingRecord(t, importing.WithDuplicateMatch(dm), importing.WithOccurrenceMatch(om))
+		settled, err := r.SettleStatus()
+		if err != nil {
+			t.Fatalf("SettleStatus() = %v, want success", err)
+		}
+		if settled.Status() != importing.ImportRecordStatusExcluded {
+			t.Errorf("Status() = %q, want %q — a materialized occurrence match must win over a dismissed duplicate match", settled.Status(), importing.ImportRecordStatusExcluded)
+		}
+	})
+
+	t.Run("ready when both reasons resolve in agreement", func(t *testing.T) {
+		t.Parallel()
+		dm, err := importing.NewDuplicateMatch(importing.DuplicateMatchTierSuspected, "txn-1")
+		if err != nil {
+			t.Fatalf("NewDuplicateMatch(...) = %v, want success", err)
+		}
+		dm, err = dm.Resolve(importing.DuplicateResolutionDismissed)
+		if err != nil {
+			t.Fatalf("Resolve(dismissed) = %v, want success", err)
+		}
+		om, err := importing.NewOccurrenceMatch("occ-1")
+		if err != nil {
+			t.Fatalf("NewOccurrenceMatch(...) = %v, want success", err)
+		}
+		om, err = om.Resolve(importing.OccurrenceMatchResolutionDismissed)
+		if err != nil {
+			t.Fatalf("Resolve(dismissed) = %v, want success", err)
+		}
+		r := newPendingRecord(t, importing.WithDuplicateMatch(dm), importing.WithOccurrenceMatch(om))
+		settled, err := r.SettleStatus()
+		if err != nil {
+			t.Fatalf("SettleStatus() = %v, want success", err)
+		}
+		if settled.Status() != importing.ImportRecordStatusReady {
+			t.Errorf("Status() = %q, want %q", settled.Status(), importing.ImportRecordStatusReady)
+		}
+	})
+}

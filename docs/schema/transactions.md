@@ -138,6 +138,7 @@ erDiagram
   TEXT updated_at
   TEXT transfer_candidate_record_id FK
   TEXT matched_occurrence_id FK
+  TEXT matched_occurrence_resolution
 }
 "scheduled_occurrences" {
   TEXT id PK

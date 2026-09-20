@@ -417,3 +417,230 @@ func writeCSVFixture(t *testing.T, contents string) string {
 	}
 	return path
 }
+
+// stageOccurrenceMatchViaSurface creates a monthly recurring rule on
+// accountRef through surface, refreshes its occurrences through the same
+// surface, then stages a single CSV row (also through surface) whose
+// amount, date, and description line up with the generated occurrence —
+// issue #301's occurrence-match detection — and returns the resulting
+// record's ID, the matched occurrence's ID, and the batch's ID.
+// description is used verbatim for both the rule and the CSV row, so the
+// Jaccard description check always matches regardless of exact wording,
+// which this test doesn't care about.
+func stageOccurrenceMatchViaSurface(t *testing.T, h *harness, surface, accountRef, description, startsOn, csvDate string) (recordID, occurrenceID, batchID string) {
+	t.Helper()
+
+	var ruleID string
+	switch surface {
+	case "cli":
+		out, err := h.runCLI("recurring", "create", accountRef, "groceries", "1200.00", description,
+			"--starts-on", startsOn, "--frequency", "monthly", "--interval", "1", "--day-of-month", "1")
+		if err != nil {
+			t.Fatalf("recurring create: %v (output: %s)", err, out)
+		}
+		ruleID, _ = decodeEnvelope(t, out)["id"].(string)
+	case "http":
+		status, decoded := h.runHTTP(http.MethodPost, "/api/v1/recurring-rules", map[string]any{
+			"account_ref": accountRef, "category_ref": "groceries", "amount": "1200.00",
+			"description": description, "schedule": map[string]any{"frequency": "monthly", "interval": 1, "day_of_month": 1},
+			"starts_on": startsOn,
+		})
+		if status != http.StatusCreated {
+			t.Fatalf("recurring create status = %d, want 201: %+v", status, decoded)
+		}
+		ruleID, _ = h.httpData(decoded)["id"].(string)
+	}
+	if ruleID == "" {
+		t.Fatal("no rule ID captured")
+	}
+
+	switch surface {
+	case "cli":
+		out, err := h.runCLI("recurring", "refresh", "--rule", ruleID)
+		if err != nil {
+			t.Fatalf("recurring refresh: %v (output: %s)", err, out)
+		}
+		created, ok := decodeEnvelope(t, out)["created"].([]any)
+		if !ok || len(created) == 0 {
+			t.Fatalf("recurring refresh: created = %v, want at least one occurrence", created)
+		}
+		occurrenceID, _ = created[0].(map[string]any)["id"].(string)
+	case "http":
+		status, decoded := h.runHTTP(http.MethodPost, "/api/v1/recurring-occurrences/refresh?rule_id="+ruleID, nil)
+		if status != http.StatusOK {
+			t.Fatalf("recurring-occurrences refresh status = %d, want 200: %+v", status, decoded)
+		}
+		created, ok := h.httpData(decoded)["created"].([]any)
+		if !ok || len(created) == 0 {
+			t.Fatalf("recurring-occurrences refresh: created = %v, want at least one occurrence", created)
+		}
+		occurrenceID, _ = created[0].(map[string]any)["id"].(string)
+	}
+	if occurrenceID == "" {
+		t.Fatal("no occurrence ID captured")
+	}
+
+	csv := fmt.Sprintf("Date,Description,Amount\n%s,%s,-1200.00\n", csvDate, description)
+	var rec map[string]any
+	switch surface {
+	case "cli":
+		out, err := h.runCLI("import", "upload", writeCSVFixture(t, csv),
+			"--account", accountRef, "--filename", "statement.csv",
+			"--date-column", "Date", "--description-column", "Description", "--amount-column", "Amount")
+		if err != nil {
+			t.Fatalf("import upload: %v (output: %s)", err, out)
+		}
+		result := decodeEnvelope(t, out)
+		batch, _ := result["batch"].(map[string]any)
+		batchID, _ = batch["id"].(string)
+		records, _ := result["records"].([]any)
+		if len(records) != 1 {
+			t.Fatalf("import upload: len(records) = %d, want 1", len(records))
+		}
+		rec, _ = records[0].(map[string]any)
+	case "http":
+		status, decoded := h.runHTTPUpload("/api/v1/imports?"+importUploadQuery(accountRef, "statement.csv"), "text/csv", []byte(csv))
+		if status != http.StatusCreated {
+			t.Fatalf("import upload status = %d, want 201: %+v", status, decoded)
+		}
+		result := h.httpData(decoded)
+		batch, _ := result["batch"].(map[string]any)
+		batchID, _ = batch["id"].(string)
+		records, _ := result["records"].([]any)
+		if len(records) != 1 {
+			t.Fatalf("import upload: len(records) = %d, want 1", len(records))
+		}
+		rec, _ = records[0].(map[string]any)
+	}
+	if rec["status"] != "pending" {
+		t.Fatalf("staged record status = %v, want pending", rec["status"])
+	}
+	om, ok := rec["occurrence_match"].(map[string]any)
+	if !ok || om["occurrence_id"] != occurrenceID {
+		t.Fatalf("staged record occurrence_match = %+v, want occurrence_id %q", rec["occurrence_match"], occurrenceID)
+	}
+	recordID, _ = rec["id"].(string)
+	if recordID == "" || batchID == "" {
+		t.Fatal("no record/batch ID captured")
+	}
+	return recordID, occurrenceID, batchID
+}
+
+// TestImportOccurrenceMatchResolutionConformance drives issue #309's new
+// resolve-occurrence-match action through `bodger import resolve-occurrence`
+// and POST /api/v1/import-records/{id}/resolve-occurrence-match — CLI and
+// HTTP only, since issue #309 deliberately has no MCP tool for this action
+// (the same precedent ResolveImportRecord itself already set, and this
+// package's own harness note on why no other destructive/review-only
+// action gets an MCP leg here either) — and asserts each surface's dismiss
+// and materialize outcomes match what the app layer promises: dismiss
+// clears the record for commit and leaves the matched occurrence
+// untouched; materialize excludes the record and turns the occurrence
+// into its own transaction, and the batch still commits cleanly around it.
+func TestImportOccurrenceMatchResolutionConformance(t *testing.T) {
+	for _, surface := range []string{"cli", "http"} {
+		t.Run(surface, func(t *testing.T) {
+			h := newHarness(t)
+			h.seed()
+			accountRef := map[string]string{"cli": "Cash", "http": "Wallet"}[surface]
+
+			t.Run("dismissed leaves the occurrence pending and clears the record for commit", func(t *testing.T) {
+				recordID, occurrenceID, batchID := stageOccurrenceMatchViaSurface(t, h, surface, accountRef, "Rent", "2026-08-01", "2026-08-04")
+
+				var status string
+				switch surface {
+				case "cli":
+					out, err := h.runCLI("import", "resolve-occurrence", recordID, "--resolution", "dismissed")
+					if err != nil {
+						t.Fatalf("resolve-occurrence: %v (output: %s)", err, out)
+					}
+					status, _ = decodeEnvelope(t, out)["status"].(string)
+				case "http":
+					httpStatus, decoded := h.runHTTP(http.MethodPost, "/api/v1/import-records/"+recordID+"/resolve-occurrence-match", map[string]any{"resolution": "dismissed"})
+					if httpStatus != http.StatusOK {
+						t.Fatalf("resolve-occurrence-match status = %d, want 200: %+v", httpStatus, decoded)
+					}
+					status, _ = h.httpData(decoded)["status"].(string)
+				}
+				if status != "ready" {
+					t.Errorf("record status = %q, want ready", status)
+				}
+
+				occ, err := h.svc.ScheduledOccurrences.Get(context.Background(), seededUserID, occurrenceID)
+				if err != nil {
+					t.Fatalf("ScheduledOccurrences.Get: %v", err)
+				}
+				if string(occ.Status()) != "pending" {
+					t.Errorf("occurrence status = %q, want pending (dismiss must leave it untouched)", occ.Status())
+				}
+
+				switch surface {
+				case "cli":
+					if out, err := h.runCLI("import", "commit", batchID); err != nil {
+						t.Fatalf("commit after dismiss: %v (output: %s)", err, out)
+					}
+				case "http":
+					httpStatus, decoded := h.runHTTP(http.MethodPost, "/api/v1/imports/"+batchID+"/commit", nil)
+					if httpStatus != http.StatusOK {
+						t.Fatalf("commit after dismiss status = %d, want 200: %+v", httpStatus, decoded)
+					}
+				}
+			})
+
+			t.Run("materialized excludes the record and materialises the occurrence", func(t *testing.T) {
+				recordID, occurrenceID, batchID := stageOccurrenceMatchViaSurface(t, h, surface, accountRef, "Utilities", "2026-09-01", "2026-09-03")
+
+				var status string
+				switch surface {
+				case "cli":
+					out, err := h.runCLI("import", "resolve-occurrence", recordID, "--resolution", "materialized")
+					if err != nil {
+						t.Fatalf("resolve-occurrence: %v (output: %s)", err, out)
+					}
+					status, _ = decodeEnvelope(t, out)["status"].(string)
+				case "http":
+					httpStatus, decoded := h.runHTTP(http.MethodPost, "/api/v1/import-records/"+recordID+"/resolve-occurrence-match", map[string]any{"resolution": "materialized"})
+					if httpStatus != http.StatusOK {
+						t.Fatalf("resolve-occurrence-match status = %d, want 200: %+v", httpStatus, decoded)
+					}
+					status, _ = h.httpData(decoded)["status"].(string)
+				}
+				if status != "excluded" {
+					t.Errorf("record status = %q, want excluded", status)
+				}
+
+				occ, err := h.svc.ScheduledOccurrences.Get(context.Background(), seededUserID, occurrenceID)
+				if err != nil {
+					t.Fatalf("ScheduledOccurrences.Get: %v", err)
+				}
+				if string(occ.Status()) != "materialised" {
+					t.Errorf("occurrence status = %q, want materialised", occ.Status())
+				}
+
+				// The batch still commits cleanly — the excluded row simply
+				// produces no transaction of its own (the occurrence's own
+				// materialisation already produced one, separately).
+				var txnCount int
+				switch surface {
+				case "cli":
+					out, err := h.runCLI("import", "commit", batchID)
+					if err != nil {
+						t.Fatalf("commit after materialize: %v (output: %s)", err, out)
+					}
+					txns, _ := decodeEnvelope(t, out)["transactions"].([]any)
+					txnCount = len(txns)
+				case "http":
+					httpStatus, decoded := h.runHTTP(http.MethodPost, "/api/v1/imports/"+batchID+"/commit", nil)
+					if httpStatus != http.StatusOK {
+						t.Fatalf("commit after materialize status = %d, want 200: %+v", httpStatus, decoded)
+					}
+					txns, _ := h.httpData(decoded)["transactions"].([]any)
+					txnCount = len(txns)
+				}
+				if txnCount != 0 {
+					t.Errorf("committed transaction count = %d, want 0 (the row was excluded)", txnCount)
+				}
+			})
+		})
+	}
+}
