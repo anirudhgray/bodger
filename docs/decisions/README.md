@@ -22,6 +22,7 @@ Format: **Status · Context · Decision · Alternatives considered · Consequenc
 | [0012](0012-fx-rate-provider.md) | FX rate provider: Frankfurter; arbitrary base/quote, no key, no triangulation | Accepted |
 | [0013](0013-mcp-server-design.md) | MCP server: tier-enforcing dispatcher, destructive confirmation protocol, audit log | Accepted |
 | [0014](0014-recurring-transactions-scheduling.md) | Recurring transactions: structured schedule subset, clamped month-ends, generated occurrences that can't reach a balance | Accepted |
+| [0015](0015-ai-assisted-suggestions.md) | AI-assisted suggestions: typesafe.ai, off by default, advisory only — confidence never auto-applies | Accepted |
 
 ## On "the brief"
 
