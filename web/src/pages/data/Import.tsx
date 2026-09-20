@@ -58,20 +58,48 @@ import {
 import {
   commitImportBatch,
   getImportBatch,
+  getImportSuggestions,
   listAccounts,
+  listCategories,
   listImportBatches,
   listImportRecords,
   resolveImportRecord,
+  resolveImportRecordOccurrenceMatch,
   rollbackImportBatch,
   uploadImport,
   type Account,
+  type Category,
   type ImportBatch,
   type ImportBatchStatus,
   type ImportRecord,
+  type ImportRowSuggestion,
+  type ImportSuggestions,
+  type ResolvableOccurrenceMatchResolution,
 } from '@/lib/api'
-import { UploadIcon } from 'lucide-react'
+import { Sparkles, UploadIcon } from 'lucide-react'
 import { FileDropzone } from '@/components/FileDropzone'
 import { errorMessage } from './shared'
+
+// explainSuggestionFailure mirrors internal/surface/cli/import.go's own
+// explainFailureReason — the same plain-English clauses for the same
+// closed set of reason codes, reimplemented here rather than shared
+// because the CLI's Go can't run in the web bundle (docs/ux-principles.md
+// §2: a surface may earn its own spelling of the same fact, as long as
+// two independently-built surfaces don't silently drift — this is that
+// divergence point, stated). A reason this hasn't been taught yet falls
+// back to a generic clause rather than leaking the raw code.
+function explainSuggestionFailure(reason?: string): string {
+  switch (reason) {
+    case 'credential_rejected':
+      return 'your typesafe.ai credential was rejected'
+    case 'throttled':
+      return 'typesafe.ai is rate-limiting this instance right now'
+    case 'provider_unreachable':
+      return "typesafe.ai couldn't be reached"
+    default:
+      return "typesafe.ai didn't answer"
+  }
+}
 
 function batchStatusLabel(status: ImportBatchStatus): string {
   switch (status) {
@@ -218,12 +246,18 @@ type Wizard =
 
 export function ImportPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [batches, setBatches] = useState<ImportBatch[] | null>(null)
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [wizard, setWizard] = useState<Wizard>({ step: 'closed' })
   const [busy, setBusy] = useState(false)
+  const [suggestions, setSuggestions] = useState<ImportSuggestions | null>(null)
+  const [busyOccurrenceRecordId, setBusyOccurrenceRecordId] = useState<
+    string | null
+  >(null)
 
   const accountsByID = new Map(accounts.map((a) => [a.id, a.name]))
+  const categoriesByID = new Map(categories.map((c) => [c.id, c]))
 
   const loadHistory = useCallback(async () => {
     try {
@@ -239,9 +273,46 @@ export function ImportPage() {
     listAccounts()
       .then(setAccounts)
       .catch((err: unknown) => toast.error(errorMessage(err)))
+    // Best-effort, matching Recurring.tsx's own listCategories fallback —
+    // a failed load here just means suggestion cards show a raw category
+    // ID instead of a name, not that the page fails.
+    // oxlint-disable-next-line react/set-state-in-effect
+    listCategories()
+      .then(setCategories)
+      .catch(() => {})
     // oxlint-disable-next-line react/set-state-in-effect
     loadHistory()
   }, [loadHistory])
+
+  // Fetch suggestions exactly once per review — when the review step is
+  // entered for a given batch, not on every render/keystroke (#307's own
+  // "call it once when the review step loads" requirement) — and never on
+  // the upload/mapping steps, since a suggestion request is a metered
+  // typesafe.ai call and those steps have no staged rows yet to ask about.
+  // Suggestions are advisory only, so a failure to even reach this
+  // instance's own suggestions endpoint is swallowed rather than shown:
+  // ADR-0015's "a network error must never become an error page over data
+  // sitting in SQLite" applies here the same as any other import-review
+  // failure. The endpoint's own configured/failed states (as opposed to a
+  // transport failure calling it) are rendered further down, exactly as
+  // returned.
+  const reviewBatchId = wizard.step === 'review' ? wizard.batch.id : null
+  useEffect(() => {
+    if (reviewBatchId === null) return
+    let cancelled = false
+    // oxlint-disable-next-line react/set-state-in-effect
+    setSuggestions(null)
+    getImportSuggestions(reviewBatchId)
+      .then((result) => {
+        if (!cancelled) setSuggestions(result)
+      })
+      .catch(() => {
+        if (!cancelled) setSuggestions(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [reviewBatchId])
 
   async function handleFileChosen(account: string, file: File) {
     setBusy(true)
@@ -310,6 +381,38 @@ export function ImportPage() {
       })
     } catch (err) {
       toast.error(errorMessage(err))
+    }
+  }
+
+  // handleResolveOccurrenceMatch is the gap-closing action #309/#312
+  // shipped app/CLI/HTTP for but never a web UI (issue #307's own
+  // user-confirmed scope note): resolving a row's deterministic
+  // OccurrenceMatch, exactly the same call #307's own AI-suggested
+  // occurrence match (SuggestionCell below) reaches to "accept" a
+  // suggestion — there is no second write path for that.
+  async function handleResolveOccurrenceMatch(
+    record: ImportRecord,
+    resolution: ResolvableOccurrenceMatchResolution,
+  ) {
+    if (wizard.step !== 'review') return
+    setBusyOccurrenceRecordId(record.id)
+    try {
+      const updated = await resolveImportRecordOccurrenceMatch(
+        record.id,
+        resolution,
+      )
+      setWizard({
+        step: 'review',
+        batch: wizard.batch,
+        records: wizard.records.map((r) => (r.id === updated.id ? updated : r)),
+      })
+      if (resolution === 'materialized') {
+        toast.success('Materialised — recorded as a transaction.')
+      }
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setBusyOccurrenceRecordId(null)
     }
   }
 
@@ -416,9 +519,13 @@ export function ImportPage() {
           batch={wizard.batch}
           records={wizard.records}
           accountName={accountsByID.get(wizard.batch.target_account_id)}
+          categoriesByID={categoriesByID}
           pendingCount={pendingCount}
           busy={busy}
           onResolve={handleResolve}
+          onResolveOccurrenceMatch={handleResolveOccurrenceMatch}
+          busyOccurrenceRecordId={busyOccurrenceRecordId}
+          suggestions={suggestions}
           onCommit={handleCommit}
           onCancel={() => setWizard({ step: 'closed' })}
         />
@@ -713,29 +820,155 @@ function duplicateBadge(record: ImportRecord) {
   return <Badge variant="destructive">Suspected duplicate</Badge>
 }
 
+// occurrenceMatchBadge mirrors duplicateBadge's own pattern one field
+// over, for issue #309/#312's OccurrenceMatch — a row whose date and
+// amount already look like a specific pending recurring occurrence.
+function occurrenceMatchBadge(record: ImportRecord) {
+  const match = record.occurrence_match
+  if (!match) return null
+  if (match.resolution === 'materialized') {
+    return <Badge variant="outline">Occurrence materialised</Badge>
+  }
+  if (match.resolution === 'dismissed') {
+    return <Badge variant="secondary">Not this occurrence</Badge>
+  }
+  return <Badge variant="destructive">Matches a pending occurrence</Badge>
+}
+
+// SuggestionCell renders #307's advisory typesafe.ai suggestions for one
+// row, attributed by name (ADR-0015, mirroring Balances.tsx's own
+// "source: frankfurter" treatment) and never showing a raw confidence
+// decimal (docs/ux-principles.md §6's progressive-disclosure rule — the
+// REST response is already ranked by confidence, best first, so nothing
+// here needs to re-sort or print the number).
+//
+// The two suggestion kinds are deliberately styled apart (#307's own
+// acceptance criterion): a category suggestion is a plain solid-border
+// card with no accept control — there is genuinely no write endpoint for
+// "assign this category to a staged row" (#305/#306), so accepting one
+// means committing the import and setting the category yourself
+// afterward, same as without a suggestion, stated in the card's own copy
+// rather than a phantom button. An occurrence suggestion gets a
+// dashed-border card (Recurring.tsx's own "Projected — not settled money
+// yet" visual language, data-model.md §11) and a real "Accept match"
+// button, because accepting it has a real write to make — the same
+// resolveImportRecordOccurrenceMatch call the Decision column's own
+// Materialise button reaches, not a new one.
+function SuggestionCell({
+  record,
+  suggestion,
+  categoriesByID,
+  tooManyCategoryOptions,
+  busy,
+  onAcceptOccurrence,
+}: {
+  record: ImportRecord
+  suggestion: ImportRowSuggestion | undefined
+  categoriesByID: Map<string, Category>
+  tooManyCategoryOptions: boolean
+  busy: boolean
+  onAcceptOccurrence: () => void
+}) {
+  if (!suggestion && !tooManyCategoryOptions) {
+    return <span className="text-muted-foreground text-sm">—</span>
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {suggestion?.category && (
+        <div className="flex flex-col gap-0.5 rounded-md border bg-muted/30 px-2 py-1.5 text-xs">
+          <span className="flex items-center gap-1 font-medium">
+            <Sparkles className="text-muted-foreground size-3" />
+            {categoriesByID.get(suggestion.category.category_id)?.name ??
+              suggestion.category.category_id}
+          </span>
+          <span className="text-muted-foreground">
+            Suggested by typesafe.ai — set it when you commit, or edit the
+            transaction afterward.
+          </span>
+        </div>
+      )}
+      {suggestion?.occurrence && (
+        <div className="flex flex-col items-start gap-1 rounded-md border border-dashed bg-muted/30 px-2 py-1.5 text-xs">
+          <Badge variant="outline">Projected match</Badge>
+          <span className="text-muted-foreground">
+            Suggested by typesafe.ai — not settled money until accepted.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy || record.status !== 'pending'}
+            onClick={onAcceptOccurrence}
+          >
+            Accept match
+          </Button>
+        </div>
+      )}
+      {tooManyCategoryOptions && (
+        <span className="text-muted-foreground text-xs">
+          Too many categories of this kind to suggest from.
+        </span>
+      )}
+    </div>
+  )
+}
+
 function ReviewStep({
   batch,
   records,
   accountName,
+  categoriesByID,
   pendingCount,
   busy,
   onResolve,
+  onResolveOccurrenceMatch,
+  busyOccurrenceRecordId,
+  suggestions,
   onCommit,
   onCancel,
 }: {
   batch: ImportBatch
   records: ImportRecord[]
   accountName?: string
+  categoriesByID: Map<string, Category>
   pendingCount: number
   busy: boolean
   onResolve: (
     record: ImportRecord,
     resolution: 'confirmed_duplicate' | 'not_duplicate',
   ) => void
+  onResolveOccurrenceMatch: (
+    record: ImportRecord,
+    resolution: ResolvableOccurrenceMatchResolution,
+  ) => void
+  busyOccurrenceRecordId: string | null
+  suggestions: ImportSuggestions | null
   onCommit: () => void
   onCancel: () => void
 }) {
   const alreadyCommitted = batch.status === 'committed'
+
+  const suggestionByRecordID = new Map(
+    (suggestions?.suggestions ?? []).map((s) => [s.record_id, s]),
+  )
+  const tooManyCategoryOptions = new Set(
+    suggestions?.too_many_category_options ?? [],
+  )
+
+  // ADR-0015's not-configured/failed states: one quiet, non-blocking line
+  // where the suggestion affordance would be — never a modal, never a
+  // banner elsewhere, and the review screen below stays exactly as
+  // usable either way, since every row still renders regardless.
+  let suggestionNotice: string | null = null
+  if (suggestions && !suggestions.configured) {
+    suggestionNotice = 'AI-assisted suggestions aren’t set up on this instance.'
+  } else if (suggestions && suggestions.rows_failed > 0) {
+    suggestionNotice = `Couldn’t get suggestions from typesafe.ai for ${
+      suggestions.rows_failed
+    } row${suggestions.rows_failed === 1 ? '' : 's'} — ${explainSuggestionFailure(
+      suggestions.failure_reason,
+    )}. Every row below is still fully reviewable.`
+  }
 
   return (
     <Card>
@@ -747,6 +980,11 @@ function ReviewStep({
             {records.length === 1 ? '' : 's'}
             {pendingCount > 0 && ` · ${pendingCount} awaiting your decision`}
           </CardDescription>
+          {suggestionNotice && (
+            <p className="text-muted-foreground mt-1 text-xs">
+              {suggestionNotice}
+            </p>
+          )}
         </div>
         {!alreadyCommitted && (
           <div className="flex gap-2">
@@ -771,15 +1009,20 @@ function ReviewStep({
               <TableHead>Description</TableHead>
               <TableHead className="text-right">Amount</TableHead>
               <TableHead>Flags</TableHead>
+              <TableHead>Suggested</TableHead>
               <TableHead className="text-right">Decision</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {records.map((record) => {
-              const needsDecision =
+              const needsDuplicateDecision =
                 record.status === 'pending' &&
                 record.duplicate_match?.tier === 'suspected_duplicate' &&
                 record.duplicate_match.resolution === 'pending'
+              const needsOccurrenceDecision =
+                record.status === 'pending' &&
+                record.occurrence_match?.resolution === 'pending'
+              const occurrenceBusy = busyOccurrenceRecordId === record.id
               return (
                 <TableRow key={record.id}>
                   <TableCell>{record.booked_date}</TableCell>
@@ -790,30 +1033,73 @@ function ReviewStep({
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {duplicateBadge(record)}
+                      {occurrenceMatchBadge(record)}
                       {record.transfer_candidate_record_id && (
                         <Badge variant="secondary">Possible transfer</Badge>
                       )}
                     </div>
                   </TableCell>
+                  <TableCell>
+                    <SuggestionCell
+                      record={record}
+                      suggestion={suggestionByRecordID.get(record.id)}
+                      categoriesByID={categoriesByID}
+                      tooManyCategoryOptions={tooManyCategoryOptions.has(
+                        record.id,
+                      )}
+                      busy={occurrenceBusy}
+                      onAcceptOccurrence={() =>
+                        onResolveOccurrenceMatch(record, 'materialized')
+                      }
+                    />
+                  </TableCell>
                   <TableCell className="text-right">
-                    {needsDecision ? (
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => onResolve(record, 'not_duplicate')}
-                        >
-                          Not a duplicate
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() =>
-                            onResolve(record, 'confirmed_duplicate')
-                          }
-                        >
-                          Confirm duplicate
-                        </Button>
+                    {needsDuplicateDecision || needsOccurrenceDecision ? (
+                      <div className="flex flex-col items-end gap-2">
+                        {needsDuplicateDecision && (
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => onResolve(record, 'not_duplicate')}
+                            >
+                              Not a duplicate
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() =>
+                                onResolve(record, 'confirmed_duplicate')
+                              }
+                            >
+                              Confirm duplicate
+                            </Button>
+                          </div>
+                        )}
+                        {needsOccurrenceDecision && (
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={occurrenceBusy}
+                              onClick={() =>
+                                onResolveOccurrenceMatch(record, 'dismissed')
+                              }
+                            >
+                              Not this occurrence
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={occurrenceBusy}
+                              onClick={() =>
+                                onResolveOccurrenceMatch(record, 'materialized')
+                              }
+                            >
+                              Materialise
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <span className="text-muted-foreground text-sm">—</span>

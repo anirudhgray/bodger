@@ -13,11 +13,14 @@ vi.mock('@/lib/api', async (importOriginal) => {
   return {
     ...actual,
     listAccounts: vi.fn(),
+    listCategories: vi.fn(),
     listImportBatches: vi.fn(),
     getImportBatch: vi.fn(),
+    getImportSuggestions: vi.fn(),
     listImportRecords: vi.fn(),
     uploadImport: vi.fn(),
     resolveImportRecord: vi.fn(),
+    resolveImportRecordOccurrenceMatch: vi.fn(),
     commitImportBatch: vi.fn(),
     rollbackImportBatch: vi.fn(),
   }
@@ -34,29 +37,40 @@ vi.mock('sonner', () => ({
 import {
   commitImportBatch,
   getImportBatch,
+  getImportSuggestions,
   listAccounts,
+  listCategories,
   listImportBatches,
   listImportRecords,
   resolveImportRecord,
+  resolveImportRecordOccurrenceMatch,
   rollbackImportBatch,
   uploadImport,
   type Account,
+  type Category,
   type ImportBatch,
   type ImportRecord,
+  type ImportSuggestions,
 } from '@/lib/api'
 import { toast } from 'sonner'
 import { ImportPage } from './Import'
 
 const mockedListAccounts = vi.mocked(listAccounts)
+const mockedListCategories = vi.mocked(listCategories)
 const mockedListImportBatches = vi.mocked(listImportBatches)
 const mockedGetImportBatch = vi.mocked(getImportBatch)
+const mockedGetImportSuggestions = vi.mocked(getImportSuggestions)
 const mockedListImportRecords = vi.mocked(listImportRecords)
 const mockedUploadImport = vi.mocked(uploadImport)
 const mockedResolveImportRecord = vi.mocked(resolveImportRecord)
+const mockedResolveImportRecordOccurrenceMatch = vi.mocked(
+  resolveImportRecordOccurrenceMatch,
+)
 const mockedCommitImportBatch = vi.mocked(commitImportBatch)
 const mockedRollbackImportBatch = vi.mocked(rollbackImportBatch)
 const mockedToastError = vi.mocked(toast.error)
 const mockedToastPromise = vi.mocked(toast.promise)
+const mockedToastSuccess = vi.mocked(toast.success)
 
 const checking: Account = {
   id: 'acc_1',
@@ -66,6 +80,54 @@ const checking: Account = {
   opening_balance: '0.00',
   sort_order: 0,
   archived: false,
+}
+
+const groceries: Category = {
+  id: 'cat_1',
+  name: 'Groceries',
+  type: 'expense',
+  sort_order: 0,
+  archived: false,
+}
+
+function notConfiguredSuggestions(): ImportSuggestions {
+  return {
+    configured: false,
+    rows_failed: 0,
+    rows_suggested: 0,
+    suggestions: [],
+  }
+}
+
+function failedSuggestions(
+  overrides: Partial<ImportSuggestions> = {},
+): ImportSuggestions {
+  return {
+    configured: true,
+    rows_failed: 1,
+    rows_suggested: 1,
+    failure_reason: 'credential_rejected',
+    suggestions: [],
+    ...overrides,
+  }
+}
+
+function presentSuggestions(
+  overrides: Partial<ImportSuggestions> = {},
+): ImportSuggestions {
+  return {
+    configured: true,
+    rows_failed: 0,
+    rows_suggested: 1,
+    suggestions: [
+      {
+        record_id: 'rec_1',
+        source: 'typesafe.ai',
+        category: { category_id: 'cat_1', confidence: 0.87 },
+      },
+    ],
+    ...overrides,
+  }
 }
 
 function makeBatch(overrides: Partial<ImportBatch> = {}): ImportBatch {
@@ -105,15 +167,21 @@ function csvFile(): File {
 describe('ImportPage', () => {
   beforeEach(() => {
     mockedListAccounts.mockReset().mockResolvedValue([checking])
+    mockedListCategories.mockReset().mockResolvedValue([groceries])
     mockedListImportBatches.mockReset().mockResolvedValue([])
     mockedGetImportBatch.mockReset()
+    mockedGetImportSuggestions
+      .mockReset()
+      .mockResolvedValue(notConfiguredSuggestions())
     mockedListImportRecords.mockReset()
     mockedUploadImport.mockReset()
     mockedResolveImportRecord.mockReset()
+    mockedResolveImportRecordOccurrenceMatch.mockReset()
     mockedCommitImportBatch.mockReset()
     mockedRollbackImportBatch.mockReset()
     mockedToastError.mockReset()
     mockedToastPromise.mockReset()
+    mockedToastSuccess.mockReset()
   })
 
   it('shows import history with a status per batch', async () => {
@@ -283,5 +351,158 @@ describe('ImportPage', () => {
       expect(mockedRollbackImportBatch).toHaveBeenCalledWith('batch_1'),
     )
     expect(mockedToastPromise).toHaveBeenCalled()
+  })
+
+  // Issue #307's own three-state acceptance criterion (present / not
+  // configured / failed) plus the #309/#312 web-UI gap this PR closes
+  // alongside it (issue #307's user-confirmed scope). getImportSuggestions
+  // is fetched once when review opens (see "continues review on a staged
+  // import from history" above for the same Continue-review entry point),
+  // never on upload/mapping.
+  describe('AI-assisted suggestions', () => {
+    async function openReview(
+      records: ImportRecord[],
+      batch: ImportBatch = makeBatch({ status: 'staged' }),
+    ) {
+      const user = userEvent.setup()
+      mockedListImportBatches.mockResolvedValue([batch])
+      mockedGetImportBatch.mockResolvedValue(batch)
+      mockedListImportRecords.mockResolvedValue(records)
+
+      render(<ImportPage />)
+      await user.click(
+        await screen.findByRole('button', { name: 'Continue review' }),
+      )
+      await waitFor(() =>
+        expect(mockedGetImportSuggestions).toHaveBeenCalledWith(batch.id),
+      )
+      return user
+    }
+
+    it('shows a quiet, non-blocking line when no typesafe.ai key is configured', async () => {
+      mockedGetImportSuggestions.mockResolvedValue(notConfiguredSuggestions())
+      await openReview([makeRecord({ status: 'ready' })])
+
+      expect(await screen.findByText('Coffee')).toBeInTheDocument()
+      expect(
+        screen.getByText(
+          'AI-assisted suggestions aren’t set up on this instance.',
+        ),
+      ).toBeInTheDocument()
+      // The screen stays exactly as usable as without the feature — no
+      // suggestion cell content, no blocked commit.
+      expect(
+        screen.getByRole('button', { name: 'Commit import' }),
+      ).toBeEnabled()
+    })
+
+    it('shows a plain-English failure reason, never the raw code, and keeps every row reviewable', async () => {
+      mockedGetImportSuggestions.mockResolvedValue(
+        failedSuggestions({ failure_reason: 'credential_rejected' }),
+      )
+      await openReview([makeRecord({ status: 'ready' })])
+
+      expect(await screen.findByText('Coffee')).toBeInTheDocument()
+      expect(
+        screen.getByText(/your typesafe\.ai credential was rejected/),
+      ).toBeInTheDocument()
+      expect(screen.queryByText('credential_rejected')).not.toBeInTheDocument()
+      // Not an error page over data sitting in SQLite: the row and its
+      // commit path are unaffected.
+      expect(
+        screen.getByRole('button', { name: 'Commit import' }),
+      ).toBeEnabled()
+    })
+
+    it('shows a ranked, typesafe.ai-attributed category suggestion with no confidence decimal', async () => {
+      mockedGetImportSuggestions.mockResolvedValue(presentSuggestions())
+      await openReview([makeRecord({ status: 'ready' })])
+
+      expect(await screen.findByText('Coffee')).toBeInTheDocument()
+      expect(screen.getByText('Groceries')).toBeInTheDocument()
+      expect(
+        screen.getAllByText(/Suggested by typesafe\.ai/).length,
+      ).toBeGreaterThan(0)
+      expect(screen.queryByText('0.87')).not.toBeInTheDocument()
+      // Advisory only — no write happened and no accept control exists for
+      // a category suggestion (#305/#306: no such endpoint).
+      expect(mockedResolveImportRecordOccurrenceMatch).not.toHaveBeenCalled()
+    })
+
+    it('accepts an AI-suggested occurrence match by materialising it through the existing resolve action', async () => {
+      const suggested = makeRecord({
+        status: 'pending',
+        occurrence_match: { occurrence_id: 'occ_1', resolution: 'pending' },
+      })
+      mockedGetImportSuggestions.mockResolvedValue(
+        presentSuggestions({
+          suggestions: [
+            {
+              record_id: 'rec_1',
+              source: 'typesafe.ai',
+              occurrence: { occurrence_id: 'occ_1', confidence: 0.91 },
+            },
+          ],
+        }),
+      )
+      mockedResolveImportRecordOccurrenceMatch.mockResolvedValue({
+        ...suggested,
+        status: 'excluded',
+        occurrence_match: {
+          occurrence_id: 'occ_1',
+          resolution: 'materialized',
+        },
+      })
+      const user = await openReview([suggested])
+
+      expect(await screen.findByText('Projected match')).toBeInTheDocument()
+      expect(
+        screen.getByText('Matches a pending occurrence'),
+      ).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Accept match' }))
+      await waitFor(() =>
+        expect(mockedResolveImportRecordOccurrenceMatch).toHaveBeenCalledWith(
+          'rec_1',
+          'materialized',
+        ),
+      )
+      expect(mockedToastSuccess).toHaveBeenCalledWith(
+        'Materialised — recorded as a transaction.',
+      )
+      expect(
+        await screen.findByText('Occurrence materialised'),
+      ).toBeInTheDocument()
+    })
+
+    it('dismisses a deterministic occurrence match independently of any duplicate decision', async () => {
+      mockedGetImportSuggestions.mockResolvedValue(notConfiguredSuggestions())
+      const record = makeRecord({
+        status: 'pending',
+        occurrence_match: { occurrence_id: 'occ_1', resolution: 'pending' },
+      })
+      mockedResolveImportRecordOccurrenceMatch.mockResolvedValue({
+        ...record,
+        status: 'ready',
+        occurrence_match: { occurrence_id: 'occ_1', resolution: 'dismissed' },
+      })
+      const user = await openReview([record])
+
+      expect(
+        await screen.findByText('Matches a pending occurrence'),
+      ).toBeInTheDocument()
+      await user.click(
+        screen.getByRole('button', { name: 'Not this occurrence' }),
+      )
+      await waitFor(() =>
+        expect(mockedResolveImportRecordOccurrenceMatch).toHaveBeenCalledWith(
+          'rec_1',
+          'dismissed',
+        ),
+      )
+      expect(await screen.findByText('Not this occurrence')).toBeInTheDocument()
+      // Dismissing doesn't claim a transaction was created.
+      expect(mockedToastSuccess).not.toHaveBeenCalled()
+    })
   })
 })
