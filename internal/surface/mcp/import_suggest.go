@@ -69,6 +69,16 @@ type importSuggestionsView struct {
 	TooManyCategoryOptions []string                  `json:"too_many_category_options,omitempty"`
 	RowsSuggested          int                       `json:"rows_suggested"`
 	RowsFailed             int                       `json:"rows_failed"`
+	// FailureReason is why RowsFailed rows got no answer -- one of
+	// typesafe.ai's own stable reason strings ("credential_rejected",
+	// "throttled", "provider_unreachable"), empty when RowsFailed is 0.
+	// One dominant reason for this whole call, not tracked per row (see
+	// app.SuggestForImportBatchResult.FailureReason's own doc comment).
+	// Left as the raw reason string rather than translated prose: an
+	// agent reading this JSON result is the consumer, not a person
+	// reading terminal output, and the raw values are bodger's own stable
+	// vocabulary, not vendor-internal jargon.
+	FailureReason string `json:"failure_reason,omitempty"`
 }
 
 func importSuggestionsViewFrom(r app.SuggestForImportBatchResult) importSuggestionsView {
@@ -77,6 +87,7 @@ func importSuggestionsViewFrom(r app.SuggestForImportBatchResult) importSuggesti
 		TooManyCategoryOptions: r.TooManyCategoryOptions,
 		RowsSuggested:          r.RowsSuggested,
 		RowsFailed:             r.RowsFailed,
+		FailureReason:          r.FailureReason,
 	}
 	for _, s := range r.Suggestions {
 		v.Suggestions = append(v.Suggestions, importRowSuggestionViewFrom(s))
