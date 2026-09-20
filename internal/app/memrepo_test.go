@@ -1370,3 +1370,68 @@ func (m *memMCPToolCalls) List(_ context.Context, actorID string, limit int) ([]
 }
 
 var _ ports.MCPToolCallRepository = (*memMCPToolCalls)(nil)
+
+// fakeSuggestionProvider is an in-memory ports.SuggestionProvider for
+// SuggestForImportBatch tests (issue #305 / ADR-0015) — the role
+// memFxProvider plays for FetchFxRates: canned answers keyed by
+// RecordID, every rows slice Suggest was actually called with (so a test
+// can assert on the deterministic narrowing without a network — no row's
+// Categories or OccurrenceCandidates is ever asserted through a fake HTTP
+// transport here, only through what this fake actually received), and a
+// per-RecordID failure switch for exercising ADR-0015's "partial success
+// is a success" contract.
+type fakeSuggestionProvider struct {
+	answers map[string]ports.RowSuggestion
+	fail    map[string]bool
+	failErr error
+
+	calls [][]ports.SuggestionRow
+}
+
+func newFakeSuggestionProvider() *fakeSuggestionProvider {
+	return &fakeSuggestionProvider{
+		answers: map[string]ports.RowSuggestion{},
+		fail:    map[string]bool{},
+		failErr: errs.New(errs.Unavailable).Explain("fake suggestion provider: simulated failure").With("reason", "provider_unreachable"),
+	}
+}
+
+// setAnswer configures Suggest to return answer for its RecordID.
+func (f *fakeSuggestionProvider) setAnswer(answer ports.RowSuggestion) {
+	f.answers[answer.RecordID] = answer
+}
+
+// setFails marks recordID's row as one Suggest silently omits from its
+// result, mirroring how internal/adapters/typesafe.Client.Suggest treats a
+// per-row HTTP failure: no entry, not a wrapped error on an otherwise
+// successful call.
+func (f *fakeSuggestionProvider) setFails(recordID string) {
+	f.fail[recordID] = true
+}
+
+// Suggest mirrors ports.SuggestionProvider's documented contract exactly
+// (and internal/adapters/typesafe.Client.Suggest's actual behaviour,
+// which that contract is written from): every row not marked to fail gets
+// its canned answer (if one is configured) appended to the result: an
+// error is returned only when every row passed to this call failed.
+func (f *fakeSuggestionProvider) Suggest(_ context.Context, rows []ports.SuggestionRow) ([]ports.RowSuggestion, error) {
+	f.calls = append(f.calls, rows)
+
+	var out []ports.RowSuggestion
+	failed := 0
+	for _, row := range rows {
+		if f.fail[row.RecordID] {
+			failed++
+			continue
+		}
+		if answer, ok := f.answers[row.RecordID]; ok {
+			out = append(out, answer)
+		}
+	}
+	if len(rows) > 0 && failed == len(rows) {
+		return out, f.failErr
+	}
+	return out, nil
+}
+
+var _ ports.SuggestionProvider = (*fakeSuggestionProvider)(nil)
