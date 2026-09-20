@@ -143,6 +143,44 @@ func TestLoad_Precedence(t *testing.T) {
 			env:  map[string]string{EnvFxProviderBaseURL: ""},
 			want: Defaults,
 		},
+		{
+			name: "neither typesafe env var set leaves both fields empty and does not error",
+			env:  map[string]string{},
+			want: Defaults,
+		},
+		{
+			// ADR-0015: unlike every other value in this package, the
+			// typesafe.ai key gets no structural validation at all. A
+			// garbage value must load cleanly -- an absent or malformed
+			// key means the feature is off, never a startup failure.
+			name: "a garbage typesafe api key is accepted with no validation",
+			env:  map[string]string{EnvTypesafeAPIKey: "not-a-real-key-!!!"},
+			want: Config{
+				DefaultCurrency: Defaults.DefaultCurrency,
+				UserTimezone:    Defaults.UserTimezone,
+				DBPath:          Defaults.DBPath,
+				HTTPBindAddr:    Defaults.HTTPBindAddr,
+				LogLevel:        Defaults.LogLevel,
+				TypesafeAPIKey:  "not-a-real-key-!!!",
+			},
+		},
+		{
+			name: "typesafe base url override wins over instance default",
+			env:  map[string]string{EnvTypesafeBaseURL: "https://typesafe.example.internal"},
+			want: Config{
+				DefaultCurrency: Defaults.DefaultCurrency,
+				UserTimezone:    Defaults.UserTimezone,
+				DBPath:          Defaults.DBPath,
+				HTTPBindAddr:    Defaults.HTTPBindAddr,
+				LogLevel:        Defaults.LogLevel,
+				TypesafeBaseURL: "https://typesafe.example.internal",
+			},
+		},
+		{
+			name: "empty typesafe overrides do not clobber the instance defaults",
+			env:  map[string]string{EnvTypesafeAPIKey: "", EnvTypesafeBaseURL: ""},
+			want: Defaults,
+		},
 	}
 
 	for _, tt := range tests {
@@ -210,6 +248,8 @@ func TestLoad_ReadsRealEnvironment(t *testing.T) {
 	t.Setenv(EnvHTTPBindAddr, "127.0.0.1:9092")
 	t.Setenv(EnvLogLevel, "debug")
 	t.Setenv(EnvFxProviderBaseURL, "https://fx.example.internal")
+	t.Setenv(EnvTypesafeAPIKey, "tsk_live_test")
+	t.Setenv(EnvTypesafeBaseURL, "https://typesafe.example.internal")
 
 	got, err := Load()
 	if err != nil {
@@ -222,6 +262,8 @@ func TestLoad_ReadsRealEnvironment(t *testing.T) {
 		HTTPBindAddr:      "127.0.0.1:9092",
 		LogLevel:          "debug",
 		FxProviderBaseURL: "https://fx.example.internal",
+		TypesafeAPIKey:    "tsk_live_test",
+		TypesafeBaseURL:   "https://typesafe.example.internal",
 	}
 	if got != want {
 		t.Errorf("Load() = %+v, want %+v", got, want)
