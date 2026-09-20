@@ -17,7 +17,7 @@
 | [api_tokens](api_tokens.md) | 8 |  | table |
 | [fx_rates](fx_rates.md) | 6 |  | table |
 | [import_batch](import_batch.md) | 9 |  | table |
-| [import_record](import_record.md) | 22 |  | table |
+| [import_record](import_record.md) | 23 |  | table |
 | [budgets](budgets.md) | 9 |  | table |
 | [budget_lines](budget_lines.md) | 5 |  | table |
 | [mcp_tool_call](mcp_tool_call.md) | 8 |  | table |
@@ -208,6 +208,7 @@ erDiagram
   TEXT updated_at
   TEXT transfer_candidate_record_id FK
   TEXT matched_occurrence_id FK
+  TEXT matched_occurrence_resolution
 }
 "budgets" {
   TEXT id PK

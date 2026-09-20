@@ -31,7 +31,7 @@ const importRecordSelect = `
 	SELECT id, import_batch_id, user_id, raw_payload, booked_date, posted_date, description,
 	       amount_minor, currency, external_id, resolved_account_id, resolved_category_id,
 	       duplicate_tier, duplicate_matched_transaction_id, duplicate_resolution,
-	       transfer_candidate_record_id, matched_occurrence_id,
+	       transfer_candidate_record_id, matched_occurrence_id, matched_occurrence_resolution,
 	       status, transaction_id, sort_order
 	FROM import_record
 `
@@ -129,14 +129,14 @@ func (r *ImportRecordRepository) Update(ctx context.Context, actorID string, rec
 	transactionID, hasTransactionID := record.TransactionID()
 	duplicateTier, matchedTransactionID, duplicateResolution := nullableDuplicateMatch(record)
 	transferCandidateID, hasTransferCandidate := record.TransferCandidateRecordID()
-	matchedOccurrenceID, hasMatchedOccurrence := record.MatchedOccurrenceID()
+	matchedOccurrenceID, matchedOccurrenceResolution := nullableOccurrenceMatch(record)
 
 	result, err := r.db.write.ExecContext(ctx, `
 		UPDATE import_record
 		SET raw_payload = ?, booked_date = ?, posted_date = ?, description = ?, amount_minor = ?, currency = ?,
 		    external_id = ?, resolved_account_id = ?, resolved_category_id = ?,
 		    duplicate_tier = ?, duplicate_matched_transaction_id = ?, duplicate_resolution = ?,
-		    transfer_candidate_record_id = ?, matched_occurrence_id = ?,
+		    transfer_candidate_record_id = ?, matched_occurrence_id = ?, matched_occurrence_resolution = ?,
 		    status = ?, transaction_id = ?, sort_order = ?, updated_at = ?
 		WHERE id = ? AND user_id = ?
 	`,
@@ -144,7 +144,7 @@ func (r *ImportRecordRepository) Update(ctx context.Context, actorID string, rec
 		record.Amount().AmountMinor(), record.Amount().Currency(),
 		nullableString(externalID, hasExternalID), nullableString(resolvedAccountID, hasResolvedAccountID), nullableString(resolvedCategoryID, hasResolvedCategoryID),
 		duplicateTier, matchedTransactionID, duplicateResolution,
-		nullableString(transferCandidateID, hasTransferCandidate), nullableString(matchedOccurrenceID, hasMatchedOccurrence),
+		nullableString(transferCandidateID, hasTransferCandidate), matchedOccurrenceID, matchedOccurrenceResolution,
 		string(record.Status()), nullableString(transactionID, hasTransactionID), record.SortOrder(), now,
 		record.ID(), actorID,
 	)
@@ -172,17 +172,17 @@ func insertImportRecord(ctx context.Context, tx execer, actorID string, record i
 	transactionID, hasTransactionID := record.TransactionID()
 	duplicateTier, matchedTransactionID, duplicateResolution := nullableDuplicateMatch(record)
 	transferCandidateID, hasTransferCandidate := record.TransferCandidateRecordID()
-	matchedOccurrenceID, hasMatchedOccurrence := record.MatchedOccurrenceID()
+	matchedOccurrenceID, matchedOccurrenceResolution := nullableOccurrenceMatch(record)
 
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO import_record (
 			id, import_batch_id, user_id, raw_payload, booked_date, posted_date, description,
 			amount_minor, currency, external_id, resolved_account_id, resolved_category_id,
 			duplicate_tier, duplicate_matched_transaction_id, duplicate_resolution,
-			transfer_candidate_record_id, matched_occurrence_id,
+			transfer_candidate_record_id, matched_occurrence_id, matched_occurrence_resolution,
 			status, transaction_id, sort_order, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		record.ID(), record.ImportBatchID(), actorID, record.RawPayload(), formatDate(record.BookedDate()),
 		nullableDate(postedDate, hasPostedDate), record.Description(),
@@ -190,7 +190,7 @@ func insertImportRecord(ctx context.Context, tx execer, actorID string, record i
 		nullableString(externalID, hasExternalID), nullableString(resolvedAccountID, hasResolvedAccountID),
 		nullableString(resolvedCategoryID, hasResolvedCategoryID),
 		duplicateTier, matchedTransactionID, duplicateResolution,
-		nullableString(transferCandidateID, hasTransferCandidate), nullableString(matchedOccurrenceID, hasMatchedOccurrence),
+		nullableString(transferCandidateID, hasTransferCandidate), matchedOccurrenceID, matchedOccurrenceResolution,
 		string(record.Status()), nullableString(transactionID, hasTransactionID), record.SortOrder(), now, now,
 	)
 	if err != nil {
@@ -212,6 +212,23 @@ func nullableDuplicateMatch(record importing.ImportRecord) (tier, matchedTransac
 		string(match.Resolution())
 }
 
+// nullableOccurrenceMatch returns the two column values to write for
+// record's OccurrenceMatch: matched_occurrence_id NULL and
+// matched_occurrence_resolution 'pending' unless record actually carries
+// one — the same shape nullableDuplicateMatch uses for duplicate_tier/
+// duplicate_matched_transaction_id/duplicate_resolution, and for the same
+// reason (issue #309): a bare NULL/non-NULL on matched_occurrence_id can't
+// by itself say whether an occurrence match was already resolved once its
+// own DuplicateMatch counterpart is still pending (see migration 00018's
+// own doc comment), so the resolution needs its own durable column.
+func nullableOccurrenceMatch(record importing.ImportRecord) (occurrenceID sql.NullString, resolution string) {
+	match, ok := record.OccurrenceMatch()
+	if !ok {
+		return sql.NullString{}, string(importing.OccurrenceMatchResolutionPending)
+	}
+	return sql.NullString{String: match.OccurrenceID(), Valid: true}, string(match.Resolution())
+}
+
 func scanImportRecord(row rowScanner) (importing.ImportRecord, error) {
 	var (
 		id, importBatchID, userID, rawPayload, bookedDateCol, description string
@@ -226,6 +243,7 @@ func scanImportRecord(row rowScanner) (importing.ImportRecord, error) {
 		duplicateResolutionCol                                            string
 		transferCandidateIDCol                                            sql.NullString
 		matchedOccurrenceIDCol                                            sql.NullString
+		matchedOccurrenceResolutionCol                                    string
 		status                                                            string
 		transactionIDCol                                                  sql.NullString
 		sortOrder                                                         int
@@ -234,7 +252,7 @@ func scanImportRecord(row rowScanner) (importing.ImportRecord, error) {
 		&id, &importBatchID, &userID, &rawPayload, &bookedDateCol, &postedDateCol, &description,
 		&amountMinor, &currency, &externalIDCol, &resolvedAccountIDCol, &resolvedCategoryIDCol,
 		&duplicateTierCol, &duplicateMatchedTxnIDCol, &duplicateResolutionCol,
-		&transferCandidateIDCol, &matchedOccurrenceIDCol,
+		&transferCandidateIDCol, &matchedOccurrenceIDCol, &matchedOccurrenceResolutionCol,
 		&status, &transactionIDCol, &sortOrder,
 	); err != nil {
 		return importing.ImportRecord{}, err
@@ -283,7 +301,17 @@ func scanImportRecord(row rowScanner) (importing.ImportRecord, error) {
 		opts = append(opts, importing.WithTransferCandidate(transferCandidateIDCol.String))
 	}
 	if matchedOccurrenceIDCol.Valid {
-		opts = append(opts, importing.WithOccurrenceMatch(matchedOccurrenceIDCol.String))
+		match, err := importing.NewOccurrenceMatch(matchedOccurrenceIDCol.String)
+		if err != nil {
+			return importing.ImportRecord{}, err
+		}
+		if importing.OccurrenceMatchResolution(matchedOccurrenceResolutionCol) != importing.OccurrenceMatchResolutionPending {
+			match, err = match.Resolve(importing.OccurrenceMatchResolution(matchedOccurrenceResolutionCol))
+			if err != nil {
+				return importing.ImportRecord{}, err
+			}
+		}
+		opts = append(opts, importing.WithOccurrenceMatch(match))
 	}
 	opts = append(opts, importing.WithRecordStatus(importing.ImportRecordStatus(status)))
 	if transactionIDCol.Valid {
