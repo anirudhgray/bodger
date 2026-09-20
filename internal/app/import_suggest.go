@@ -115,6 +115,22 @@ type SuggestForImportBatchResult struct {
 	// surface still needs to know some rows came back empty because of a
 	// failure rather than because nothing matched.
 	RowsFailed int
+
+	// FailureReason is why RowsFailed rows got no answer — one of the
+	// configured ports.SuggestionProvider's own stable reason strings
+	// (e.g. the typesafe.ai adapter's "credential_rejected", "throttled",
+	// "provider_unreachable" — internal/adapters/typesafe/errors.go), or
+	// "" when RowsFailed is 0. It's read straight off
+	// ports.SuggestOutcome.FailureReason, so it shares that type's own
+	// simplification: one dominant reason for this whole call, not a
+	// per-row account — every row here shares the same instance
+	// credential and the same provider, so a real failure (a bad key, a
+	// rate limit, an outage) overwhelmingly tags every failed row the
+	// same way, and the rare case where failures differ within one call
+	// (e.g. a mid-run rate limit after some rows already succeeded) is
+	// reported as the last one observed rather than tracked per row —
+	// see ports.SuggestOutcome's own doc comment.
+	FailureReason string
 }
 
 // SuggestForImportBatch implements issue #305: ADR-0015's one new
@@ -278,7 +294,10 @@ func (s *Service) SuggestForImportBatch(ctx context.Context, q SuggestForImportB
 	// never assumed positionally aligned with rows. A non-nil err is
 	// deliberately not propagated: it becomes RowsFailed instead, so a
 	// provider outage degrades the result rather than failing the call.
-	provided, _ := s.Suggestions.Suggest(ctx, rows)
+	// outcome.FailureReason survives regardless of whether err is nil
+	// (partial failure) or not (total failure) — see
+	// SuggestForImportBatchResult.FailureReason's own doc comment.
+	provided, outcome, _ := s.Suggestions.Suggest(ctx, rows)
 
 	bySuggestionRecordID := make(map[string]ports.RowSuggestion, len(provided))
 	for _, rs := range provided {
@@ -317,6 +336,7 @@ func (s *Service) SuggestForImportBatch(ctx context.Context, q SuggestForImportB
 
 	result.Suggestions = suggestions
 	result.RowsFailed = len(rows) - len(provided)
+	result.FailureReason = outcome.FailureReason
 	return result, nil
 }
 
