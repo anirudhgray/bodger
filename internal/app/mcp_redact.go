@@ -21,6 +21,12 @@ var mcpRedactedKeys = map[string]bool{
 	"secret":             true,
 	"credential":         true,
 	"authorization":      true,
+	// api_key and typesafe_api_key: ADR-0015's typesafe.ai credential has
+	// no route into MCP arguments today — no tool takes one. Listed here
+	// anyway as defence in depth against a future tool that does, per this
+	// list's own doc comment above.
+	"api_key":          true,
+	"typesafe_api_key": true,
 }
 
 // mcpRedactedPlaceholder replaces every redacted value.

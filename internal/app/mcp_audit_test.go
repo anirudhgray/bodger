@@ -70,7 +70,7 @@ func TestRecordMCPToolCall_RedactsSensitiveArgumentsBeforePersisting(t *testing.
 		ActorID:   ports.SeededUserID,
 		ToolName:  "some_tool",
 		Tier:      ports.MCPToolTierWrite,
-		Arguments: json.RawMessage(`{"note":"hello","nested":{"password":"hunter2"}}`),
+		Arguments: json.RawMessage(`{"note":"hello","nested":{"password":"hunter2","api_key":"tsk_live_secret"}}`),
 		Result:    "ok",
 	}); err != nil {
 		t.Fatalf("RecordMCPToolCall: %v", err)
@@ -90,6 +90,12 @@ func TestRecordMCPToolCall_RedactsSensitiveArgumentsBeforePersisting(t *testing.
 	}
 	if nested["password"] != "[redacted]" {
 		t.Errorf("nested password = %v, want it redacted at depth", nested["password"])
+	}
+	// ADR-0015: a nested api_key (the typesafe.ai credential's field name)
+	// must be redacted the same way, even though no tool takes one today
+	// -- see mcpRedactedKeys' doc comment.
+	if nested["api_key"] != "[redacted]" {
+		t.Errorf("nested api_key = %v, want it redacted at depth", nested["api_key"])
 	}
 	if stored["note"] != "hello" {
 		t.Errorf("note = %v, want it untouched", stored["note"])

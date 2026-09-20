@@ -63,6 +63,18 @@ type Config struct {
 	// instance); a self-hoster running their own instance sets this
 	// instead of a code change.
 	FxProviderBaseURL string
+	// TypesafeAPIKey is the instance's typesafe.ai credential (ADR-0015,
+	// M10 · Valinor). Empty is the default and means the AI-suggestions
+	// feature is off: unlike every other value in this struct, an absent
+	// or garbage key is never a Load failure — see Load's doc comment.
+	// Instance-level, not per-user (ADR-0015 "Credentials and endpoint"):
+	// every actor on an instance shares the operator's key and spend.
+	TypesafeAPIKey string
+	// TypesafeBaseURL is the base URL typesafe.ai requests are sent to
+	// (ADR-0015). Empty (the default) means the adapter's own default
+	// (https://api.typesafe.ai); configurable for the same reason
+	// FxProviderBaseURL is.
+	TypesafeBaseURL string
 }
 
 // Defaults are the values bodger ships with when the operator sets no
@@ -91,6 +103,12 @@ const (
 	EnvLogLevel = "BODGER_LOG_LEVEL"
 	// EnvFxProviderBaseURL, when set, overrides Defaults.FxProviderBaseURL.
 	EnvFxProviderBaseURL = "BODGER_FX_PROVIDER_BASE_URL"
+	// EnvTypesafeAPIKey, when set, overrides Defaults.TypesafeAPIKey. An
+	// absent or empty value is not a validation failure (ADR-0015): it
+	// simply leaves the AI-suggestions feature off.
+	EnvTypesafeAPIKey = "BODGER_TYPESAFE_API_KEY"
+	// EnvTypesafeBaseURL, when set, overrides Defaults.TypesafeBaseURL.
+	EnvTypesafeBaseURL = "BODGER_TYPESAFE_BASE_URL"
 )
 
 // currencyPattern is a structural check only — three uppercase ASCII
@@ -118,6 +136,14 @@ var logLevels = map[string]bool{
 // invalid — an unparseable IANA timezone, or a currency code that isn't
 // three uppercase letters — so a misconfigured instance fails at startup
 // rather than at the first request that needs the value.
+//
+// TypesafeAPIKey and TypesafeBaseURL are the one deliberate exception
+// (ADR-0015): they get no structural validation at all, and an absent or
+// garbage value is never a reason Load returns an error. The key is an
+// opaque vendor string bodger has no way to check locally, and a missing
+// key means the optional AI-suggestions feature is off, not misconfigured
+// — a startup dependency here would be exactly what ADR-0012 already
+// refused for the FX provider.
 func Load() (Config, error) {
 	return load(lookupFunc(os.LookupEnv))
 }
@@ -147,6 +173,16 @@ func load(lookup lookupFunc) (Config, error) {
 	if v, ok := lookup(EnvFxProviderBaseURL); ok && v != "" {
 		cfg.FxProviderBaseURL = v
 	}
+	if v, ok := lookup(EnvTypesafeAPIKey); ok && v != "" {
+		cfg.TypesafeAPIKey = v
+	}
+	if v, ok := lookup(EnvTypesafeBaseURL); ok && v != "" {
+		cfg.TypesafeBaseURL = v
+	}
+
+	// No structural validation for TypesafeAPIKey or TypesafeBaseURL — see
+	// Load's doc comment. Every other override above gets validated below;
+	// these two deliberately don't.
 
 	if !currencyPattern.MatchString(cfg.DefaultCurrency) {
 		return Config{}, fmt.Errorf("config: %s=%q is not a three-letter currency code", EnvDefaultCurrency, cfg.DefaultCurrency)

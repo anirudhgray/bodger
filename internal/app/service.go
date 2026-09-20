@@ -143,6 +143,24 @@ type Service struct {
 	// "whoami" tool to prove the transport; the financial tools that
 	// actually populate this table are #260/#261/#262.
 	MCPToolCalls ports.MCPToolCallRepository
+
+	// Suggestions is M10 · Valinor's external AI-suggestion source
+	// (ADR-0015: typesafe.ai). Following the ImportBatches/Budgets/
+	// RecurringRules precedent above, it is wired in ahead of its first
+	// use-case method — SuggestForImportBatch is a later, separate issue.
+	//
+	// Unlike every repository field on this struct, nil is a legitimate
+	// production value here, not a construction error: an unconfigured
+	// instance (no BODGER_TYPESAFE_API_KEY, config.go) runs with
+	// Suggestions unset, and the feature is simply off. NewService
+	// deliberately does not require or nil-check this field, the way it
+	// does every repository above — a repository's absence means bodger
+	// can't start; this field's absence means one optional feature can't
+	// run, which must never be a startup failure (ADR-0015 "no key
+	// anywhere... must never prevent the binary from starting").
+	// SuggestForImportBatch's own issue is what defines the no-op/absent
+	// behaviour a caller sees when this is nil.
+	Suggestions ports.SuggestionProvider
 }
 
 // NewService constructs a Service from its dependencies, rejecting a nil
