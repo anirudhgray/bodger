@@ -155,6 +155,45 @@ func (s *Service) findSuspectedDuplicate(ctx context.Context, actorID, accountID
 // not the common case findSuspectedDuplicate's own "two genuine identical
 // coffees" scenario is).
 func (s *Service) findOccurrenceMatch(ctx context.Context, actorID, accountID string, amount money.Money, bookedDate domain.Date, description string) (string, bool, error) {
+	candidates, err := s.eligibleOccurrences(ctx, actorID, accountID, amount, bookedDate)
+	if err != nil {
+		return "", false, err
+	}
+	for _, c := range candidates {
+		if !descriptionsSimilar(description, c.Rule.Description()) {
+			continue
+		}
+		return c.Occurrence.ID(), true, nil
+	}
+	return "", false, nil
+}
+
+// occurrenceCandidate pairs one pending recurring.ScheduledOccurrence with
+// its owning rule — everything eligibleOccurrences' two callers
+// (findOccurrenceMatch and SuggestForImportBatch, import_suggest.go) need
+// from it, without either one re-fetching the rule itself.
+type occurrenceCandidate struct {
+	Occurrence recurring.ScheduledOccurrence
+	Rule       recurring.RecurringRule
+}
+
+// eligibleOccurrences implements the deterministic amount/date narrowing
+// findOccurrenceMatch's own doc comment describes: same account, same
+// currency, exact signed amount (via resolveOccurrenceMoney — never read
+// "through" the occurrence itself, ADR-0014), and occurrence_date within
+// duplicateDateWindowDays days. It is the one place that narrowing logic
+// lives; findOccurrenceMatch (ADR-0008/#301's single-winner duplicate
+// heuristic) and SuggestForImportBatch (ADR-0015's suggestion candidate
+// set) both call it rather than each re-deriving the same comparison.
+//
+// It deliberately does NOT filter by description — that's each caller's
+// own concern. findOccurrenceMatch narrows further with
+// descriptionsSimilar and returns the first hit; SuggestForImportBatch
+// offers every survivor to the model, because choosing between
+// already-eligible candidates by description is the one part of this
+// judgement the model is actually asked to make (ADR-0015 "Code answers
+// the arithmetic. The model answers only the semantics.").
+func (s *Service) eligibleOccurrences(ctx context.Context, actorID, accountID string, amount money.Money, bookedDate domain.Date) ([]occurrenceCandidate, error) {
 	from := addDays(bookedDate, -duplicateDateWindowDays)
 	to := addDays(bookedDate, duplicateDateWindowDays)
 
@@ -164,9 +203,10 @@ func (s *Service) findOccurrenceMatch(ctx context.Context, actorID, accountID st
 		ToDate:   &to,
 	})
 	if err != nil {
-		return "", false, err
+		return nil, err
 	}
 
+	var eligible []occurrenceCandidate
 	for _, occ := range candidates {
 		rule, err := s.RecurringRules.Get(ctx, actorID, occ.RuleID())
 		if err != nil {
@@ -179,7 +219,7 @@ func (s *Service) findOccurrenceMatch(ctx context.Context, actorID, accountID st
 			if isNotFound(err) {
 				continue
 			}
-			return "", false, err
+			return nil, err
 		}
 		if rule.AccountID() != accountID {
 			continue
@@ -187,17 +227,14 @@ func (s *Service) findOccurrenceMatch(ctx context.Context, actorID, accountID st
 
 		_, _, occAmount, err := s.resolveOccurrenceMoney(ctx, actorID, rule)
 		if err != nil {
-			return "", false, err
+			return nil, err
 		}
 		if !occAmount.Equal(amount) {
 			continue
 		}
-		if !descriptionsSimilar(description, rule.Description()) {
-			continue
-		}
-		return occ.ID(), true, nil
+		eligible = append(eligible, occurrenceCandidate{Occurrence: occ, Rule: rule})
 	}
-	return "", false, nil
+	return eligible, nil
 }
 
 // findTransferCandidateRecord implements ADR-0008's cross-account transfer
