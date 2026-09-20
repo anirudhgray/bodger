@@ -147,6 +147,22 @@ func (h *handlers) rollbackImportBatch(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, importRollbackViewFrom(result))
 }
 
+// getImportSuggestions wires app.Service.SuggestForImportBatch onto
+// GET /api/v1/imports/{id}/suggestions (issue #306). Read-only: the
+// application-layer method itself writes nothing (ADR-0015), so there's
+// no request body and no destructive-tier concern here, unlike
+// commitImportBatch/rollbackImportBatch above.
+func (h *handlers) getImportSuggestions(w http.ResponseWriter, r *http.Request) {
+	result, err := h.svc.SuggestForImportBatch(r.Context(), app.SuggestForImportBatchQuery{
+		ActorID: actorID(r), ImportBatchRef: r.PathValue("id"),
+	})
+	if err != nil {
+		h.respondError(w, r, err)
+		return
+	}
+	respond(w, http.StatusOK, importSuggestionsViewFrom(result))
+}
+
 // resolveImportRecordRequest is POST /api/v1/import-records/{id}/resolve's
 // request body: the user's decision on a staged record's suspected
 // duplicate. Resolution's two values are the same wire strings

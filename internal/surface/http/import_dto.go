@@ -177,3 +177,85 @@ func importRollbackViewFrom(r app.RollbackImportBatchResult) importRollbackView 
 		TransactionIDs: r.TransactionIDs,
 	}
 }
+
+// suggestionSource is what every typesafe.ai suggestion this surface
+// renders is attributed to (issue #306, ADR-0015, docs/ux-principles.md
+// §6: "attributed to typesafe.ai by name... never as an unattributed
+// hint"). It's a literal, not something read off app.ImportRowSuggestion:
+// ports.SuggestionProvider deliberately carries no Name() (see that
+// interface's own doc comment — nothing it returns is persisted, so
+// there's no provenance column to fill), and an instance has only ever
+// one configured provider for a suggestion to have come from.
+const suggestionSource = "typesafe.ai"
+
+// suggestedCategoryView is one staged row's surviving category
+// suggestion (app.SuggestedCategory) — a proposal, never a value.
+// Accepting it means committing the import and setting the resulting
+// transaction's category yourself (PATCH /api/v1/transactions/{id}),
+// exactly as you would without this endpoint — ADR-0015: "nothing here
+// ever writes to the ledger."
+type suggestedCategoryView struct {
+	CategoryID string  `json:"category_id" doc:"The suggested category's ID."`
+	Confidence float64 `json:"confidence" doc:"typesafe.ai's own confidence for this answer (0-1), already past bodger's 0.5 display threshold. Ordering only — not a value to act on by itself."`
+}
+
+// suggestedOccurrenceView is one staged row's surviving occurrence-match
+// suggestion (app.SuggestedOccurrence). Accepting it means resolving the
+// match yourself via POST /api/v1/import-records/{id}/resolve-occurrence-match,
+// exactly as you would without a suggestion.
+type suggestedOccurrenceView struct {
+	OccurrenceID string  `json:"occurrence_id" doc:"The suggested pending occurrence's ID."`
+	Confidence   float64 `json:"confidence" doc:"typesafe.ai's own confidence for this answer (0-1), already past bodger's 0.5 display threshold."`
+}
+
+// importRowSuggestionView is one staged row's suggestion(s)
+// (app.ImportRowSuggestion) — Category and/or Occurrence are omitted
+// when there was nothing worth showing for that half of the row.
+type importRowSuggestionView struct {
+	RecordID   string                   `json:"record_id"`
+	Source     string                   `json:"source" doc:"Always \"typesafe.ai\" — which third party proposed this suggestion."`
+	Category   *suggestedCategoryView   `json:"category,omitempty"`
+	Occurrence *suggestedOccurrenceView `json:"occurrence,omitempty"`
+}
+
+func importRowSuggestionViewFrom(s app.ImportRowSuggestion) importRowSuggestionView {
+	v := importRowSuggestionView{RecordID: s.RecordID, Source: suggestionSource}
+	if s.Category != nil {
+		v.Category = &suggestedCategoryView{CategoryID: s.Category.CategoryID, Confidence: s.Category.Confidence}
+	}
+	if s.Occurrence != nil {
+		v.Occurrence = &suggestedOccurrenceView{OccurrenceID: s.Occurrence.OccurrenceID, Confidence: s.Occurrence.Confidence}
+	}
+	return v
+}
+
+// importSuggestionsView is GET /api/v1/imports/{id}/suggestions' response
+// shape (app.SuggestForImportBatchResult) — issue #306.
+type importSuggestionsView struct {
+	Configured bool `json:"configured" doc:"False when this instance has no typesafe.ai key configured — not an error; every other field is then left zero. See docs/user-guide.md for how an operator enables this."`
+	// Suggestions is ranked by confidence, best first (app.SuggestForImportBatchResult's own contract) — never re-sorted here.
+	Suggestions []importRowSuggestionView `json:"suggestions"`
+	// TooManyCategoryOptions lists staged record IDs that got no category
+	// suggestion at all because this actor has more eligible categories of
+	// that row's kind than typesafe.ai can be asked about in one question —
+	// distinct from a record simply absent from Suggestions (which can
+	// instead mean "asked, but nothing confident came back" or "the
+	// request for this row failed" — see RowsFailed).
+	TooManyCategoryOptions []string `json:"too_many_category_options,omitempty" doc:"Staged record IDs that got no category suggestion because this actor has too many categories of the row's kind for typesafe.ai to be asked about."`
+	RowsSuggested          int      `json:"rows_suggested" doc:"How many staged rows actually had a suggestion request sent for them."`
+	RowsFailed             int      `json:"rows_failed" doc:"How many of those rows typesafe.ai never answered. One row failing never discards another row's suggestion — every staged row is still fully listable and reviewable regardless."`
+}
+
+func importSuggestionsViewFrom(r app.SuggestForImportBatchResult) importSuggestionsView {
+	v := importSuggestionsView{
+		Configured:             r.Configured,
+		TooManyCategoryOptions: r.TooManyCategoryOptions,
+		RowsSuggested:          r.RowsSuggested,
+		RowsFailed:             r.RowsFailed,
+	}
+	v.Suggestions = make([]importRowSuggestionView, 0, len(r.Suggestions))
+	for _, s := range r.Suggestions {
+		v.Suggestions = append(v.Suggestions, importRowSuggestionViewFrom(s))
+	}
+	return v
+}

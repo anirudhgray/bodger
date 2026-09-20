@@ -1977,6 +1977,76 @@
         ],
         "type": "object"
       },
+      "ImportRowSuggestion": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/SuggestedCategory"
+          },
+          "occurrence": {
+            "$ref": "#/components/schemas/SuggestedOccurrence"
+          },
+          "record_id": {
+            "type": "string"
+          },
+          "source": {
+            "description": "Always \"typesafe.ai\" — which third party proposed this suggestion.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id",
+          "source"
+        ],
+        "type": "object"
+      },
+      "ImportSuggestions": {
+        "properties": {
+          "configured": {
+            "description": "False when this instance has no typesafe.ai key configured — not an error; every other field is then left zero. See docs/user-guide.md for how an operator enables this.",
+            "type": "boolean"
+          },
+          "rows_failed": {
+            "description": "How many of those rows typesafe.ai never answered. One row failing never discards another row's suggestion — every staged row is still fully listable and reviewable regardless.",
+            "type": "integer"
+          },
+          "rows_suggested": {
+            "description": "How many staged rows actually had a suggestion request sent for them.",
+            "type": "integer"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/ImportRowSuggestion"
+            },
+            "type": "array"
+          },
+          "too_many_category_options": {
+            "description": "Staged record IDs that got no category suggestion because this actor has too many categories of the row's kind for typesafe.ai to be asked about.",
+            "items": {
+              "description": "Staged record IDs that got no category suggestion because this actor has too many categories of the row's kind for typesafe.ai to be asked about.",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "configured",
+          "suggestions",
+          "rows_suggested",
+          "rows_failed"
+        ],
+        "type": "object"
+      },
+      "ImportSuggestionsEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ImportSuggestions"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "LoginRequest": {
         "properties": {
           "password": {
@@ -2616,6 +2686,42 @@
         },
         "required": [
           "currency"
+        ],
+        "type": "object"
+      },
+      "SuggestedCategory": {
+        "properties": {
+          "category_id": {
+            "description": "The suggested category's ID.",
+            "type": "string"
+          },
+          "confidence": {
+            "description": "typesafe.ai's own confidence for this answer (0-1), already past bodger's 0.5 display threshold. Ordering only — not a value to act on by itself.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "category_id",
+          "confidence"
+        ],
+        "type": "object"
+      },
+      "SuggestedOccurrence": {
+        "properties": {
+          "confidence": {
+            "description": "typesafe.ai's own confidence for this answer (0-1), already past bodger's 0.5 display threshold.",
+            "format": "double",
+            "type": "number"
+          },
+          "occurrence_id": {
+            "description": "The suggested pending occurrence's ID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "occurrence_id",
+          "confidence"
         ],
         "type": "object"
       },
@@ -5751,6 +5857,33 @@
           }
         },
         "summary": "Undo a committed import: delete the transactions it created."
+      }
+    },
+    "/api/v1/imports/{id}/suggestions": {
+      "get": {
+        "description": "Read-only — writes nothing. A suggestion proposes a category and/or a pending-occurrence match for a staged row that has no resolved category yet; accepting one means committing the import and setting the resulting transaction's category yourself, or resolving the occurrence match, exactly as you would without this endpoint. Every suggestion is attributed to typesafe.ai by name. If this instance has no typesafe.ai key configured, \"configured\" is false and every other field is zero — not an error.",
+        "operationId": "getImportSuggestions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportSuggestionsEnvelope"
+                }
+              }
+            },
+            "description": "The suggestions available for this import's still-unresolved rows."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Get typesafe.ai's advisory suggestions for an import's still-unresolved rows."
       }
     },
     "/api/v1/recurring-occurrences": {
