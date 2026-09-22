@@ -194,12 +194,21 @@ func (h *handlers) resolveImportRecord(w http.ResponseWriter, r *http.Request) {
 // resolveImportRecordOccurrenceMatchRequest is
 // POST /api/v1/import-records/{id}/resolve-occurrence-match's request
 // body: the user's decision on a staged record's matched pending
-// occurrence (issue #309). This handler passes Resolution straight
-// through to app.ResolveImportRecordOccurrenceMatchCommand, which
-// validates it — the same "no validation belongs here" reasoning
+// occurrence (issue #309). This handler passes Resolution and
+// OccurrenceID straight through to
+// app.ResolveImportRecordOccurrenceMatchCommand, which validates and
+// re-checks both — the same "no validation belongs here" reasoning
 // resolveImportRecordRequest's own doc comment gives.
 type resolveImportRecordOccurrenceMatchRequest struct {
 	Resolution string `json:"resolution" enum:"import_occurrence_match_resolution" doc:"\"materialized\" turns the matched occurrence into its own transaction and excludes this record from commit; \"dismissed\" leaves the occurrence untouched and clears this record for commit."`
+	// OccurrenceID is required only when the record has no matched
+	// occurrence of its own to resolve (issue #307's AI-suggested case —
+	// SuggestForImportBatch can offer a candidate this record's own
+	// deterministic detection missed). Ignored when the record already
+	// has a match; the app layer re-validates it's actually eligible
+	// either way, so an arbitrary or stale ID is refused rather than
+	// trusted.
+	OccurrenceID string `json:"occurrence_id,omitempty" doc:"The pending occurrence to resolve against, when this record has no matched occurrence of its own already. Ignored otherwise."`
 }
 
 func (h *handlers) resolveImportRecordOccurrenceMatch(w http.ResponseWriter, r *http.Request) {
@@ -210,7 +219,7 @@ func (h *handlers) resolveImportRecordOccurrenceMatch(w http.ResponseWriter, r *
 	}
 
 	result, err := h.svc.ResolveImportRecordOccurrenceMatch(r.Context(), app.ResolveImportRecordOccurrenceMatchCommand{
-		ActorID: actorID(r), ImportRecordRef: r.PathValue("id"), Resolution: body.Resolution,
+		ActorID: actorID(r), ImportRecordRef: r.PathValue("id"), Resolution: body.Resolution, OccurrenceID: body.OccurrenceID,
 	})
 	if err != nil {
 		h.respondError(w, r, err)

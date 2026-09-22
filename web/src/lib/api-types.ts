@@ -1944,6 +1944,8 @@ export interface components {
             data: components["schemas"]["ReportingCurrency"];
         };
         ResolveImportRecordOccurrenceMatchRequest: {
+            /** @description The pending occurrence to resolve against, when this record has no matched occurrence of its own already. Ignored otherwise. */
+            occurrence_id?: string;
             /**
              * @description "materialized" turns the matched occurrence into its own transaction and excludes this record from commit; "dismissed" leaves the occurrence untouched and clears this record for commit.
              * @enum {string}

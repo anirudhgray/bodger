@@ -2421,6 +2421,10 @@
       },
       "ResolveImportRecordOccurrenceMatchRequest": {
         "properties": {
+          "occurrence_id": {
+            "description": "The pending occurrence to resolve against, when this record has no matched occurrence of its own already. Ignored otherwise.",
+            "type": "string"
+          },
           "resolution": {
             "description": "\"materialized\" turns the matched occurrence into its own transaction and excludes this record from commit; \"dismissed\" leaves the occurrence untouched and clears this record for commit.",
             "enum": [

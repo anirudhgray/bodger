@@ -651,14 +651,17 @@ func newImportResolveCmd(factory ServiceFactory) *cobra.Command {
 }
 
 func newImportResolveOccurrenceCmd(factory ServiceFactory) *cobra.Command {
-	var resolution string
+	var resolution, occurrenceID string
 	cmd := &cobra.Command{
 		Use:   "resolve-occurrence <record-id>",
 		Short: "Record your decision on a staged record's matched pending occurrence",
 		Long: `--resolution "materialized" turns the matched occurrence into its own transaction (using its rule's ` +
 			`current amount and date) and excludes this record from commit, since the occurrence's transaction now ` +
 			`covers the same money. --resolution "dismissed" leaves the occurrence untouched and clears this record ` +
-			"for commit. Refused for a record with no matched occurrence to resolve, or one already resolved.",
+			"for commit. Refused for a record already resolved. For a record with no matched occurrence of its own " +
+			"(one `bodger import suggest` proposed instead — see its own --json output for the occurrence id), pass " +
+			"--occurrence with that ID; it's re-checked against this record's own amount, date, and currency before " +
+			"anything happens.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -669,7 +672,7 @@ func newImportResolveOccurrenceCmd(factory ServiceFactory) *cobra.Command {
 			defer closeQuietly(cmd, closeDB)
 
 			result, err := svc.ResolveImportRecordOccurrenceMatch(ctx, app.ResolveImportRecordOccurrenceMatchCommand{
-				ActorID: ports.SeededUserID, ImportRecordRef: args[0], Resolution: resolution,
+				ActorID: ports.SeededUserID, ImportRecordRef: args[0], Resolution: resolution, OccurrenceID: occurrenceID,
 			})
 			if err != nil {
 				return err
@@ -685,6 +688,8 @@ func newImportResolveOccurrenceCmd(factory ServiceFactory) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&resolution, "resolution", "", `your decision: "materialized" or "dismissed" (required)`)
+	cmd.Flags().StringVar(&occurrenceID, "occurrence", "",
+		"the pending occurrence to resolve against, when this record has no matched occurrence of its own already")
 	_ = cmd.MarkFlagRequired("resolution")
 	return cmd
 }
