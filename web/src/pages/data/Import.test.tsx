@@ -379,6 +379,57 @@ describe('ImportPage', () => {
       return user
     }
 
+    it('shows a loading placeholder in the Suggested column while the request is in flight, instead of popping content in', async () => {
+      // Before suggestionsLoading existed, the Suggested column rendered
+      // "—" for every row until getImportSuggestions resolved, then
+      // suddenly swapped in a taller suggestion card — a real,
+      // user-reported layout shift with nothing to indicate a request was
+      // even in flight.
+      let resolveSuggestions!: (value: ImportSuggestions) => void
+      mockedGetImportSuggestions.mockReturnValue(
+        new Promise((resolve) => {
+          resolveSuggestions = resolve
+        }),
+      )
+      const batch = makeBatch({ status: 'staged' })
+      mockedListImportBatches.mockResolvedValue([batch])
+      mockedGetImportBatch.mockResolvedValue(batch)
+      mockedListImportRecords.mockResolvedValue([
+        makeRecord({ status: 'ready' }),
+      ])
+
+      const user = userEvent.setup()
+      const { container } = render(<ImportPage />)
+      await user.click(
+        await screen.findByRole('button', { name: 'Continue review' }),
+      )
+      await waitFor(() =>
+        expect(mockedGetImportSuggestions).toHaveBeenCalledWith(batch.id),
+      )
+
+      expect(await screen.findByText('Coffee')).toBeInTheDocument()
+      expect(container.querySelector('[data-slot="skeleton"]')).toBeTruthy()
+      // Not yet claiming anything about configuration — the request
+      // hasn't resolved, so no notice line should exist either.
+      expect(
+        screen.queryByText(
+          'AI-assisted suggestions aren’t set up on this instance.',
+        ),
+      ).not.toBeInTheDocument()
+
+      resolveSuggestions(notConfiguredSuggestions())
+      await waitFor(() =>
+        expect(
+          container.querySelector('[data-slot="skeleton"]'),
+        ).not.toBeInTheDocument(),
+      )
+      expect(
+        screen.getByText(
+          'AI-assisted suggestions aren’t set up on this instance.',
+        ),
+      ).toBeInTheDocument()
+    })
+
     it('shows a quiet, non-blocking line when no typesafe.ai key is configured', async () => {
       mockedGetImportSuggestions.mockResolvedValue(notConfiguredSuggestions())
       await openReview([makeRecord({ status: 'ready' })])
@@ -429,11 +480,16 @@ describe('ImportPage', () => {
       expect(mockedResolveImportRecordOccurrenceMatch).not.toHaveBeenCalled()
     })
 
-    it('accepts an AI-suggested occurrence match by materialising it through the existing resolve action', async () => {
-      const suggested = makeRecord({
-        status: 'pending',
-        occurrence_match: { occurrence_id: 'occ_1', resolution: 'pending' },
-      })
+    it('accepts an AI-only occurrence match (no deterministic match) through the Decision column, passing its occurrence id', async () => {
+      // The real-world case a manual test against a live typesafe.ai key
+      // found broken: findOccurrenceMatch's own staging-time gate missed
+      // this match (no occurrence_match at all, status already ready —
+      // nothing held the record pending on it), but
+      // SuggestForImportBatch's own looser candidate narrowing still
+      // offered it. Accepting it is the *only* place this decision is
+      // ever offered (see ReviewStep's needsAIOnlyOccurrenceDecision) —
+      // there is no separate "Accept match" control any more.
+      const suggested = makeRecord({ status: 'ready' })
       mockedGetImportSuggestions.mockResolvedValue(
         presentSuggestions({
           suggestions: [
@@ -456,15 +512,18 @@ describe('ImportPage', () => {
       const user = await openReview([suggested])
 
       expect(await screen.findByText('Projected match')).toBeInTheDocument()
+      // No deterministic-match flag — this row's own detection never
+      // caught it, which is the whole point of this scenario.
       expect(
-        screen.getByText('Matches a pending occurrence'),
-      ).toBeInTheDocument()
+        screen.queryByText('Matches a pending occurrence'),
+      ).not.toBeInTheDocument()
 
-      await user.click(screen.getByRole('button', { name: 'Accept match' }))
+      await user.click(screen.getByRole('button', { name: 'Materialise' }))
       await waitFor(() =>
         expect(mockedResolveImportRecordOccurrenceMatch).toHaveBeenCalledWith(
           'rec_1',
           'materialized',
+          'occ_1',
         ),
       )
       expect(mockedToastSuccess).toHaveBeenCalledWith(
@@ -473,6 +532,86 @@ describe('ImportPage', () => {
       expect(
         await screen.findByText('Occurrence materialised'),
       ).toBeInTheDocument()
+    })
+
+    it('never shows an AI-only occurrence decision once the row has already committed or excluded', async () => {
+      // Defence in depth, matching the backend's own terminal-status
+      // guard: once a row is committed or excluded, accepting an AI
+      // suggestion for it can no longer do anything safe (it would
+      // materialise a second, genuinely double-counted transaction), so
+      // the UI never offers the control at all rather than letting a
+      // click surface a server-side refusal.
+      mockedGetImportSuggestions.mockResolvedValue(
+        presentSuggestions({
+          suggestions: [
+            {
+              record_id: 'rec_1',
+              source: 'typesafe.ai',
+              occurrence: { occurrence_id: 'occ_1', confidence: 0.91 },
+            },
+          ],
+        }),
+      )
+      await openReview([
+        makeRecord({ status: 'committed', transaction_id: 'txn_1' }),
+      ])
+
+      expect(await screen.findByText('Projected match')).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Materialise' }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('offers only one Decision-column control when a deterministic match and an AI suggestion agree on the same row', async () => {
+      // A row findOccurrenceMatch already caught (occurrence_match set,
+      // pending) whose AI-suggested candidate happens to be the same
+      // occurrence — the common case, since both draw from the same
+      // eligibleOccurrences narrowing. This must render exactly one
+      // Materialise/"Not this occurrence" pair, using the record's own
+      // matched occurrence id (the AI suggestion's is ignored server-side
+      // either way — see resolveImportRecordOccurrenceMatch's own doc
+      // comment — so the UI passes no occurrenceId for this case).
+      const matched = makeRecord({
+        status: 'pending',
+        occurrence_match: { occurrence_id: 'occ_1', resolution: 'pending' },
+      })
+      mockedGetImportSuggestions.mockResolvedValue(
+        presentSuggestions({
+          suggestions: [
+            {
+              record_id: 'rec_1',
+              source: 'typesafe.ai',
+              occurrence: { occurrence_id: 'occ_1', confidence: 0.91 },
+            },
+          ],
+        }),
+      )
+      mockedResolveImportRecordOccurrenceMatch.mockResolvedValue({
+        ...matched,
+        status: 'excluded',
+        occurrence_match: {
+          occurrence_id: 'occ_1',
+          resolution: 'materialized',
+        },
+      })
+      const user = await openReview([matched])
+
+      expect(await screen.findByText('Projected match')).toBeInTheDocument()
+      expect(
+        screen.getByText('Matches a pending occurrence'),
+      ).toBeInTheDocument()
+      expect(
+        screen.getAllByRole('button', { name: 'Materialise' }),
+      ).toHaveLength(1)
+
+      await user.click(screen.getByRole('button', { name: 'Materialise' }))
+      await waitFor(() =>
+        expect(mockedResolveImportRecordOccurrenceMatch).toHaveBeenCalledWith(
+          'rec_1',
+          'materialized',
+          undefined,
+        ),
+      )
     })
 
     it('dismisses a deterministic occurrence match independently of any duplicate decision', async () => {
@@ -498,6 +637,7 @@ describe('ImportPage', () => {
         expect(mockedResolveImportRecordOccurrenceMatch).toHaveBeenCalledWith(
           'rec_1',
           'dismissed',
+          undefined,
         ),
       )
       expect(await screen.findByText('Not this occurrence')).toBeInTheDocument()

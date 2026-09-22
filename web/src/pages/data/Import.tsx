@@ -46,6 +46,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import {
   Table,
@@ -252,6 +253,13 @@ export function ImportPage() {
   const [wizard, setWizard] = useState<Wizard>({ step: 'closed' })
   const [busy, setBusy] = useState(false)
   const [suggestions, setSuggestions] = useState<ImportSuggestions | null>(null)
+  // suggestionsLoading distinguishes "the request is in flight" from
+  // "loaded, and there's genuinely nothing to show" (not-configured,
+  // failed, or every row already resolved) — suggestions alone collapses
+  // both to null, which is what let the Suggested column render nothing,
+  // then pop in cards once the fetch resolved, shifting every row's
+  // height with no loading affordance in between.
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
   const [busyOccurrenceRecordId, setBusyOccurrenceRecordId] = useState<
     string | null
   >(null)
@@ -302,12 +310,17 @@ export function ImportPage() {
     let cancelled = false
     // oxlint-disable-next-line react/set-state-in-effect
     setSuggestions(null)
+    // oxlint-disable-next-line react/set-state-in-effect
+    setSuggestionsLoading(true)
     getImportSuggestions(reviewBatchId)
       .then((result) => {
         if (!cancelled) setSuggestions(result)
       })
       .catch(() => {
         if (!cancelled) setSuggestions(null)
+      })
+      .finally(() => {
+        if (!cancelled) setSuggestionsLoading(false)
       })
     return () => {
       cancelled = true
@@ -387,12 +400,18 @@ export function ImportPage() {
   // handleResolveOccurrenceMatch is the gap-closing action #309/#312
   // shipped app/CLI/HTTP for but never a web UI (issue #307's own
   // user-confirmed scope note): resolving a row's deterministic
-  // OccurrenceMatch, exactly the same call #307's own AI-suggested
-  // occurrence match (SuggestionCell below) reaches to "accept" a
-  // suggestion — there is no second write path for that.
+  // OccurrenceMatch. It's also exactly the same call an AI-suggested
+  // occurrence match reaches to "accept" a suggestion — there is no
+  // second write path for that — which is why occurrenceId is accepted
+  // here too: required only when record has no OccurrenceMatch of its
+  // own already (an AI-only suggestion a manual test against a live
+  // typesafe.ai key found silently doing nothing before this parameter
+  // existed — see resolveImportRecordOccurrenceMatch's own doc comment,
+  // api.ts), ignored otherwise.
   async function handleResolveOccurrenceMatch(
     record: ImportRecord,
     resolution: ResolvableOccurrenceMatchResolution,
+    occurrenceId?: string,
   ) {
     if (wizard.step !== 'review') return
     setBusyOccurrenceRecordId(record.id)
@@ -400,6 +419,7 @@ export function ImportPage() {
       const updated = await resolveImportRecordOccurrenceMatch(
         record.id,
         resolution,
+        occurrenceId,
       )
       setWizard({
         step: 'review',
@@ -526,6 +546,7 @@ export function ImportPage() {
           onResolveOccurrenceMatch={handleResolveOccurrenceMatch}
           busyOccurrenceRecordId={busyOccurrenceRecordId}
           suggestions={suggestions}
+          suggestionsLoading={suggestionsLoading}
           onCommit={handleCommit}
           onCancel={() => setWizard({ step: 'closed' })}
         />
@@ -842,32 +863,30 @@ function occurrenceMatchBadge(record: ImportRecord) {
 // REST response is already ranked by confidence, best first, so nothing
 // here needs to re-sort or print the number).
 //
-// The two suggestion kinds are deliberately styled apart (#307's own
-// acceptance criterion): a category suggestion is a plain solid-border
-// card with no accept control — there is genuinely no write endpoint for
-// "assign this category to a staged row" (#305/#306), so accepting one
-// means committing the import and setting the category yourself
-// afterward, same as without a suggestion, stated in the card's own copy
-// rather than a phantom button. An occurrence suggestion gets a
-// dashed-border card (Recurring.tsx's own "Projected — not settled money
-// yet" visual language, data-model.md §11) and a real "Accept match"
-// button, because accepting it has a real write to make — the same
-// resolveImportRecordOccurrenceMatch call the Decision column's own
-// Materialise button reaches, not a new one.
+// Purely informational — neither suggestion kind carries its own accept
+// control here. A category suggestion never has: there is genuinely no
+// write endpoint for "assign this category to a staged row" (#305/#306),
+// so accepting one means committing the import and setting the category
+// yourself afterward, stated in the card's own copy. An occurrence
+// suggestion *does* have a real write to make (the same
+// resolveImportRecordOccurrenceMatch call a deterministic match's own
+// Materialise button reaches), but the button for it lives in the
+// Decision column instead, alongside every other per-row decision this
+// screen asks for — a first version of this screen put an "Accept match"
+// button here too, which put decisions in two different places for no
+// good reason (an occurrence suggestion this screen already deterministically
+// matched would show both a Decision-column Materialise button and this
+// column's own Accept button for the same action) and, in manual
+// testing, wasn't even wired to the right occurrence id. See
+// ReviewStep's needsOccurrenceDecision for where that action now lives.
 function SuggestionCell({
-  record,
   suggestion,
   categoriesByID,
   tooManyCategoryOptions,
-  busy,
-  onAcceptOccurrence,
 }: {
-  record: ImportRecord
   suggestion: ImportRowSuggestion | undefined
   categoriesByID: Map<string, Category>
   tooManyCategoryOptions: boolean
-  busy: boolean
-  onAcceptOccurrence: () => void
 }) {
   if (!suggestion && !tooManyCategoryOptions) {
     return <span className="text-muted-foreground text-sm">—</span>
@@ -892,16 +911,9 @@ function SuggestionCell({
         <div className="flex flex-col items-start gap-1 rounded-md border border-dashed bg-muted/30 px-2 py-1.5 text-xs">
           <Badge variant="outline">Projected match</Badge>
           <span className="text-muted-foreground">
-            Suggested by typesafe.ai — not settled money until accepted.
+            Suggested by typesafe.ai — not settled money until accepted in the
+            Decision column.
           </span>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy || record.status !== 'pending'}
-            onClick={onAcceptOccurrence}
-          >
-            Accept match
-          </Button>
         </div>
       )}
       {tooManyCategoryOptions && (
@@ -911,6 +923,14 @@ function SuggestionCell({
       )}
     </div>
   )
+}
+
+// SuggestionCellSkeleton renders while suggestions are still loading
+// (ReviewStep's own suggestionsLoading) — a fixed-size placeholder so the
+// Suggested column doesn't visibly pop from "—" to a real suggestion card
+// and shift every row's height once the request resolves.
+function SuggestionCellSkeleton() {
+  return <Skeleton className="h-11 w-44 rounded-md" />
 }
 
 function ReviewStep({
@@ -924,6 +944,7 @@ function ReviewStep({
   onResolveOccurrenceMatch,
   busyOccurrenceRecordId,
   suggestions,
+  suggestionsLoading,
   onCommit,
   onCancel,
 }: {
@@ -940,9 +961,11 @@ function ReviewStep({
   onResolveOccurrenceMatch: (
     record: ImportRecord,
     resolution: ResolvableOccurrenceMatchResolution,
+    occurrenceId?: string,
   ) => void
   busyOccurrenceRecordId: string | null
   suggestions: ImportSuggestions | null
+  suggestionsLoading: boolean
   onCommit: () => void
   onCancel: () => void
 }) {
@@ -1019,9 +1042,32 @@ function ReviewStep({
                 record.status === 'pending' &&
                 record.duplicate_match?.tier === 'suspected_duplicate' &&
                 record.duplicate_match.resolution === 'pending'
-              const needsOccurrenceDecision =
+              const needsDeterministicOccurrenceDecision =
                 record.status === 'pending' &&
                 record.occurrence_match?.resolution === 'pending'
+              // An AI-suggested occurrence match this row's own
+              // deterministic detection missed (findOccurrenceMatch's
+              // staging-time gate additionally requires description
+              // similarity, which SuggestForImportBatch's own candidate
+              // narrowing deliberately skips) — the row cleared review as
+              // ready, with no OccurrenceMatch attached at all, so this
+              // is the *only* place the decision is ever offered. Never
+              // shown once record.occurrence_match exists already
+              // (needsDeterministicOccurrenceDecision covers that row
+              // instead, once), and never once the row has committed or
+              // excluded — accepting it then would materialise a second,
+              // genuinely double-counted transaction (the same guard the
+              // backend itself enforces).
+              const aiOccurrenceSuggestion = suggestionByRecordID.get(
+                record.id,
+              )?.occurrence
+              const needsAIOnlyOccurrenceDecision =
+                record.status === 'ready' &&
+                !record.occurrence_match &&
+                !!aiOccurrenceSuggestion
+              const needsOccurrenceDecision =
+                needsDeterministicOccurrenceDecision ||
+                needsAIOnlyOccurrenceDecision
               const occurrenceBusy = busyOccurrenceRecordId === record.id
               return (
                 <TableRow key={record.id}>
@@ -1040,18 +1086,17 @@ function ReviewStep({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <SuggestionCell
-                      record={record}
-                      suggestion={suggestionByRecordID.get(record.id)}
-                      categoriesByID={categoriesByID}
-                      tooManyCategoryOptions={tooManyCategoryOptions.has(
-                        record.id,
-                      )}
-                      busy={occurrenceBusy}
-                      onAcceptOccurrence={() =>
-                        onResolveOccurrenceMatch(record, 'materialized')
-                      }
-                    />
+                    {suggestionsLoading ? (
+                      <SuggestionCellSkeleton />
+                    ) : (
+                      <SuggestionCell
+                        suggestion={suggestionByRecordID.get(record.id)}
+                        categoriesByID={categoriesByID}
+                        tooManyCategoryOptions={tooManyCategoryOptions.has(
+                          record.id,
+                        )}
+                      />
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     {needsDuplicateDecision || needsOccurrenceDecision ? (
@@ -1083,7 +1128,13 @@ function ReviewStep({
                               variant="ghost"
                               disabled={occurrenceBusy}
                               onClick={() =>
-                                onResolveOccurrenceMatch(record, 'dismissed')
+                                onResolveOccurrenceMatch(
+                                  record,
+                                  'dismissed',
+                                  needsAIOnlyOccurrenceDecision
+                                    ? aiOccurrenceSuggestion?.occurrence_id
+                                    : undefined,
+                                )
                               }
                             >
                               Not this occurrence
@@ -1093,7 +1144,13 @@ function ReviewStep({
                               variant="outline"
                               disabled={occurrenceBusy}
                               onClick={() =>
-                                onResolveOccurrenceMatch(record, 'materialized')
+                                onResolveOccurrenceMatch(
+                                  record,
+                                  'materialized',
+                                  needsAIOnlyOccurrenceDecision
+                                    ? aiOccurrenceSuggestion?.occurrence_id
+                                    : undefined,
+                                )
                               }
                             >
                               Materialise

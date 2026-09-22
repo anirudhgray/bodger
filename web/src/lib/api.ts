@@ -917,17 +917,30 @@ export type ResolvableOccurrenceMatchResolution = Exclude<
 // excludes this record from commit; "dismissed" leaves the occurrence
 // untouched and clears the record for commit. This is the write #307's
 // own AI-suggested occurrence match (below) calls to "accept" a
-// suggestion — there is no separate write path for that; it resolves the
-// same OccurrenceMatch a suggestion merely points at.
+// suggestion — there is no separate write path for that.
+//
+// occurrenceId is required, and only meaningful, when the record has no
+// matched occurrence of its own already: findOccurrenceMatch's own
+// staging-time gate additionally requires description similarity on top
+// of the amount/date/currency match SuggestForImportBatch's own
+// (deliberately looser) candidate narrowing uses, so a real AI suggestion
+// can point at an occurrence this record was never held pending on —
+// exactly the case a manual test against a live typesafe.ai key found
+// silently doing nothing before this parameter existed. Omit it (or pass
+// undefined) when record.occurrence_match is already set; the REST layer
+// ignores it either way once a match already exists, and re-validates it
+// server-side when one doesn't, so an arbitrary or stale id is refused
+// rather than trusted.
 export function resolveImportRecordOccurrenceMatch(
   id: string,
   resolution: ResolvableOccurrenceMatchResolution,
+  occurrenceId?: string,
 ): Promise<ImportRecord> {
   return apiFetch<ImportRecord>(
     `/api/v1/import-records/${id}/resolve-occurrence-match`,
     {
       method: 'POST',
-      body: JSON.stringify({ resolution }),
+      body: JSON.stringify({ resolution, occurrence_id: occurrenceId }),
     },
   )
 }
