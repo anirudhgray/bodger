@@ -426,6 +426,153 @@ func TestImportRecord_ResolveOccurrenceMatch(t *testing.T) {
 	})
 }
 
+// TestImportRecord_AttachOccurrenceMatch covers WithOccurrenceMatch's
+// post-construction counterpart (issue #307): attaching an occurrence
+// match to a record that was originally constructed with none at all —
+// findOccurrenceMatch's own staging-time gate can miss a match
+// SuggestForImportBatch's looser AI candidate narrowing later offers.
+func TestImportRecord_AttachOccurrenceMatch(t *testing.T) {
+	t.Parallel()
+
+	t.Run("attaches a match to a record with none", func(t *testing.T) {
+		t.Parallel()
+		r := mustRecord(t) // no OccurrenceMatch
+		match, err := importing.NewOccurrenceMatch("occ-1")
+		if err != nil {
+			t.Fatalf("NewOccurrenceMatch(...) = %v, want success", err)
+		}
+		attached, err := r.AttachOccurrenceMatch(match)
+		if err != nil {
+			t.Fatalf("AttachOccurrenceMatch(...) = %v, want success", err)
+		}
+		om, ok := attached.OccurrenceMatch()
+		if !ok || om.OccurrenceID() != "occ-1" || om.Resolution() != importing.OccurrenceMatchResolutionPending {
+			t.Errorf("OccurrenceMatch() = (%+v, %v), want a pending match against occ-1", om, ok)
+		}
+		// r itself must be unchanged (copy-transform, not mutation).
+		if _, ok := r.OccurrenceMatch(); ok {
+			t.Error("original record's OccurrenceMatch() ok = true after AttachOccurrenceMatch, want unchanged false")
+		}
+	})
+
+	t.Run("rejects attaching to a record that already has one", func(t *testing.T) {
+		t.Parallel()
+		existing, err := importing.NewOccurrenceMatch("occ-1")
+		if err != nil {
+			t.Fatalf("NewOccurrenceMatch(...) = %v, want success", err)
+		}
+		r, err := importing.NewImportRecord(
+			"record-1", "user-1", "batch-1", "raw", mustRecordDate(t, 2026, 8, 14), "desc",
+			mustRecordMoney(t, -100, "USD"), 0,
+			importing.WithOccurrenceMatch(existing),
+		)
+		if err != nil {
+			t.Fatalf("NewImportRecord(...) = %v, want success", err)
+		}
+		another, err := importing.NewOccurrenceMatch("occ-2")
+		if err != nil {
+			t.Fatalf("NewOccurrenceMatch(...) = %v, want success", err)
+		}
+		if _, err := r.AttachOccurrenceMatch(another); !errors.Is(err, importing.ErrImportRecordOccurrenceMatchAlreadyAttached) {
+			t.Fatalf("AttachOccurrenceMatch(...) error = %v, want ErrImportRecordOccurrenceMatchAlreadyAttached", err)
+		}
+	})
+}
+
+// TestImportRecord_ExcludeAfterLateOccurrenceMatch covers issue #307's own
+// regression case: SettleStatus is a no-op on anything but
+// ImportRecordStatusPending, so a record that already cleared review as
+// Ready needs this separate transition once a human accepts a
+// (staging-time-missed) AI-suggested occurrence match — otherwise the
+// occurrence's own new transaction and this record's still-committable
+// one would double the same money.
+func TestImportRecord_ExcludeAfterLateOccurrenceMatch(t *testing.T) {
+	t.Parallel()
+
+	readyWithResolvedMatch := func(t *testing.T, resolution importing.OccurrenceMatchResolution) importing.ImportRecord {
+		t.Helper()
+		match, err := importing.NewOccurrenceMatch("occ-1")
+		if err != nil {
+			t.Fatalf("NewOccurrenceMatch(...) = %v, want success", err)
+		}
+		resolved, err := match.Resolve(resolution)
+		if err != nil {
+			t.Fatalf("Resolve(...) = %v, want success", err)
+		}
+		r, err := importing.NewImportRecord(
+			"record-1", "user-1", "batch-1", "raw", mustRecordDate(t, 2026, 8, 14), "desc",
+			mustRecordMoney(t, -100, "USD"), 0,
+			importing.WithOccurrenceMatch(resolved), importing.WithRecordStatus(importing.ImportRecordStatusReady),
+		)
+		if err != nil {
+			t.Fatalf("NewImportRecord(...) = %v, want success", err)
+		}
+		return r
+	}
+
+	t.Run("excludes a ready record with a materialized match", func(t *testing.T) {
+		t.Parallel()
+		r := readyWithResolvedMatch(t, importing.OccurrenceMatchResolutionMaterialized)
+		excluded, err := r.ExcludeAfterLateOccurrenceMatch()
+		if err != nil {
+			t.Fatalf("ExcludeAfterLateOccurrenceMatch() = %v, want success", err)
+		}
+		if excluded.Status() != importing.ImportRecordStatusExcluded {
+			t.Errorf("Status() = %q, want %q", excluded.Status(), importing.ImportRecordStatusExcluded)
+		}
+		// r itself must be unchanged (copy-transform, not mutation).
+		if r.Status() != importing.ImportRecordStatusReady {
+			t.Error("original record's Status() changed, want unchanged ready")
+		}
+	})
+
+	t.Run("rejects a ready record whose match isn't materialized", func(t *testing.T) {
+		t.Parallel()
+		r := readyWithResolvedMatch(t, importing.OccurrenceMatchResolutionDismissed)
+		if _, err := r.ExcludeAfterLateOccurrenceMatch(); !errors.Is(err, importing.ErrImportRecordNoOccurrenceMatch) {
+			t.Fatalf("ExcludeAfterLateOccurrenceMatch() error = %v, want ErrImportRecordNoOccurrenceMatch", err)
+		}
+	})
+
+	t.Run("rejects a record with no occurrence match at all", func(t *testing.T) {
+		t.Parallel()
+		r, err := importing.NewImportRecord(
+			"record-1", "user-1", "batch-1", "raw", mustRecordDate(t, 2026, 8, 14), "desc",
+			mustRecordMoney(t, -100, "USD"), 0,
+			importing.WithRecordStatus(importing.ImportRecordStatusReady),
+		)
+		if err != nil {
+			t.Fatalf("NewImportRecord(...) = %v, want success", err)
+		}
+		if _, err := r.ExcludeAfterLateOccurrenceMatch(); !errors.Is(err, importing.ErrImportRecordNoOccurrenceMatch) {
+			t.Fatalf("ExcludeAfterLateOccurrenceMatch() error = %v, want ErrImportRecordNoOccurrenceMatch", err)
+		}
+	})
+
+	t.Run("rejects a pending record even with a materialized match", func(t *testing.T) {
+		t.Parallel()
+		match, err := importing.NewOccurrenceMatch("occ-1")
+		if err != nil {
+			t.Fatalf("NewOccurrenceMatch(...) = %v, want success", err)
+		}
+		resolved, err := match.Resolve(importing.OccurrenceMatchResolutionMaterialized)
+		if err != nil {
+			t.Fatalf("Resolve(...) = %v, want success", err)
+		}
+		r, err := importing.NewImportRecord(
+			"record-1", "user-1", "batch-1", "raw", mustRecordDate(t, 2026, 8, 14), "desc",
+			mustRecordMoney(t, -100, "USD"), 0,
+			importing.WithOccurrenceMatch(resolved),
+		)
+		if err != nil {
+			t.Fatalf("NewImportRecord(...) = %v, want success", err)
+		}
+		if _, err := r.ExcludeAfterLateOccurrenceMatch(); !errors.Is(err, importing.ErrImportRecordInvalidTransition) {
+			t.Fatalf("ExcludeAfterLateOccurrenceMatch() error = %v, want ErrImportRecordInvalidTransition (only ready -> excluded is legal here; SettleStatus is what handles a still-pending record)", err)
+		}
+	})
+}
+
 // TestImportRecord_SettleStatus covers issue #309's rule that a record
 // only leaves ImportRecordStatusPending once every pending reason on it
 // (an unresolved DuplicateMatch and/or an unresolved OccurrenceMatch) has

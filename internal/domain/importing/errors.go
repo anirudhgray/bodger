@@ -110,6 +110,15 @@ var (
 
 	// ErrImportRecordNoOccurrenceMatch is returned by
 	// ImportRecord.ResolveOccurrenceMatch when the record has no
-	// OccurrenceMatch to resolve.
+	// OccurrenceMatch to resolve, and by ExcludeAfterLateOccurrenceMatch
+	// when the record's OccurrenceMatch isn't resolved
+	// OccurrenceMatchResolutionMaterialized.
 	ErrImportRecordNoOccurrenceMatch = errors.New("importing: cannot resolve an occurrence match that was never recorded")
+
+	// ErrImportRecordOccurrenceMatchAlreadyAttached is returned by
+	// ImportRecord.AttachOccurrenceMatch when the record already carries
+	// an OccurrenceMatch — attaching one is a one-time action, the same as
+	// WithOccurrenceMatch only ever setting the field once at
+	// construction.
+	ErrImportRecordOccurrenceMatchAlreadyAttached = errors.New("importing: import record already has an occurrence match")
 )
