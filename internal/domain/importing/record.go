@@ -45,7 +45,13 @@ var validImportRecordStatuses = map[ImportRecordStatus]bool{
 // current status, the set of statuses a transition may move it to.
 // Pending is the only branching point (a record either clears review or
 // doesn't); every other step is linear, and there is no way back from
-// ImportRecordStatusExcluded or ImportRecordStatusCommitted.
+// ImportRecordStatusExcluded or ImportRecordStatusCommitted. This table
+// deliberately still has no Ready -> Excluded edge — MarkExcluded, its
+// only caller, must keep refusing that (TestImportRecord_StatusStateMachine
+// pins it). ExcludeAfterLateOccurrenceMatch needs exactly that transition
+// for one narrow, separately-guarded case (issue #307 — see its own doc
+// comment) and performs it directly rather than widening this shared
+// table for every other caller of transition/MarkExcluded too.
 var importRecordTransitions = map[ImportRecordStatus]map[ImportRecordStatus]bool{
 	ImportRecordStatusPending: {
 		ImportRecordStatusReady:    true,
@@ -440,6 +446,68 @@ func (r ImportRecord) ResolveOccurrenceMatch(resolution OccurrenceMatchResolutio
 		return ImportRecord{}, err
 	}
 	r.occurrenceMatch = &resolved
+	return r, nil
+}
+
+// AttachOccurrenceMatch returns a copy of r with match recorded as its
+// occurrence-match candidate; r itself is unchanged. It returns
+// ErrImportRecordOccurrenceMatchAlreadyAttached if r already carries one.
+//
+// This is WithOccurrenceMatch's post-construction counterpart — issue
+// #307's AI-suggested occurrence match is discovered only once review is
+// already underway (a network call SuggestForImportBatch makes lazily,
+// well after staging built r), which findOccurrenceMatch's own
+// staging-time detection can't retroactively attach to an
+// already-constructed record. See ExcludeAfterLateOccurrenceMatch for
+// what has to happen next when r has already left ImportRecordStatusPending.
+func (r ImportRecord) AttachOccurrenceMatch(match OccurrenceMatch) (ImportRecord, error) {
+	if r.occurrenceMatch != nil {
+		return ImportRecord{}, ErrImportRecordOccurrenceMatchAlreadyAttached
+	}
+	r.occurrenceMatch = &match
+	return r, nil
+}
+
+// ExcludeAfterLateOccurrenceMatch returns a copy of r transitioned
+// directly from ready to excluded; r itself is unchanged. It exists for
+// the one case SettleStatus's pending-only rule can't reach: a row that
+// already cleared review as ImportRecordStatusReady with no occurrence
+// match attached, and only afterward — via AttachOccurrenceMatch plus
+// ResolveOccurrenceMatch(OccurrenceMatchResolutionMaterialized) — turned
+// out to duplicate a pending occurrence a human just accepted. Without
+// this transition, that acceptance would materialise the occurrence's
+// own new transaction while leaving r just as committable as before,
+// double-counting the same money.
+//
+// r must already carry an OccurrenceMatch resolved
+// OccurrenceMatchResolutionMaterialized (call ResolveOccurrenceMatch
+// first) — this method only performs the status transition, it never
+// touches the match itself. It returns ErrImportRecordNoOccurrenceMatch
+// if that precondition isn't met, and ErrImportRecordInvalidTransition if
+// r isn't currently ready.
+//
+// This sets r.status directly rather than calling transition (the way
+// MarkExcluded does) deliberately: importRecordTransitions has no
+// Ready -> Excluded edge, and it stays that way — MarkExcluded, its only
+// other caller, must keep refusing to exclude a Ready record for every
+// ordinary reason a caller might ask (TestImportRecord_StatusStateMachine
+// pins this). Widening the shared table would also make Pending ->
+// Excluded reachable through this same path, silently skipping
+// SettleStatus's "every pending reason must clear first" rule — a record
+// pending on both a DuplicateMatch and an OccurrenceMatch could exclude on
+// the occurrence match's own materialize alone, before the duplicate
+// match is resolved. Ready has no such coexisting reason to wait for,
+// which is exactly why this method exists only for that one status, and
+// only reachable through this one, narrowly-named method — not the
+// general-purpose MarkExcluded.
+func (r ImportRecord) ExcludeAfterLateOccurrenceMatch() (ImportRecord, error) {
+	if r.occurrenceMatch == nil || r.occurrenceMatch.Resolution() != OccurrenceMatchResolutionMaterialized {
+		return ImportRecord{}, ErrImportRecordNoOccurrenceMatch
+	}
+	if r.status != ImportRecordStatusReady {
+		return ImportRecord{}, ErrImportRecordInvalidTransition
+	}
+	r.status = ImportRecordStatusExcluded
 	return r, nil
 }
 

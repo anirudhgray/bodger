@@ -890,6 +890,82 @@ export function resolveImportRecord(
   })
 }
 
+// OccurrenceMatch is issue #309/#312's deterministic gap: a staged row
+// whose date and amount already look like a specific pending recurring
+// occurrence (internal/domain/importing/record.go's SettleStatus doc
+// comment) — independent of, and a prerequisite for, #307's AI-suggested
+// occurrence match below. An unresolved OccurrenceMatch blocks commit the
+// same way an unresolved DuplicateMatch does, and the two resolve
+// independently: a row can carry both, either, or neither.
+export type OccurrenceMatch = components['schemas']['OccurrenceMatch']
+export type OccurrenceMatchResolution = OccurrenceMatch['resolution']
+
+// ResolvableOccurrenceMatchResolution excludes "pending" for the same
+// reason ResolvableImportResolution does above — "pending" is a staged
+// record's own starting state, never something a caller resolves it back
+// to (internal/surface/http/imports.go's resolveImportRecordOccurrenceMatchRequest
+// doc comment: only "materialized" or "dismissed" are valid decisions).
+export type ResolvableOccurrenceMatchResolution = Exclude<
+  OccurrenceMatchResolution,
+  'pending'
+>
+
+// resolveImportRecordOccurrenceMatch mirrors resolveImportRecord's own
+// shape exactly, one level down: "materialized" turns the matched
+// occurrence into its own real transaction (the same MaterialiseOccurrence
+// use case Recurring.tsx's own materialiseOccurrence call reaches) and
+// excludes this record from commit; "dismissed" leaves the occurrence
+// untouched and clears the record for commit. This is the write #307's
+// own AI-suggested occurrence match (below) calls to "accept" a
+// suggestion — there is no separate write path for that.
+//
+// occurrenceId is required, and only meaningful, when the record has no
+// matched occurrence of its own already: findOccurrenceMatch's own
+// staging-time gate additionally requires description similarity on top
+// of the amount/date/currency match SuggestForImportBatch's own
+// (deliberately looser) candidate narrowing uses, so a real AI suggestion
+// can point at an occurrence this record was never held pending on —
+// exactly the case a manual test against a live typesafe.ai key found
+// silently doing nothing before this parameter existed. Omit it (or pass
+// undefined) when record.occurrence_match is already set; the REST layer
+// ignores it either way once a match already exists, and re-validates it
+// server-side when one doesn't, so an arbitrary or stale id is refused
+// rather than trusted.
+export function resolveImportRecordOccurrenceMatch(
+  id: string,
+  resolution: ResolvableOccurrenceMatchResolution,
+  occurrenceId?: string,
+): Promise<ImportRecord> {
+  return apiFetch<ImportRecord>(
+    `/api/v1/import-records/${id}/resolve-occurrence-match`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ resolution, occurrence_id: occurrenceId }),
+    },
+  )
+}
+
+// --- Import suggestions (issue #307, wrapping #306/#314-316's REST
+// surface) ------------------------------------------------------------
+//
+// ADR-0015: advisory only. getImportSuggestions is read-only and writes
+// nothing — every write a suggestion can lead to is an existing use case
+// (resolveImportRecordOccurrenceMatch above; a category is set at commit
+// or edit time, never here) called by the user themselves, exactly as
+// they would without a suggestion. configured/failure_reason/rows_failed
+// are ADR-0015's three-state result (present/not-configured/failed) — a
+// caller renders all three, never treats a Configured: false response as
+// an error.
+
+export type ImportSuggestions = components['schemas']['ImportSuggestions']
+export type ImportRowSuggestion = components['schemas']['ImportRowSuggestion']
+
+export function getImportSuggestions(
+  batchId: string,
+): Promise<ImportSuggestions> {
+  return apiFetch<ImportSuggestions>(`/api/v1/imports/${batchId}/suggestions`)
+}
+
 // --- Export and restore (issues #213, #227) ---------------------------
 //
 // Both /api/v1/export/* routes and /api/v1/restore move whole documents
