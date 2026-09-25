@@ -9,6 +9,22 @@ sync with each GitHub Release.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-25
+
+### Added
+
+* [ae243770](https://github.com/anirudhgray/bodger/commit/ae243770): feat(platform,ports): typesafe.ai config, SuggestionProvider port, and service wiring (#308) (@anirudhgray)
+* [861b8d91](https://github.com/anirudhgray/bodger/commit/861b8d91): feat(adapters): typesafe.ai SuggestionProvider adapter (#311) (@anirudhgray)
+* [8109a9ef](https://github.com/anirudhgray/bodger/commit/8109a9ef): feat(app,cli,http): gate commit and add resolution for occurrence matches (#312) (@anirudhgray)
+* [3f233faa](https://github.com/anirudhgray/bodger/commit/3f233faa): feat(app): SuggestForImportBatch -- deterministic narrowing and suggestion policy (#314) (@anirudhgray)
+* [0f9f9578](https://github.com/anirudhgray/bodger/commit/0f9f9578): feat(api,cli,mcp): suggestion surfaces, attribution, and conformance (#315) (@anirudhgray)
+* [8fdd3d08](https://github.com/anirudhgray/bodger/commit/8fdd3d08): feat(web): suggestions on the import review screen (#317) (@anirudhgray)
+
+### Fixed
+
+* [e5934a71](https://github.com/anirudhgray/bodger/commit/e5934a71): fix(app): detect import duplicates against pending scheduled occurrences (#310) (@anirudhgray)
+* [caee4e9c](https://github.com/anirudhgray/bodger/commit/caee4e9c): fix(app,adapters,ports): surface suggestion failure reason beyond an aggregate count (#316) (@anirudhgray)
+
 ## [0.9.0] - 2026-09-19
 
 ### Added
@@ -194,7 +210,8 @@ sync with each GitHub Release.
 * 5ae7d547: fix(infra): make lint fail loudly on an incompatible golangci-lint (#23)
 * c76bd7e7: fix(infra): pre-push hook executable bit, worktree hygiene (#14)
 
-[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/anirudhgray/bodger/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/anirudhgray/bodger/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/anirudhgray/bodger/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/anirudhgray/bodger/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/anirudhgray/bodger/compare/v0.6.0...v0.7.0
