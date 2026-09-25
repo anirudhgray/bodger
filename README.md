@@ -8,7 +8,10 @@ A personal finance application you actually host yourself. Record what you spend
   <img src="docs/assets/screenshots/transactions.jpg" alt="The bodger web UI's Transactions screen, showing a mix of INR, USD, and EUR entries" width="820">
 </p>
 
-> **Status: pre-1.0, actively developed.** Nine of ten planned milestones are shipped — domain model, CLI, REST API, web UI, multi-currency/FX, analytics, import/export, budgets, MCP server, and recurring transactions are all built and tested. See [Status](docs/architecture.md#9-status) for the detail and [Milestones](#milestones) below for what's left. Prebuilt binaries are on the [Releases page](https://github.com/anirudhgray/bodger/releases), or build from source with `make build`.
+> [!NOTE]  
+> bodger exists to solve one person's (that's me and mine) problem: self-hosting personal finance instead of handing it to a third party. Features get built because I needed them to replace my existing expense tracking software and/or I found them cool :)
+
+> **Status: pre-1.0, actively developed.** All ten planned milestones are shipped — domain model, CLI, REST API, web UI, multi-currency/FX, analytics, import/export, budgets, MCP server, recurring transactions and ai-assisted categorisation are all built and tested. See [Status](docs/architecture.md#9-status) for the detail and [Milestones](#milestones) below for what's left. Prebuilt binaries are on the [Releases page](https://github.com/anirudhgray/bodger/releases), or build from source with `make build`.
 
 ---
 
